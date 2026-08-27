@@ -110,7 +110,8 @@
 | **2026-08-28 01:00** | Hoàn tất M-1 Planning Gate | Đánh dấu 5 checklist reconciliation/verification trong `BUILD_PLAN.md`; điểm khởi đầu triển khai tiếp theo là Task 2, chưa tạo source code |
 | **2026-08-28 01:05** | Tạo kế hoạch triển khai theo module bằng tiếng Việt | Tạo `KE_HOACH_TRIEN_KHAI.md`, sắp 14 task tuần tự theo M-1 đến M8 để thuận tiện thực thi và theo dõi |
 | **2026-08-28 01:08** | Bổ sung quy tắc Git & commit tiếng Việt chuyên nghiệp | Cập nhật `AGENTS.md` & `KE_HOACH_TRIEN_KHAI.md`: bắt buộc thao tác git an toàn, commit message tiếng Việt theo Conventional Commits sau mỗi task |
-| **2026-08-28 01:15** | Hoàn thành Task 2: Khởi tạo Git & Toolchain Monorepo | Khởi tạo Git, cấu hình tài khoản luongviettienns, remote origin GitHub, .gitignore siêu sạch (chặn .agents/.claude/secrets), .nvmrc, .npmrc, root package.json workspaces và README.md |
+| **2026-08-28 01:15** | Hoàn thành Task 2: Khởi tạo Git & Toolchain Monorepo | Khởi tạo Git, cấu hình tài khoản `luongviettienns`, .gitignore siêu sạch (chặn .agents/.claude/secrets), .nvmrc, .npmrc, root package.json workspaces và README.md |
+| **2026-08-28 01:25** | Đẩy mã nguồn lên GitHub Repository | Đã push thành công nhánh `main` lên `https://github.com/luongviettienns/WebAppQuanLyNhaHang.git` với commit message tiếng Việt không dấu |
 
 ---
 *Tệp này sẽ được tự động cập nhật liên tục trong suốt quá trình triển khai dự án.*
