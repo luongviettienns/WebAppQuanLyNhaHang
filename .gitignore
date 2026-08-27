@@ -19,6 +19,11 @@ frontend/node_modules/
 .claude/
 agent/
 
+# Documentation & internal planning files (keep only README.md)
+docs/
+*.md
+!README.md
+
 # Build artifacts & outputs
 dist/
 build/
