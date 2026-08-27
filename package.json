@@ -1,0 +1,35 @@
+{
+  "name": "crispy-bite",
+  "version": "1.0.0",
+  "private": true,
+  "description": "He thong dat mon va quan ly nha hang fast food Crispy Bite (Full-Stack QSR)",
+  "workspaces": [
+    "backend",
+    "frontend"
+  ],
+  "engines": {
+    "node": "24.19.0",
+    "npm": "11.17.0"
+  },
+  "scripts": {
+    "dev:backend": "npm run dev --workspace=backend",
+    "dev:frontend": "npm run start --workspace=frontend",
+    "test:backend": "npm run test --workspace=backend",
+    "test:frontend": "npm run test --workspace=frontend",
+    "test": "npm run test:backend && npm run test:frontend",
+    "build:backend": "npm run build --workspace=backend",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "keywords": [
+    "qsr",
+    "pos",
+    "kds",
+    "restaurant-management",
+    "react-native",
+    "express",
+    "prisma",
+    "socket.io"
+  ],
+  "author": "luongviettienns",
+  "license": "UNLICENSED"
+}
