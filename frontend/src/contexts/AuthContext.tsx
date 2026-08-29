@@ -1,18 +1,17 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { UserDto, Role, LoginResponseDto, ApiErrorResponse, ApiResponse } from '../api/contracts';
+import { getApiBaseUrl } from '../api/config';
 
 interface AuthContextType {
   user: UserDto | null;
   token: string | null;
   isLoading: boolean;
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
-  demoLogin: (role: Role) => Promise<void>;
+  demoLogin: (role: Role) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000';
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserDto | null>(null);
@@ -48,8 +47,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const login = async (username: string, password: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
+    const baseUrl = getApiBaseUrl();
     try {
-      const response = await fetch(`${API_URL}/api/auth/login`, {
+      const response = await fetch(`${baseUrl}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -76,21 +76,21 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } catch {
       return {
         success: false,
-        error: 'Không thể kết nối đến máy chủ Backend. Vui lòng kiểm tra kết nối mạng.'
+        error: `Không thể kết nối đến máy chủ Backend tại ${baseUrl}. Vui lòng đảm bảo điện thoại và máy tính cùng mạng Wi-Fi.`
       };
     } finally {
       setIsLoading(false);
     }
   };
 
-  const demoLogin = async (role: Role) => {
+  const demoLogin = async (role: Role): Promise<{ success: boolean; error?: string }> => {
     const creds: Record<Role, { u: string; p: string }> = {
       CASHIER: { u: 'cashier', p: 'cashier123' },
       KITCHEN: { u: 'kitchen', p: 'kitchen123' },
       ADMIN: { u: 'admin', p: 'admin123' }
     };
     const { u, p } = creds[role];
-    await login(u, p);
+    return await login(u, p);
   };
 
   const logout = () => {

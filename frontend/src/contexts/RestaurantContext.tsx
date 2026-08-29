@@ -15,6 +15,7 @@ import {
   ApiResponse
 } from '../api/contracts';
 import { useAuth } from './AuthContext';
+import { getApiBaseUrl, getSocketBaseUrl } from '../api/config';
 
 export interface CartItem {
   menuItem: MenuItemDto;
@@ -71,8 +72,8 @@ interface RestaurantContextType {
 
 const RestaurantContext = createContext<RestaurantContextType | undefined>(undefined);
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:4000';
-const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL || API_URL;
+const API_URL = getApiBaseUrl();
+const SOCKET_URL = getSocketBaseUrl();
 
 export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { token } = useAuth();

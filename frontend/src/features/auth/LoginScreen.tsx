@@ -37,7 +37,18 @@ export const LoginScreen: React.FC = () => {
 
   const handleDemoLogin = async (role: Role) => {
     setErrorMessage(null);
-    await demoLogin(role);
+    const creds: Record<Role, { u: string; p: string }> = {
+      CASHIER: { u: 'cashier', p: 'cashier123' },
+      KITCHEN: { u: 'kitchen', p: 'kitchen123' },
+      ADMIN: { u: 'admin', p: 'admin123' }
+    };
+    const { u, p } = creds[role];
+    setUsername(u);
+    setPassword(p);
+    const result = await demoLogin(role);
+    if (!result.success && result.error) {
+      setErrorMessage(result.error);
+    }
   };
 
   return (
