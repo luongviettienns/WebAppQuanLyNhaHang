@@ -19,7 +19,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // Restore token on launch
+  /**
+   * Khoi phuc phien dang nhap khi app khoi dong.
+   *
+   * ⚠️  QUAN TRONG - GIOI HAN PLATFORM:
+   * Hien tai dang dung `window.localStorage` (chi hoat dong tren Expo Web / browser).
+   * Khi chay tren thiet bi thuc Expo Go (iOS/Android), localStorage KHONG kha dung.
+   * TODO Task 8+: Migrate sang `expo-secure-store` (native) voi fallback `AsyncStorage`
+   *   import * as SecureStore from 'expo-secure-store';
+   *   SecureStore.setItemAsync('crispy_token', token);
+   */
   useEffect(() => {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -31,7 +40,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
       }
     } catch (e) {
-      console.warn('Khong the khoi phuc phien dang nhap tu localStorage', e);
+      console.warn('Khong the khoi phuc phien dang nhap tu localStorage (chi hoat dong tren web)', e);
     } finally {
       setIsLoading(false);
     }
