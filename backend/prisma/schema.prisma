@@ -1,0 +1,181 @@
+// backend/prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CASHIER
+  KITCHEN
+  ADMIN
+}
+
+enum OrderType {
+  DINE_IN
+  TAKE_AWAY
+}
+
+enum OrderStatus {
+  PENDING
+  PREPARING
+  READY
+  COMPLETED
+  CANCELLED
+}
+
+enum TableStatus {
+  AVAILABLE
+  OCCUPIED
+  NEED_CLEANING
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CREDIT_CARD
+}
+
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+model User {
+  id           Int      @id @default(autoincrement())
+  username     String   @unique
+  passwordHash String
+  name         String
+  role         Role     @default(CASHIER)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  createdOrders Order[] @relation("CreatedOrders")
+  voidedOrders  Order[] @relation("VoidedOrders")
+}
+
+model Category {
+  id           Int        @id @default(autoincrement())
+  name         String
+  displayOrder Int        @default(0)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  menuItems    MenuItem[]
+}
+
+model MenuItem {
+  id           Int             @id @default(autoincrement())
+  categoryId   Int
+  name         String
+  description  String?         @db.Text
+  basePrice    Int             // VND nguyen
+  imageUrl     String?
+  isAvailable  Boolean         @default(true)
+  displayOrder Int             @default(0)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  category       Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  modifierGroups ModifierGroup[]
+  orderItems     OrderItem[]
+}
+
+model ModifierGroup {
+  id         Int              @id @default(autoincrement())
+  menuItemId Int
+  name       String
+  isRequired Boolean          @default(false)
+  minSelect  Int              @default(0)
+  maxSelect  Int              @default(1)
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  menuItem MenuItem         @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  options  ModifierOption[]
+}
+
+model ModifierOption {
+  id              Int           @id @default(autoincrement())
+  modifierGroupId Int
+  name            String
+  priceDelta      Int           @default(0) // VND phu phi
+  isAvailable     Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  modifierGroup ModifierGroup @relation(fields: [modifierGroupId], references: [id], onDelete: Cascade)
+}
+
+model DiningTable {
+  id             Int         @id @default(autoincrement())
+  tableNumber    Int         @unique
+  qrCodeToken    String      @unique
+  status         TableStatus @default(AVAILABLE)
+  capacity       Int         @default(4)
+  currentOrderId Int?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  orders Order[]
+}
+
+model Order {
+  id              Int           @id @default(autoincrement())
+  code            String        @unique // Ma don CRISPY-YYYYMMDD-XXXX
+  orderType       OrderType     @default(DINE_IN)
+  status          OrderStatus   @default(PENDING)
+  tableId         Int?
+  buzzerNumber    Int?
+  totalAmount     Int           // Tong tien truoc thue (VND)
+  vatAmount       Int           // Tien thue VAT 8% (VND)
+  finalAmount     Int           // Tong thanh toan (VND)
+  paymentMethod   PaymentMethod?
+  paymentStatus   PaymentStatus @default(UNPAID)
+  paidAt          DateTime?
+  notes           String?
+  
+  // Audit fields
+  createdByUserId Int?
+  voidedByUserId  Int?
+  voidReason      String?
+  voidedAt        DateTime?
+
+  // Lifecycle Timestamps
+  preparingAt     DateTime?
+  readyAt         DateTime?
+  completedAt     DateTime?
+  cancelledAt     DateTime?
+
+  // Idempotency & Fingerprint
+  idempotencyKey  String?
+  requestHash     String?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  table           DiningTable?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  createdByUser   User?         @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  voidedByUser    User?         @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  items           OrderItem[]
+
+  @@unique([createdByUserId, idempotencyKey])
+}
+
+model OrderItem {
+  id                    Int      @id @default(autoincrement())
+  orderId               Int
+  menuItemId            Int
+  quantity              Int      @default(1)
+  unitPrice             Int      // Don gia tai thoi diem dat (VND)
+  subtotal              Int      // quantity * (unitPrice + modifiers)
+  selectedModifiersJson Json?    // Snapshot cac options da chon
+  notes                 String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+}
