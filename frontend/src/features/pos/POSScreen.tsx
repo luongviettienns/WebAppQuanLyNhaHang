@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   StyleSheet,
   Text,
@@ -6,14 +6,16 @@ import {
   SafeAreaView,
   FlatList,
   ActivityIndicator,
-  TouchableOpacity
+  TouchableOpacity,
+  Modal,
+  ScrollView
 } from 'react-native';
 import { colors, typography, spacing } from '../../theme';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { MenuCategoryPills } from './MenuCategoryPills';
 import { MenuItemCard } from './MenuItemCard';
 import { ModifierModal } from './ModifierModal';
-import { MenuItemDto } from '../../api/contracts';
+import { MenuItemDto, OrderType } from '../../api/contracts';
 
 export const POSScreen: React.FC = () => {
   const {
@@ -29,12 +31,22 @@ export const POSScreen: React.FC = () => {
     isModifierModalOpen,
     openModifierModal,
     closeModifierModal,
-    cart,
     cartItemCount,
     cartTotal,
     addToCart,
-    clearCart
+    clearCart,
+    tables,
+    createOrder
   } = useRestaurant();
+
+  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  const [orderType, setOrderType] = useState<OrderType>('DINE_IN');
+  const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [createdOrderCode, setCreatedOrderCode] = useState<string | null>(null);
+
+  const selectableTables = tables.filter((table) => table.status !== 'NEED_CLEANING');
 
   const formatVND = (amount: number) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -46,6 +58,39 @@ export const POSScreen: React.FC = () => {
     } else {
       // Add directly to cart
       addToCart(item, 1, []);
+    }
+  };
+
+  const openCheckout = () => {
+    setSelectedTableId((current) => current ?? selectableTables[0]?.id ?? null);
+    setSubmitError(null);
+    setCreatedOrderCode(null);
+    setIsCheckoutOpen(true);
+  };
+
+  const handleConfirmOrder = async () => {
+    if (isSubmitting) return;
+    if (orderType === 'DINE_IN' && !selectedTableId) {
+      setSubmitError('Vui lòng chọn bàn trước khi gửi đơn.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setSubmitError(null);
+    try {
+      const result = await createOrder(
+        orderType,
+        orderType === 'DINE_IN' ? selectedTableId! : undefined
+      );
+      if (result.success && result.order) {
+        setCreatedOrderCode(result.order.code);
+      } else {
+        setSubmitError(result.error || 'Không thể tạo đơn hàng. Vui lòng thử lại.');
+      }
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : 'Không thể tạo đơn hàng. Vui lòng thử lại.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -104,12 +149,108 @@ export const POSScreen: React.FC = () => {
               <Text style={styles.clearCartText}>Xóa</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.checkoutBtn}>
+            <TouchableOpacity style={styles.checkoutBtn} onPress={openCheckout}>
               <Text style={styles.checkoutText}>XÁC NHẬN ĐƠN ➔</Text>
             </TouchableOpacity>
           </View>
         </View>
       )}
+
+      <Modal
+        visible={isCheckoutOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => !isSubmitting && setIsCheckoutOpen(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.checkoutModal}>
+            <View style={styles.modalHeader}>
+              <View>
+                <Text style={styles.modalTitle}>Xác nhận đơn POS</Text>
+                <Text style={styles.modalSubtitle}>{cartItemCount} món · {formatVND(cartTotal)}</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.modalCloseBtn}
+                disabled={isSubmitting}
+                onPress={() => setIsCheckoutOpen(false)}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {createdOrderCode ? (
+              <View style={styles.successPanel}>
+                <Text style={styles.successIcon}>✓</Text>
+                <Text style={styles.successText}>Đã tạo đơn {createdOrderCode} thành công.</Text>
+                <TouchableOpacity style={styles.doneBtn} onPress={() => setIsCheckoutOpen(false)}>
+                  <Text style={styles.doneBtnText}>Đóng</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.fieldLabel}>Loại đơn</Text>
+                <View style={styles.orderTypeRow}>
+                  {(['DINE_IN', 'TAKE_AWAY'] as OrderType[]).map((type) => (
+                    <TouchableOpacity
+                      key={type}
+                      style={[styles.typeBtn, orderType === type && styles.typeBtnActive]}
+                      onPress={() => {
+                        setOrderType(type);
+                        setSubmitError(null);
+                      }}
+                    >
+                      <Text style={[styles.typeBtnText, orderType === type && styles.typeBtnTextActive]}>
+                        {type === 'DINE_IN' ? 'Tại bàn' : 'Mang đi'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {orderType === 'DINE_IN' && (
+                  <>
+                    <Text style={styles.fieldLabel}>Chọn bàn</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tableScroller}>
+                      {selectableTables.map((table) => (
+                        <TouchableOpacity
+                          key={table.id}
+                          style={[styles.tableBtn, selectedTableId === table.id && styles.tableBtnActive]}
+                          onPress={() => {
+                            setSelectedTableId(table.id);
+                            setSubmitError(null);
+                          }}
+                        >
+                          <Text style={[styles.tableBtnText, selectedTableId === table.id && styles.tableBtnTextActive]}>
+                            Bàn {table.tableNumber.toString().padStart(2, '0')}
+                          </Text>
+                          <Text style={styles.tableStateText}>
+                            {table.status === 'OCCUPIED' ? 'Đang phục vụ' : 'Bàn trống'}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                    {selectableTables.length === 0 && (
+                      <Text style={styles.noTableText}>Hiện không có bàn sẵn sàng nhận đơn.</Text>
+                    )}
+                  </>
+                )}
+
+                {submitError && <Text style={styles.submitError}>{submitError}</Text>}
+
+                <TouchableOpacity
+                  style={[styles.submitOrderBtn, isSubmitting && styles.submitOrderBtnDisabled]}
+                  disabled={isSubmitting}
+                  onPress={handleConfirmOrder}
+                >
+                  {isSubmitting && <ActivityIndicator size="small" color="#FFFFFF" />}
+                  <Text style={styles.submitOrderText}>
+                    {isSubmitting ? 'Đang gửi đơn...' : 'Gửi đơn xuống bếp'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* 4. Modifier Configuration Modal */}
       <ModifierModal
@@ -239,5 +380,165 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold,
     fontSize: typography.sizes.xs,
     letterSpacing: 0.5
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.68)',
+    justifyContent: 'flex-end'
+  },
+  checkoutModal: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: spacing.lg,
+    paddingBottom: spacing.xl
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.lg
+  },
+  modalTitle: {
+    color: colors.text,
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.extraBold
+  },
+  modalSubtitle: {
+    color: colors.textMuted,
+    fontSize: typography.sizes.xs,
+    marginTop: 2
+  },
+  modalCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#F1F5F9'
+  },
+  modalCloseText: {
+    color: colors.textMuted,
+    fontWeight: typography.weights.bold
+  },
+  fieldLabel: {
+    color: colors.text,
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+    marginBottom: spacing.xs
+  },
+  orderTypeRow: {
+    flexDirection: 'row',
+    gap: spacing.sm,
+    marginBottom: spacing.md
+  },
+  typeBtn: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: spacing.sm,
+    alignItems: 'center'
+  },
+  typeBtnActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#FEF2F2'
+  },
+  typeBtnText: {
+    color: colors.textMuted,
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.semibold
+  },
+  typeBtnTextActive: {
+    color: colors.primary
+  },
+  tableScroller: {
+    marginBottom: spacing.md
+  },
+  tableBtn: {
+    minWidth: 92,
+    padding: spacing.sm,
+    marginRight: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    backgroundColor: '#F8FAFC'
+  },
+  tableBtnActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#FEF2F2'
+  },
+  tableBtnText: {
+    color: colors.text,
+    fontWeight: typography.weights.bold,
+    fontSize: typography.sizes.xs
+  },
+  tableBtnTextActive: {
+    color: colors.primary
+  },
+  tableStateText: {
+    color: colors.textMuted,
+    fontSize: 10,
+    marginTop: 2
+  },
+  noTableText: {
+    color: colors.danger,
+    fontSize: typography.sizes.xs,
+    marginBottom: spacing.md
+  },
+  submitError: {
+    color: colors.danger,
+    fontSize: typography.sizes.xs,
+    marginBottom: spacing.sm
+  },
+  submitOrderBtn: {
+    minHeight: spacing.touchTargetPOS,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: spacing.xs
+  },
+  submitOrderBtnDisabled: {
+    opacity: 0.65
+  },
+  submitOrderText: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold
+  },
+  successPanel: {
+    alignItems: 'center',
+    paddingVertical: spacing.lg
+  },
+  successIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    textAlign: 'center',
+    textAlignVertical: 'center',
+    backgroundColor: '#DCFCE7',
+    color: '#15803D',
+    fontSize: typography.sizes.lg,
+    fontWeight: typography.weights.extraBold,
+    marginBottom: spacing.sm
+  },
+  successText: {
+    color: '#15803D',
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold,
+    textAlign: 'center'
+  },
+  doneBtn: {
+    marginTop: spacing.lg,
+    backgroundColor: '#1E293B',
+    borderRadius: 8,
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.sm
+  },
+  doneBtnText: {
+    color: '#FFFFFF',
+    fontWeight: typography.weights.bold
   }
 });

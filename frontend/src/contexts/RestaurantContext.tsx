@@ -12,7 +12,8 @@ import {
   SocketTableStatusChangedPayload,
   SocketOrderStatusChangedPayload,
   SocketOrderNewPayload,
-  ApiResponse
+  ApiResponse,
+  OrderType
 } from '../api/contracts';
 import { useAuth } from './AuthContext';
 
@@ -65,6 +66,7 @@ interface RestaurantContextType {
   activeTableOrder: OrderDto | null;
   fetchTables: () => Promise<void>;
   selectActiveTable: (tableId: number | null) => void;
+  createOrder: (orderType: OrderType, tableId?: number, notes?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   createDineInOrder: (tableId: number, notes?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   payOrder: (orderId: number, paymentMethod: PaymentMethod) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
 }
@@ -279,12 +281,16 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
-  const createDineInOrder = async (
-    tableId: number,
+  const createOrder = async (
+    orderType: OrderType,
+    tableId?: number,
     notes?: string
   ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
     if (cart.length === 0) {
       return { success: false, error: 'Giỏ hàng đang trống' };
+    }
+    if (orderType === 'DINE_IN' && !tableId) {
+      return { success: false, error: 'Vui lòng chọn bàn cho đơn tại bàn' };
     }
 
     const itemsPayload: OrderItemCreateDto[] = cart.map((c) => ({
@@ -304,8 +310,8 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
         body: JSON.stringify({
-          tableId,
-          orderType: 'DINE_IN',
+          ...(orderType === 'DINE_IN' ? { tableId } : {}),
+          orderType,
           items: itemsPayload,
           notes,
           idempotencyKey
@@ -318,7 +324,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       const order = (json as ApiResponse<{ order: OrderDto }>).data.order;
-      setActiveTableOrder(order);
+      if (orderType === 'DINE_IN') {
+        setActiveTableId(tableId!);
+        setActiveTableOrder(order);
+      }
       clearCart();
       await fetchTables();
 
@@ -327,6 +336,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       return { success: false, error: err.message || 'Lỗi kết nối khi gửi đơn xuống bếp' };
     }
   };
+
+  const createDineInOrder = (tableId: number, notes?: string) =>
+    createOrder('DINE_IN', tableId, notes);
 
   const payOrder = async (
     orderId: number,
@@ -387,6 +399,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         activeTableOrder,
         fetchTables,
         selectActiveTable,
+        createOrder,
         createDineInOrder,
         payOrder
       }}
