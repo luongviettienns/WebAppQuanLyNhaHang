@@ -44,17 +44,26 @@ WebAppQuanLyNhaHang/
 
 ## 4. Huong Dan Cai Dat & Chay Local (Getting Started)
 
-### Buoc 1: Cai dat dependencies
+### Buoc 1: Cau hinh Database MySQL (Native hoac Docker)
+- Copy file `.env.example` thanh `.env` va dien thong tin ket noi MySQL.
+- Tao 2 database `crispy_bite_dev` va `crispy_bite_test`.
+- Chay script kiem tra ket noi database:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/verify-database.ps1
+```
+*(Neu dung Docker Desktop, chay `docker compose up -d`)*
+
+### Buoc 2: Cai dat dependencies
 ```bash
 npm install
 ```
 
-### Buoc 2: Khoi chay Backend
+### Buoc 3: Khoi chay Backend
 ```bash
 npm run dev:backend
 ```
 
-### Buoc 3: Khoi chay Frontend
+### Buoc 4: Khoi chay Frontend
 ```bash
 npm run dev:frontend
 ```
