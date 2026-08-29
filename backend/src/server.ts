@@ -2,6 +2,7 @@ import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import { app } from './app';
 import { env } from './config/env';
+import { setSocketIO } from './lib/socket';
 
 const server = http.createServer(app);
 
@@ -11,6 +12,8 @@ export const io = new SocketIOServer(server, {
     credentials: true
   }
 });
+
+setSocketIO(io);
 
 io.on('connection', (socket) => {
   console.log(`[Socket.io] Client ket noi moi: ${socket.id}`);

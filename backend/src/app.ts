@@ -3,6 +3,7 @@ import cors from 'cors';
 import { env } from './config/env';
 import { systemRouter } from './modules/system/system.routes';
 import { authRouter } from './modules/auth/auth.routes';
+import { menuRouter } from './modules/menu/menu.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
 export const app = express();
@@ -27,6 +28,9 @@ app.get('/health', (_req: Request, res: Response) => {
 
 // Authentication routes
 app.use('/api/auth', authRouter);
+
+// Menu & Modifiers routes
+app.use('/api/menu', menuRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);
