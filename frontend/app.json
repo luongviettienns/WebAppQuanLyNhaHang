@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "CRISPY BITE QSR",
+    "slug": "crispy-bite-qsr",
+    "version": "1.0.0",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": false,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#D92D20"
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#D92D20"
+      }
+    },
+    "web": {
+      "bundler": "metro"
+    }
+  }
+}
