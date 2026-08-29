@@ -168,6 +168,11 @@ export class OrdersService {
       throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
     }
 
+    // Guard: Khong cho thanh toan don hang da PAID (chong double-pay)
+    if (existingOrder.paymentStatus === 'PAID') {
+      throw ApiError.conflict('Đơn hàng này đã được thanh toán rồi. Không thể thanh toán lại.');
+    }
+
     const updatedOrder = await prisma.$transaction(async (tx) => {
       const order = await tx.order.update({
         where: { id: orderId },

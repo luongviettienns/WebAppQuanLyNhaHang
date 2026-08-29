@@ -1,10 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { prismaTest, validateTestEnvironment } from '../helpers/database';
+import { prismaTest, validateTestEnvironment, truncateAllTables } from '../helpers/database';
 import { seedDatabase } from '../../prisma/seed';
 
 describe('Database Seed & Schema Verification (Task 5)', () => {
   beforeAll(async () => {
     validateTestEnvironment();
+    await truncateAllTables();
+    await seedDatabase(prismaTest);
   });
 
   afterAll(async () => {

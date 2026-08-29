@@ -2,9 +2,10 @@ import { PrismaClient } from '@prisma/client';
 import dotenv from 'dotenv';
 import path from 'path';
 
-// Load .env tu thu muc goc
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-dotenv.config();
+// Load .env tu thu muc goc monorepo (WebAppQuanLyNhaHang/.env)
+// process.cwd() trong test = backend/ nen can di len 1 cap
+dotenv.config({ path: path.resolve(process.cwd(), '..', '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '.env') }); // fallback
 
 const devUrl = process.env.DATABASE_URL;
 const testUrl = process.env.TEST_DATABASE_URL || devUrl;

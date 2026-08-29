@@ -150,7 +150,7 @@ model Order {
   cancelledAt     DateTime?
 
   // Idempotency & Fingerprint
-  idempotencyKey  String?
+  idempotencyKey  String?   @unique // DB-level: NULL duoc phep nhieu, non-null phai duy nhat
   requestHash     String?
 
   createdAt       DateTime      @default(now())
@@ -161,7 +161,6 @@ model Order {
   voidedByUser    User?         @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
   items           OrderItem[]
 
-  @@unique([createdByUserId, idempotencyKey])
 }
 
 model OrderItem {

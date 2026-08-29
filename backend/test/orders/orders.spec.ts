@@ -241,4 +241,34 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     expect(tableAfterPay?.status).toBe('AVAILABLE');
     expect(tableAfterPay?.currentOrderId).toBeNull();
   });
+
+  it('POST /api/orders/:id/pay tra ve 409 CONFLICT neu don hang da duoc thanh toan roi (double-pay protection)', async () => {
+    // Tim don hang da PAID o test truoc
+    const paidOrder = await prismaTest.order.findFirst({
+      where: { paymentStatus: 'PAID' }
+    });
+    expect(paidOrder).not.toBeNull();
+
+    // Thu thanh toan lai lan 2
+    const res = await request(app)
+      .post(`/api/orders/${paidOrder!.id}/pay`)
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ paymentMethod: 'BANK_TRANSFER' });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
+  });
+
+  it('POST /api/orders/:id/pay tra ve 401 UNAUTHENTICATED khi goi khong co JWT', async () => {
+    const anyOrder = await prismaTest.order.findFirst();
+    expect(anyOrder).not.toBeNull();
+
+    const res = await request(app)
+      .post(`/api/orders/${anyOrder!.id}/pay`)
+      // Khong set Authorization header - gia lap khach hang co gang tu thanh toan
+      .send({ paymentMethod: 'CASH' });
+
+    expect(res.status).toBe(401);
+    expect(res.body.error.code).toBe('UNAUTHENTICATED');
+  });
 });

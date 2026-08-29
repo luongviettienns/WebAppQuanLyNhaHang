@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { app } from '../../src/app';
-import { prismaTest, validateTestEnvironment } from '../helpers/database';
+import { prismaTest, validateTestEnvironment, truncateAllTables } from '../helpers/database';
 import { seedDatabase } from '../../prisma/seed';
 import jwt from 'jsonwebtoken';
 import { env } from '../../src/config/env';
@@ -13,6 +13,7 @@ describe('Menu & Required Modifiers API (Task 8)', () => {
 
   beforeAll(async () => {
     validateTestEnvironment();
+    await truncateAllTables();
     await seedDatabase(prismaTest);
 
     // Tao JWT token cho cac vai tro de test phan quyen
