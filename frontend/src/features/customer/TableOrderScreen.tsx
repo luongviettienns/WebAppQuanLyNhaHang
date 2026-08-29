@@ -10,8 +10,9 @@ import {
   ScrollView,
   Modal
 } from 'react-native';
-import { colors, typography, spacing } from '../../theme';
+import { typography, spacing } from '../../theme';
 import { useRestaurant } from '../../contexts/RestaurantContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { MenuCategoryPills } from '../pos/MenuCategoryPills';
 import { MenuItemCard } from '../pos/MenuItemCard';
 import { ModifierModal } from '../pos/ModifierModal';
@@ -22,6 +23,7 @@ interface Props {
 }
 
 export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
+  const { theme, isDark } = useTheme();
   const {
     categories,
     allMenuItems,
@@ -97,20 +99,22 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
   const currentStep = getStepProgress(liveOrder?.status);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Brand & Table Welcome Header */}
-      <View style={styles.welcomeHeader}>
+      <View style={[styles.welcomeHeader, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
         <View style={styles.welcomeLeft}>
           <Text style={styles.brandEmoji}>🍔</Text>
           <View>
-            <Text style={styles.welcomeTitle}>CRISPY BITE</Text>
-            <Text style={styles.tableBadge}>🍽️ BÀN SỐ {tableNumber < 10 ? `0${tableNumber}` : tableNumber}</Text>
+            <Text style={[styles.welcomeTitle, { color: theme.primary }]}>CRISPY BITE</Text>
+            <Text style={[styles.tableBadge, { backgroundColor: isDark ? '#7C2D12' : '#FFEDD5', color: isDark ? '#FDBA74' : theme.secondary }]}>
+              🍽️ BÀN SỐ {tableNumber < 10 ? `0${tableNumber}` : tableNumber}
+            </Text>
           </View>
         </View>
 
         {liveOrder && (
           <TouchableOpacity
-            style={styles.payHeaderBtn}
+            style={[styles.payHeaderBtn, { backgroundColor: theme.primary }]}
             onPress={() => setIsVietQRModalOpen(true)}
           >
             <Text style={styles.payHeaderBtnText}>💳 Thanh toán ({formatVND(liveOrder.finalAmount)})</Text>
@@ -121,9 +125,9 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
       {/* If there is an active order and cart is empty -> Show Live Order Tracker */}
       {liveOrder && cart.length === 0 ? (
         <ScrollView style={styles.trackerContainer}>
-          <View style={styles.trackerCard}>
-            <Text style={styles.trackerTitle}>TIẾN ĐỘ MÓN ĂN - BÀN {tableNumber}</Text>
-            <Text style={styles.trackerOrderCode}>Mã đơn: {liveOrder.code}</Text>
+          <View style={[styles.trackerCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.trackerTitle, { color: theme.text }]}>TIẾN ĐỘ MÓN ĂN - BÀN {tableNumber}</Text>
+            <Text style={[styles.trackerOrderCode, { color: theme.textMuted }]}>Mã đơn: {liveOrder.code}</Text>
 
             {/* Stepper Timeline */}
             <View style={styles.timeline}>
@@ -133,10 +137,12 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
                   <Text style={styles.stepNumber}>1</Text>
                 </View>
                 <View style={styles.stepContent}>
-                  <Text style={[styles.stepTitle, currentStep >= 1 && styles.stepTitleActive]}>
+                  <Text style={[styles.stepTitle, { color: theme.text }, currentStep >= 1 && styles.stepTitleActive]}>
                     ⏳ Bếp Đã Tiếp Nhận Đơn
                   </Text>
-                  <Text style={styles.stepDesc}>Đơn hàng đã được chuyển tới màn hình đầu bếp</Text>
+                  <Text style={[styles.stepDesc, { color: theme.textMuted }]}>
+                    Đơn hàng đã được chuyển tới màn hình đầu bếp
+                  </Text>
                 </View>
               </View>
 
@@ -148,10 +154,12 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
                   <Text style={styles.stepNumber}>2</Text>
                 </View>
                 <View style={styles.stepContent}>
-                  <Text style={[styles.stepTitle, currentStep >= 2 && styles.stepTitleActive]}>
+                  <Text style={[styles.stepTitle, { color: theme.text }, currentStep >= 2 && styles.stepTitleActive]}>
                     🍳 Đầu Bếp Đang Chế Biến
                   </Text>
-                  <Text style={styles.stepDesc}>Món ăn đang được nấu nóng giòn tươi ngon</Text>
+                  <Text style={[styles.stepDesc, { color: theme.textMuted }]}>
+                    Món ăn đang được nấu nóng giòn tươi ngon
+                  </Text>
                 </View>
               </View>
 
@@ -163,40 +171,42 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
                   <Text style={styles.stepNumber}>3</Text>
                 </View>
                 <View style={styles.stepContent}>
-                  <Text style={[styles.stepTitle, currentStep >= 3 && styles.stepTitleReady]}>
+                  <Text style={[styles.stepTitle, { color: theme.text }, currentStep >= 3 && styles.stepTitleReady]}>
                     🎉 Món Đã Xong - Đang Bưng Ra Bàn!
                   </Text>
-                  <Text style={styles.stepDesc}>Nhân viên tiếp thực đang mang đồ ăn đến Bàn {tableNumber}</Text>
+                  <Text style={[styles.stepDesc, { color: theme.textMuted }]}>
+                    Nhân viên tiếp thực đang mang đồ ăn đến Bàn {tableNumber}
+                  </Text>
                 </View>
               </View>
             </View>
 
             {/* Order Items Summary */}
-            <View style={styles.orderedItemsBox}>
-              <Text style={styles.orderedItemsTitle}>Chi tiết các món đã gọi:</Text>
+            <View style={[styles.orderedItemsBox, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC', borderColor: theme.border }]}>
+              <Text style={[styles.orderedItemsTitle, { color: theme.text }]}>Chi tiết các món đã gọi:</Text>
               {liveOrder.items?.map((it: any, idx: number) => (
-                <View key={idx} style={styles.orderedItemRow}>
-                  <Text style={styles.orderedItemName}>{it.quantity}x Món #{it.menuItemId}</Text>
-                  <Text style={styles.orderedItemPrice}>{formatVND(it.subtotal)}</Text>
+                <View key={idx} style={[styles.orderedItemRow, { borderBottomColor: theme.border }]}>
+                  <Text style={[styles.orderedItemName, { color: theme.text }]}>{it.quantity}x Món #{it.menuItemId}</Text>
+                  <Text style={[styles.orderedItemPrice, { color: theme.primary }]}>{formatVND(it.subtotal)}</Text>
                 </View>
               ))}
-              <View style={styles.orderedTotalRow}>
-                <Text style={styles.orderedTotalLabel}>Tổng hóa đơn (đã gồm 8% VAT):</Text>
-                <Text style={styles.orderedTotalValue}>{formatVND(liveOrder.finalAmount)}</Text>
+              <View style={[styles.orderedTotalRow, { borderTopColor: theme.border }]}>
+                <Text style={[styles.orderedTotalLabel, { color: theme.text }]}>Tổng hóa đơn (đã gồm 8% VAT):</Text>
+                <Text style={[styles.orderedTotalValue, { color: theme.primary }]}>{formatVND(liveOrder.finalAmount)}</Text>
               </View>
             </View>
 
             {/* Action Buttons */}
             <View style={styles.trackerActions}>
               <TouchableOpacity
-                style={styles.addMoreBtn}
+                style={[styles.addMoreBtn, { backgroundColor: isDark ? '#7C2D12' : '#FFEDD5', borderColor: theme.secondary }]}
                 onPress={() => setCurrentOrder(null)}
               >
-                <Text style={styles.addMoreText}>+ GỌI THÊM MÓN ĂN</Text>
+                <Text style={[styles.addMoreText, { color: isDark ? '#FDBA74' : theme.secondary }]}>+ GỌI THÊM MÓN ĂN</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={styles.checkoutNowBtn}
+                style={[styles.checkoutNowBtn, { backgroundColor: theme.primary }]}
                 onPress={() => setIsVietQRModalOpen(true)}
               >
                 <Text style={styles.checkoutNowText}>THANH TOÁN RA VỀ ➔</Text>
@@ -216,8 +226,8 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
 
           {isLoadingMenu ? (
             <View style={styles.centerContainer}>
-              <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Đang tải thực đơn...</Text>
+              <ActivityIndicator size="large" color={theme.primary} />
+              <Text style={[styles.loadingText, { color: theme.textMuted }]}>Đang tải thực đơn...</Text>
             </View>
           ) : (
             <FlatList
@@ -231,14 +241,14 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
 
           {/* Customer Bottom Cart Bar */}
           {cartItemCount > 0 && (
-            <View style={styles.customerCartBar}>
+            <View style={[styles.customerCartBar, { backgroundColor: isDark ? '#1E293B' : '#0F172A', borderTopColor: theme.border }]}>
               <View>
                 <Text style={styles.cartCountText}>Đã chọn {cartItemCount} món</Text>
                 <Text style={styles.cartPriceText}>{formatVND(cartTotal)}</Text>
               </View>
 
               <TouchableOpacity
-                style={[styles.sendKitchenBtn, isSubmitting && styles.btnDisabled]}
+                style={[styles.sendKitchenBtn, { backgroundColor: theme.primary }, isSubmitting && styles.btnDisabled]}
                 onPress={handleSendToKitchen}
                 disabled={isSubmitting}
               >
@@ -251,15 +261,16 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
             </View>
           )}
 
+          {/* Error message */}
           {orderError && (
-            <View style={styles.errorBanner}>
-              <Text style={styles.errorBannerText}>⚠️ {orderError}</Text>
+            <View style={styles.orderErrorBox}>
+              <Text style={styles.orderErrorText}>⚠️ {orderError}</Text>
             </View>
           )}
         </View>
       )}
 
-      {/* Modifier Modal */}
+      {/* Modifier Config Modal */}
       <ModifierModal
         visible={isModifierModalOpen}
         item={selectedMenuItemForModal}
@@ -267,38 +278,38 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
         onAddToCart={addToCart}
       />
 
-      {/* Dynamic VietQR Payment Modal */}
-      <Modal visible={isVietQRModalOpen} transparent animationType="slide">
-        <View style={styles.modalBackdrop}>
-          <SafeAreaView style={styles.qrModalContainer}>
-            <View style={styles.qrHeader}>
-              <Text style={styles.qrTitle}>Quét Mã VietQR Thanh Toán</Text>
+      {/* VietQR Dynamic Payment Modal */}
+      <Modal visible={isVietQRModalOpen} transparent animationType="fade">
+        <View style={[styles.modalBackdrop, { backgroundColor: theme.overlay }]}>
+          <View style={[styles.qrModalContainer, { backgroundColor: theme.card }]}>
+            <View style={[styles.qrHeader, { borderBottomColor: theme.border }]}>
+              <Text style={[styles.qrTitle, { color: theme.text }]}>📱 Thanh Toán VietQR Tự Động</Text>
               <TouchableOpacity onPress={() => setIsVietQRModalOpen(false)}>
                 <Text style={styles.closeBtnText}>✕</Text>
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.qrBody}>
-              <View style={styles.qrBox}>
-                <Text style={styles.qrEmoji}>📱</Text>
-                <Text style={styles.qrBankName}>NGÂN HÀNG QUÂN ĐỘI (MB BANK)</Text>
-                <Text style={styles.qrAccount}>STK: 0988888888 (CRISPY BITE)</Text>
-                <Text style={styles.qrAmount}>{formatVND(liveOrder?.finalAmount || 0)}</Text>
-                <Text style={styles.qrContentText}>Nội dung: {liveOrder?.code}</Text>
+            <View style={styles.qrBody}>
+              <View style={[styles.qrBox, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC', borderColor: theme.primary }]}>
+                <Text style={styles.qrEmoji}>🔳</Text>
+                <Text style={[styles.qrBankName, { color: theme.textMuted }]}>NGÂN HÀNG QUÂN ĐỘI (MB BANK)</Text>
+                <Text style={[styles.qrAccount, { color: theme.text }]}>STK: 0369888999 • CRISPY BITE QSR</Text>
+                <Text style={[styles.qrAmount, { color: theme.primary }]}>{liveOrder ? formatVND(liveOrder.finalAmount) : '0đ'}</Text>
+                <Text style={[styles.qrContentText, { color: theme.textMuted }]}>Nội dung: BAN{tableNumber} {liveOrder?.code || ''}</Text>
               </View>
 
-              <Text style={styles.qrNotice}>
-                💡 Quý khách có thể quét mã QR bằng bất kỳ ứng dụng ngân hàng hoặc ví điện tử nào. Sau khi thanh toán, hệ thống sẽ tự động xác nhận và đóng hóa đơn.
+              <Text style={[styles.qrNotice, { color: theme.textMuted }]}>
+                Quét mã QR qua bất kỳ App Ngân Hàng hoặc Ví điện tử (MoMo, ZaloPay). Sau khi chuyển khoản thành công, bàn sẽ được tự động giải phóng.
               </Text>
 
               <TouchableOpacity
-                style={styles.closeQrBtn}
+                style={[styles.closeQrBtn, { backgroundColor: isDark ? '#334155' : '#1E293B' }]}
                 onPress={() => setIsVietQRModalOpen(false)}
               >
                 <Text style={styles.closeQrText}>Đóng Cửa Sổ</Text>
               </TouchableOpacity>
-            </ScrollView>
-          </SafeAreaView>
+            </View>
+          </View>
         </View>
       </Modal>
     </SafeAreaView>
@@ -307,18 +318,15 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: colors.background
+    flex: 1
   },
   welcomeHeader: {
-    backgroundColor: '#FFFFFF',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    borderBottomWidth: 1
   },
   welcomeLeft: {
     flexDirection: 'row',
@@ -331,26 +339,29 @@ const styles = StyleSheet.create({
   welcomeTitle: {
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.extraBold,
-    color: colors.primary,
     letterSpacing: 1
   },
   tableBadge: {
-    fontSize: 11,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    fontSize: 10,
     fontWeight: typography.weights.bold,
-    color: colors.secondary
+    marginTop: 2
   },
   payHeaderBtn: {
-    backgroundColor: '#FEF2F2',
-    borderColor: colors.primary,
-    borderWidth: 1,
-    paddingVertical: 4,
-    paddingHorizontal: spacing.sm,
-    borderRadius: 6
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 8
   },
   payHeaderBtnText: {
-    fontSize: 11,
-    color: colors.primary,
+    color: '#FFFFFF',
+    fontSize: typography.sizes.xs,
     fontWeight: typography.weights.bold
+  },
+  listContent: {
+    padding: spacing.xs,
+    paddingBottom: 80
   },
   centerContainer: {
     flex: 1,
@@ -359,25 +370,20 @@ const styles = StyleSheet.create({
     padding: spacing.xl
   },
   loadingText: {
-    marginTop: spacing.sm,
-    color: colors.textMuted,
-    fontSize: typography.sizes.xs
-  },
-  listContent: {
-    padding: spacing.xs,
-    paddingBottom: 80
+    marginTop: spacing.md,
+    fontSize: typography.sizes.sm
   },
   customerCartBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#1E293B',
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderTopWidth: 1,
     minHeight: spacing.touchTargetPOS
   },
   cartCountText: {
@@ -385,69 +391,64 @@ const styles = StyleSheet.create({
     fontSize: 11
   },
   cartPriceText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
+    color: '#F8FAFC',
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.extraBold
   },
   sendKitchenBtn: {
-    backgroundColor: colors.primary,
-    paddingVertical: spacing.sm,
     paddingHorizontal: spacing.lg,
-    borderRadius: 8,
+    paddingVertical: spacing.md,
+    borderRadius: 10,
     minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center'
   },
-  sendKitchenText: {
-    color: '#FFFFFF',
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.xs
-  },
   btnDisabled: {
     opacity: 0.6
   },
-  errorBanner: {
+  sendKitchenText: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold,
+    letterSpacing: 0.5
+  },
+  orderErrorBox: {
     position: 'absolute',
-    top: 60,
+    bottom: 70,
     left: 16,
     right: 16,
     backgroundColor: '#FEF2F2',
-    borderColor: '#EF4444',
     borderWidth: 1,
-    borderRadius: 8,
-    padding: spacing.sm
+    borderColor: '#EF4444',
+    padding: spacing.sm,
+    borderRadius: 8
   },
-  errorBannerText: {
+  orderErrorText: {
     color: '#DC2626',
-    fontSize: 12,
+    fontSize: typography.sizes.xs,
     fontWeight: typography.weights.bold,
     textAlign: 'center'
   },
   trackerContainer: {
-    flex: 1,
-    padding: spacing.md
+    padding: spacing.lg
   },
   trackerCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: spacing.lg,
     borderWidth: 1,
-    borderColor: colors.border,
+    padding: spacing.lg,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.08,
     shadowRadius: 10,
-    elevation: 4
+    elevation: 3
   },
   trackerTitle: {
     fontSize: typography.sizes.md,
-    fontWeight: typography.weights.extraBold,
-    color: colors.primary,
+    fontWeight: typography.weights.bold,
     textAlign: 'center'
   },
   trackerOrderCode: {
-    fontSize: 12,
-    color: colors.textMuted,
+    fontSize: typography.sizes.xs,
     textAlign: 'center',
     marginTop: 2,
     marginBottom: spacing.lg
@@ -470,7 +471,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   stepCircleActive: {
-    backgroundColor: colors.secondary
+    backgroundColor: '#EA580C'
   },
   stepCircleReady: {
     backgroundColor: '#16A34A'
@@ -478,26 +479,26 @@ const styles = StyleSheet.create({
   stepNumber: {
     color: '#FFFFFF',
     fontWeight: typography.weights.bold,
-    fontSize: 14
+    fontSize: typography.sizes.xs
   },
   stepContent: {
     flex: 1
   },
   stepTitle: {
     fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    color: '#64748B'
+    fontWeight: typography.weights.semibold
   },
   stepTitleActive: {
-    color: colors.secondary
+    color: '#EA580C',
+    fontWeight: typography.weights.bold
   },
   stepTitleReady: {
-    color: '#16A34A'
+    color: '#16A34A',
+    fontWeight: typography.weights.bold
   },
   stepDesc: {
     fontSize: 10,
-    color: colors.textMuted,
-    marginTop: 2
+    marginTop: 1
   },
   stepLine: {
     width: 2,
@@ -507,73 +508,62 @@ const styles = StyleSheet.create({
     marginVertical: 4
   },
   stepLineActive: {
-    backgroundColor: colors.secondary
+    backgroundColor: '#EA580C'
   },
   orderedItemsBox: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 8,
+    borderRadius: 10,
     padding: spacing.md,
     borderWidth: 1,
-    borderColor: colors.border,
     marginBottom: spacing.lg
   },
   orderedItemsTitle: {
-    fontSize: 11,
+    fontSize: typography.sizes.xs,
     fontWeight: typography.weights.bold,
-    color: colors.text,
     marginBottom: spacing.xs
   },
   orderedItemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    paddingVertical: 3
+    paddingVertical: 4,
+    borderBottomWidth: 1
   },
   orderedItemName: {
-    fontSize: 11,
-    color: colors.text
+    fontSize: typography.sizes.xs
   },
   orderedItemPrice: {
-    fontSize: 11,
-    fontWeight: typography.weights.semibold,
-    color: colors.text
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold
   },
   orderedTotalRow: {
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    paddingTop: spacing.xs,
-    marginTop: spacing.xs,
     flexDirection: 'row',
-    justifyContent: 'space-between'
+    justifyContent: 'space-between',
+    marginTop: spacing.xs,
+    paddingTop: spacing.xs,
+    borderTopWidth: 1
   },
   orderedTotalLabel: {
     fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    color: colors.text
+    fontWeight: typography.weights.bold
   },
   orderedTotalValue: {
     fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.extraBold,
-    color: colors.primary
+    fontWeight: typography.weights.extraBold
   },
   trackerActions: {
     gap: spacing.sm
   },
   addMoreBtn: {
     paddingVertical: spacing.md,
-    backgroundColor: '#FFEDD5',
     borderWidth: 1,
-    borderColor: colors.secondary,
     borderRadius: 8,
     alignItems: 'center'
   },
   addMoreText: {
-    color: colors.secondary,
     fontWeight: typography.weights.bold,
     fontSize: typography.sizes.xs
   },
   checkoutNowBtn: {
     paddingVertical: spacing.md,
-    backgroundColor: colors.primary,
     borderRadius: 8,
     alignItems: 'center'
   },
@@ -585,12 +575,10 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     justifyContent: 'center',
     padding: spacing.lg
   },
   qrModalContainer: {
-    backgroundColor: '#FFFFFF',
     borderRadius: 16,
     maxHeight: '80%'
   },
@@ -599,27 +587,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
+    borderBottomWidth: 1
   },
   qrTitle: {
     fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.text
+    fontWeight: typography.weights.bold
   },
   closeBtnText: {
     fontSize: 16,
-    fontWeight: typography.weights.bold,
-    color: colors.textMuted
+    fontWeight: typography.weights.bold
   },
   qrBody: {
     padding: spacing.lg,
     alignItems: 'center'
   },
   qrBox: {
-    backgroundColor: '#F8FAFC',
     borderWidth: 2,
-    borderColor: colors.primary,
     borderRadius: 12,
     padding: spacing.lg,
     alignItems: 'center',
@@ -632,35 +615,29 @@ const styles = StyleSheet.create({
   },
   qrBankName: {
     fontSize: 11,
-    fontWeight: typography.weights.bold,
-    color: colors.textMuted
+    fontWeight: typography.weights.bold
   },
   qrAccount: {
     fontSize: 12,
     fontWeight: typography.weights.bold,
-    color: colors.text,
     marginTop: 2
   },
   qrAmount: {
     fontSize: typography.sizes.lg,
     fontWeight: typography.weights.extraBold,
-    color: colors.primary,
     marginVertical: spacing.xs
   },
   qrContentText: {
     fontSize: 11,
-    color: colors.textMuted,
     fontStyle: 'italic'
   },
   qrNotice: {
     fontSize: 11,
-    color: colors.textMuted,
     textAlign: 'center',
     lineHeight: 16,
     marginBottom: spacing.lg
   },
   closeQrBtn: {
-    backgroundColor: '#1E293B',
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.xl,
     borderRadius: 8

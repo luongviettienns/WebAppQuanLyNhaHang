@@ -1,20 +1,27 @@
 import React from 'react';
 import { StyleSheet, Text, View, SafeAreaView } from 'react-native';
-import { colors, typography, spacing } from '../../theme';
+import { useTheme } from '../../contexts/ThemeContext';
+import { typography, spacing } from '../../theme';
 
 export const AdminScreen: React.FC = () => {
+  const { theme, isDark } = useTheme();
+
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <View style={[styles.header, { backgroundColor: isDark ? '#4C1D95' : '#7C3AED', borderBottomColor: theme.border }]}>
         <Text style={styles.title}>👑 QUẢN TRỊ & BÁO CÁO DOANH THU</Text>
-        <Text style={styles.subtitle}>Báo cáo doanh thu, Speed of Service & Quản lý thực đơn</Text>
+        <Text style={[styles.subtitle, { color: isDark ? '#DDD6FE' : '#EDE9FE' }]}>
+          Báo cáo doanh thu, Speed of Service & Quản lý thực đơn
+        </Text>
       </View>
 
       <View style={styles.content}>
-        <View style={styles.card}>
-          <Text style={styles.badge}>Mô đun M7 & M8</Text>
-          <Text style={styles.cardTitle}>Trung Tâm Quản Trị ADMIN</Text>
-          <Text style={styles.cardText}>
+        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <Text style={[styles.badge, { backgroundColor: isDark ? '#5B21B6' : '#EDE9FE', color: isDark ? '#DDD6FE' : '#6D28D9' }]}>
+            Mô đun M7 & M8
+          </Text>
+          <Text style={[styles.cardTitle, { color: theme.text }]}>Trung Tâm Quản Trị ADMIN</Text>
+          <Text style={[styles.cardText, { color: theme.textMuted }]}>
             Phân hệ độc quyền dành riêng cho ADMIN: Báo cáo kinh doanh, KPI tốc độ phục vụ và Cấu hình hệ thống.
           </Text>
         </View>
@@ -25,13 +32,12 @@ export const AdminScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: colors.background
+    flex: 1
   },
   header: {
-    backgroundColor: '#7C3AED',
     padding: spacing.lg,
-    alignItems: 'center'
+    alignItems: 'center',
+    borderBottomWidth: 1
   },
   title: {
     color: '#FFFFFF',
@@ -39,7 +45,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.bold
   },
   subtitle: {
-    color: '#EDE9FE',
     fontSize: typography.sizes.xs,
     marginTop: spacing.xs
   },
@@ -49,16 +54,17 @@ const styles = StyleSheet.create({
     justifyContent: 'center'
   },
   card: {
-    backgroundColor: colors.card,
     borderRadius: 16,
     padding: spacing.xl,
     borderWidth: 1,
-    borderColor: colors.border,
-    alignItems: 'center'
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 3
   },
   badge: {
-    backgroundColor: '#EDE9FE',
-    color: '#6D28D9',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     borderRadius: 20,
@@ -69,12 +75,10 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: typography.sizes.lg,
     fontWeight: typography.weights.bold,
-    color: colors.text,
     marginBottom: spacing.xs
   },
   cardText: {
     fontSize: typography.sizes.sm,
-    color: colors.textMuted,
     textAlign: 'center'
   }
 });

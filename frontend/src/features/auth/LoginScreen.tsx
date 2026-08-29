@@ -11,12 +11,14 @@ import {
   Platform,
   ScrollView
 } from 'react-native';
-import { colors, typography, spacing } from '../../theme';
+import { typography, spacing } from '../../theme';
 import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { Role } from '../../api/contracts';
 
 export const LoginScreen: React.FC = () => {
   const { login, demoLogin, isLoading } = useAuth();
+  const { theme, isDark, toggleTheme } = useTheme();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -39,23 +41,43 @@ export const LoginScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      {/* Theme Switcher at Top-Right */}
+      <View style={styles.topBar}>
+        <TouchableOpacity
+          style={[
+            styles.themeToggleBtn,
+            { backgroundColor: isDark ? '#334155' : '#FEF3C7', borderColor: isDark ? '#475569' : '#FDE68A' }
+          ]}
+          onPress={toggleTheme}
+          accessibilityLabel="Chuyển đổi giao diện Sáng / Tối"
+        >
+          <Text style={[styles.themeToggleText, { color: isDark ? '#F8FAFC' : '#B45309' }]}>
+            {isDark ? '🌙 Tối' : '☀️ Sáng'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <KeyboardAvoidingView
-        style={styles.container}
+        style={styles.keyboardContainer}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.scrollContent}>
           {/* Brand Header */}
           <View style={styles.header}>
             <Text style={styles.headerEmoji}>🍔</Text>
-            <Text style={styles.brandTitle}>CRISPY BITE</Text>
-            <Text style={styles.brandSubtitle}>Hệ Thống Đặt Món & Quản Lý Nhà Hàng QSR</Text>
+            <Text style={[styles.brandTitle, { color: theme.primary }]}>CRISPY BITE</Text>
+            <Text style={[styles.brandSubtitle, { color: theme.textMuted }]}>
+              Hệ Thống Đặt Món & Quản Lý Nhà Hàng QSR
+            </Text>
           </View>
 
           {/* Login Card */}
-          <View style={styles.card}>
-            <Text style={styles.cardTitle}>Đăng Nhập Hệ Thống</Text>
-            <Text style={styles.cardDesc}>Vui lòng nhập tài khoản được cấp để tiếp tục</Text>
+          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.cardTitle, { color: theme.text }]}>Đăng Nhập Hệ Thống</Text>
+            <Text style={[styles.cardDesc, { color: theme.textMuted }]}>
+              Vui lòng nhập tài khoản được cấp để tiếp tục
+            </Text>
 
             {errorMessage && (
               <View style={styles.errorBox}>
@@ -64,10 +86,18 @@ export const LoginScreen: React.FC = () => {
             )}
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Tên đăng nhập</Text>
+              <Text style={[styles.label, { color: theme.text }]}>Tên đăng nhập</Text>
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: isDark ? '#0F172A' : '#F8FAFC',
+                    borderColor: theme.border,
+                    color: theme.text
+                  }
+                ]}
                 placeholder="Nhập tên đăng nhập (cashier, kitchen, admin)..."
+                placeholderTextColor={theme.textMuted}
                 value={username}
                 onChangeText={setUsername}
                 autoCapitalize="none"
@@ -76,10 +106,18 @@ export const LoginScreen: React.FC = () => {
             </View>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.label}>Mật khẩu</Text>
+              <Text style={[styles.label, { color: theme.text }]}>Mật khẩu</Text>
               <TextInput
-                style={styles.input}
+                style={[
+                  styles.input,
+                  {
+                    backgroundColor: isDark ? '#0F172A' : '#F8FAFC',
+                    borderColor: theme.border,
+                    color: theme.text
+                  }
+                ]}
                 placeholder="Nhập mật khẩu..."
+                placeholderTextColor={theme.textMuted}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry
@@ -88,7 +126,7 @@ export const LoginScreen: React.FC = () => {
             </View>
 
             <TouchableOpacity
-              style={[styles.loginButton, isLoading && styles.buttonDisabled]}
+              style={[styles.loginButton, { backgroundColor: theme.primary }, isLoading && styles.buttonDisabled]}
               onPress={handleLogin}
               disabled={isLoading}
             >
@@ -101,35 +139,61 @@ export const LoginScreen: React.FC = () => {
 
             {/* Divider */}
             <View style={styles.divider}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>HOẶC ĐĂNG NHẬP NHANH (DEMO BAR)</Text>
-              <View style={styles.dividerLine} />
+              <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+              <Text style={[styles.dividerText, { color: theme.textMuted }]}>
+                HOẶC ĐĂNG NHẬP NHANH (DEMO BAR)
+              </Text>
+              <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
             </View>
 
             {/* Quick Demo Login Bar */}
             <View style={styles.demoBar}>
               <TouchableOpacity
-                style={[styles.demoButton, { backgroundColor: '#FFEDD5', borderColor: colors.secondary }]}
+                style={[
+                  styles.demoButton,
+                  {
+                    backgroundColor: isDark ? '#7C2D12' : '#FFEDD5',
+                    borderColor: isDark ? '#F97316' : theme.secondary
+                  }
+                ]}
                 onPress={() => handleDemoLogin('CASHIER')}
                 disabled={isLoading}
               >
-                <Text style={[styles.demoButtonText, { color: colors.secondary }]}>👤 Thu Ngân (Cashier)</Text>
+                <Text style={[styles.demoButtonText, { color: isDark ? '#FDBA74' : theme.secondary }]}>
+                  👤 Thu Ngân (Cashier)
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.demoButton, { backgroundColor: '#F1F5F9', borderColor: '#475569' }]}
+                style={[
+                  styles.demoButton,
+                  {
+                    backgroundColor: isDark ? '#075985' : '#E0F2FE',
+                    borderColor: isDark ? '#38BDF8' : '#0284C7'
+                  }
+                ]}
                 onPress={() => handleDemoLogin('KITCHEN')}
                 disabled={isLoading}
               >
-                <Text style={[styles.demoButtonText, { color: '#334155' }]}>👨‍🍳 Đầu Bếp (KDS)</Text>
+                <Text style={[styles.demoButtonText, { color: isDark ? '#7DD3FC' : '#0284C7' }]}>
+                  👨‍🍳 Đầu Bếp (KDS)
+                </Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.demoButton, { backgroundColor: '#FEE2E2', borderColor: colors.primary }]}
+                style={[
+                  styles.demoButton,
+                  {
+                    backgroundColor: isDark ? '#5B21B6' : '#EDE9FE',
+                    borderColor: isDark ? '#A855F7' : '#7C3AED'
+                  }
+                ]}
                 onPress={() => handleDemoLogin('ADMIN')}
                 disabled={isLoading}
               >
-                <Text style={[styles.demoButtonText, { color: colors.primary }]}>👑 Quản Lý (Admin)</Text>
+                <Text style={[styles.demoButtonText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>
+                  👑 Quản Lý (Admin)
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -141,40 +205,55 @@ export const LoginScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: colors.background
+    flex: 1
+  },
+  topBar: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm
+  },
+  themeToggleBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 1
+  },
+  themeToggleText: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold
+  },
+  keyboardContainer: {
+    flex: 1
   },
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: spacing.lg
+    padding: spacing.lg,
+    paddingTop: spacing.sm
   },
   header: {
     alignItems: 'center',
-    marginBottom: spacing.xl
+    marginBottom: spacing.lg
   },
   headerEmoji: {
-    fontSize: 56,
+    fontSize: 52,
     marginBottom: spacing.xs
   },
   brandTitle: {
     fontSize: typography.sizes.display,
     fontWeight: typography.weights.extraBold,
-    color: colors.primary,
     letterSpacing: 2
   },
   brandSubtitle: {
     fontSize: typography.sizes.sm,
-    color: colors.textMuted,
     marginTop: spacing.xs,
     textAlign: 'center'
   },
   card: {
-    backgroundColor: colors.card,
     borderRadius: 20,
     padding: spacing.xl,
     borderWidth: 1,
-    borderColor: colors.border,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
@@ -184,12 +263,10 @@ const styles = StyleSheet.create({
   cardTitle: {
     fontSize: typography.sizes.xl,
     fontWeight: typography.weights.bold,
-    color: colors.text,
     textAlign: 'center'
   },
   cardDesc: {
     fontSize: typography.sizes.xs,
-    color: colors.textMuted,
     textAlign: 'center',
     marginTop: spacing.xs,
     marginBottom: spacing.lg
@@ -213,22 +290,17 @@ const styles = StyleSheet.create({
   label: {
     fontSize: typography.sizes.xs,
     fontWeight: typography.weights.semibold,
-    color: colors.text,
     marginBottom: spacing.xs
   },
   input: {
-    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: 10,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.md,
     fontSize: typography.sizes.sm,
-    color: colors.text,
     minHeight: spacing.touchTargetMobile
   },
   loginButton: {
-    backgroundColor: colors.primary,
     paddingVertical: spacing.md,
     borderRadius: 10,
     alignItems: 'center',
@@ -252,12 +324,10 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     flex: 1,
-    height: 1,
-    backgroundColor: colors.border
+    height: 1
   },
   dividerText: {
     fontSize: 10,
-    color: colors.textMuted,
     fontWeight: typography.weights.semibold,
     paddingHorizontal: spacing.sm
   },

@@ -8,14 +8,16 @@ import {
   ActivityIndicator,
   TouchableOpacity
 } from 'react-native';
-import { colors, typography, spacing } from '../../theme';
+import { typography, spacing } from '../../theme';
 import { useRestaurant } from '../../contexts/RestaurantContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { MenuCategoryPills } from './MenuCategoryPills';
 import { MenuItemCard } from './MenuItemCard';
 import { ModifierModal } from './ModifierModal';
 import { MenuItemDto } from '../../api/contracts';
 
 export const POSScreen: React.FC = () => {
+  const { theme, isDark } = useTheme();
   const {
     categories,
     allMenuItems,
@@ -29,7 +31,6 @@ export const POSScreen: React.FC = () => {
     isModifierModalOpen,
     openModifierModal,
     closeModifierModal,
-    cart,
     cartItemCount,
     cartTotal,
     addToCart,
@@ -50,7 +51,7 @@ export const POSScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       {/* 1. Category Filter Pills */}
       <MenuCategoryPills
         categories={categories}
@@ -62,19 +63,19 @@ export const POSScreen: React.FC = () => {
       {/* 2. Main Menu Grid or Loading / Error States */}
       {isLoadingMenu ? (
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={styles.loadingText}>Đang tải danh mục món ăn...</Text>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.loadingText, { color: theme.textMuted }]}>Đang tải danh mục món ăn...</Text>
         </View>
       ) : menuError ? (
         <View style={styles.centerContainer}>
-          <Text style={styles.errorText}>⚠️ {menuError}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={fetchMenu}>
+          <Text style={[styles.errorText, { color: theme.danger }]}>⚠️ {menuError}</Text>
+          <TouchableOpacity style={[styles.retryButton, { backgroundColor: theme.primary }]} onPress={fetchMenu}>
             <Text style={styles.retryButtonText}>Thử lại</Text>
           </TouchableOpacity>
         </View>
       ) : filteredMenuItems.length === 0 ? (
         <View style={styles.centerContainer}>
-          <Text style={styles.emptyText}>Không tìm thấy món ăn trong danh mục này</Text>
+          <Text style={[styles.emptyText, { color: theme.textMuted }]}>Không tìm thấy món ăn trong danh mục này</Text>
         </View>
       ) : (
         <FlatList
@@ -88,9 +89,9 @@ export const POSScreen: React.FC = () => {
 
       {/* 3. Bottom Cart Quick Summary Bar (Touch Target >= 56px) */}
       {cartItemCount > 0 && (
-        <View style={styles.cartBar}>
+        <View style={[styles.cartBar, { backgroundColor: isDark ? '#1E293B' : '#0F172A', borderTopColor: theme.border }]}>
           <View style={styles.cartInfo}>
-            <View style={styles.cartBadge}>
+            <View style={[styles.cartBadge, { backgroundColor: theme.primary }]}>
               <Text style={styles.cartBadgeText}>{cartItemCount}</Text>
             </View>
             <View>
@@ -104,7 +105,7 @@ export const POSScreen: React.FC = () => {
               <Text style={styles.clearCartText}>Xóa</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.checkoutBtn}>
+            <TouchableOpacity style={[styles.checkoutBtn, { backgroundColor: theme.primary }]}>
               <Text style={styles.checkoutText}>XÁC NHẬN ĐƠN ➔</Text>
             </TouchableOpacity>
           </View>
@@ -124,8 +125,7 @@ export const POSScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: colors.background
+    flex: 1
   },
   listContent: {
     padding: spacing.xs,
@@ -139,18 +139,15 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginTop: spacing.md,
-    fontSize: typography.sizes.sm,
-    color: colors.textMuted
+    fontSize: typography.sizes.sm
   },
   errorText: {
     fontSize: typography.sizes.sm,
-    color: colors.danger,
     fontWeight: typography.weights.bold,
     textAlign: 'center',
     marginBottom: spacing.md
   },
   retryButton: {
-    backgroundColor: colors.primary,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: 8
@@ -161,20 +158,19 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.xs
   },
   emptyText: {
-    fontSize: typography.sizes.sm,
-    color: colors.textMuted
+    fontSize: typography.sizes.sm
   },
   cartBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#1E293B',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    borderTopWidth: 1,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: -4 },
     shadowOpacity: 0.15,
@@ -188,7 +184,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm
   },
   cartBadge: {
-    backgroundColor: colors.primary,
     width: 32,
     height: 32,
     borderRadius: 16,
@@ -226,7 +221,6 @@ const styles = StyleSheet.create({
     fontWeight: typography.weights.semibold
   },
   checkoutBtn: {
-    backgroundColor: colors.primary,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: 8,

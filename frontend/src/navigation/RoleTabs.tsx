@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, SafeAreaView } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
-import { colors, typography, spacing } from '../theme';
+import { useTheme } from '../contexts/ThemeContext';
+import { typography, spacing } from '../theme';
 import { POSScreen } from '../features/pos/POSScreen';
 import { TableScreen } from '../features/tables/TableScreen';
 import { TableOrderScreen } from '../features/customer/TableOrderScreen';
@@ -18,6 +19,7 @@ interface TabItem {
 
 export const RoleTabs: React.FC = () => {
   const { user, logout } = useAuth();
+  const { theme, isDark, toggleTheme } = useTheme();
 
   // Xác định danh sách Tab khả dụng theo Role
   const getTabsForRole = (): TabItem[] => {
@@ -30,7 +32,7 @@ export const RoleTabs: React.FC = () => {
         ];
       case 'KITCHEN':
         return [
-          { key: 'kds', label: '🍳 Bếp KDS (Dark)', component: KDSScreen }
+          { key: 'kds', label: '🍳 Bếp KDS', component: KDSScreen }
         ];
       case 'ADMIN':
       default:
@@ -52,33 +54,52 @@ export const RoleTabs: React.FC = () => {
   const getRoleBadgeColor = () => {
     switch (user?.role) {
       case 'CASHIER':
-        return { bg: '#FFEDD5', text: colors.secondary };
+        return { bg: isDark ? '#7C2D12' : '#FFEDD5', text: isDark ? '#FDBA74' : theme.secondary };
       case 'KITCHEN':
-        return { bg: '#E0F2FE', text: '#0284C7' };
+        return { bg: isDark ? '#075985' : '#E0F2FE', text: isDark ? '#7DD3FC' : '#0284C7' };
       case 'ADMIN':
-        return { bg: '#EDE9FE', text: '#7C3AED' };
+        return { bg: isDark ? '#5B21B6' : '#EDE9FE', text: isDark ? '#C4B5FD' : '#7C3AED' };
       default:
-        return { bg: '#F1F5F9', text: '#475569' };
+        return { bg: isDark ? '#334155' : '#F1F5F9', text: isDark ? '#CBD5E1' : '#475569' };
     }
   };
 
   const badgeColor = getRoleBadgeColor();
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Top Universal App Header */}
-      <View style={styles.topHeader}>
+      <View style={[styles.topHeader, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
         <View style={styles.userSection}>
-          <Text style={styles.brandLogo}>CRISPY BITE</Text>
+          <Text style={[styles.brandLogo, { color: theme.primary }]}>CRISPY BITE</Text>
           <View style={[styles.roleBadge, { backgroundColor: badgeColor.bg }]}>
             <Text style={[styles.roleBadgeText, { color: badgeColor.text }]}>{user?.role}</Text>
           </View>
-          <Text style={styles.userName}>{user?.name}</Text>
+          <Text style={[styles.userName, { color: theme.textMuted }]}>{user?.name}</Text>
         </View>
 
-        <TouchableOpacity style={styles.logoutButton} onPress={logout}>
-          <Text style={styles.logoutText}>Đăng xuất ➔</Text>
-        </TouchableOpacity>
+        <View style={styles.headerRightActions}>
+          {/* Theme Mode Toggle Button */}
+          <TouchableOpacity
+            style={[
+              styles.themeToggleBtn,
+              { backgroundColor: isDark ? '#334155' : '#FEF3C7', borderColor: isDark ? '#475569' : '#FDE68A' }
+            ]}
+            onPress={toggleTheme}
+            accessibilityLabel="Chuyển đổi giao diện Sáng / Tối"
+          >
+            <Text style={[styles.themeToggleText, { color: isDark ? '#F8FAFC' : '#B45309' }]}>
+              {isDark ? '🌙 Tối' : '☀️ Sáng'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.logoutButton, { backgroundColor: isDark ? '#7F1D1D' : '#FEE2E2' }]}
+            onPress={logout}
+          >
+            <Text style={[styles.logoutText, { color: isDark ? '#FCA5A5' : theme.primary }]}>Đăng xuất ➔</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Main Screen Content */}
@@ -88,16 +109,25 @@ export const RoleTabs: React.FC = () => {
 
       {/* Role-Gated Bottom / Top Tab Bar */}
       {tabs.length > 1 && (
-        <View style={styles.tabBar}>
+        <View style={[styles.tabBar, { backgroundColor: theme.tabBarBg, borderTopColor: theme.border }]}>
           {tabs.map(tab => {
             const isActive = activeTab === tab.key;
             return (
               <TouchableOpacity
                 key={tab.key}
-                style={[styles.tabButton, isActive && styles.tabButtonActive]}
+                style={[
+                  styles.tabButton,
+                  isActive && (isDark ? styles.tabButtonActiveDark : styles.tabButtonActiveLight)
+                ]}
                 onPress={() => setActiveTab(tab.key)}
               >
-                <Text style={[styles.tabButtonText, isActive && styles.tabButtonTextActive]}>
+                <Text
+                  style={[
+                    styles.tabButtonText,
+                    { color: isActive ? theme.primary : theme.textMuted },
+                    isActive && styles.tabButtonTextActive
+                  ]}
+                >
                   {tab.label}
                 </Text>
               </TouchableOpacity>
@@ -111,18 +141,15 @@ export const RoleTabs: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-    backgroundColor: colors.background
+    flex: 1
   },
   topHeader: {
-    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
+    borderBottomWidth: 1
   },
   userSection: {
     flexDirection: 'row',
@@ -132,7 +159,6 @@ const styles = StyleSheet.create({
   brandLogo: {
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.extraBold,
-    color: colors.primary,
     letterSpacing: 1
   },
   roleBadge: {
@@ -146,28 +172,40 @@ const styles = StyleSheet.create({
   },
   userName: {
     fontSize: typography.sizes.xs,
-    color: colors.textMuted,
     fontWeight: typography.weights.medium
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm
+  },
+  themeToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 4,
+    borderRadius: 16,
+    borderWidth: 1
+  },
+  themeToggleText: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold
   },
   logoutButton: {
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
-    backgroundColor: '#FEE2E2',
     borderRadius: 6
   },
   logoutText: {
     fontSize: typography.sizes.xs,
-    color: colors.primary,
     fontWeight: typography.weights.bold
   },
   screenContainer: {
     flex: 1
   },
   tabBar: {
-    backgroundColor: '#FFFFFF',
     flexDirection: 'row',
     borderTopWidth: 1,
-    borderTopColor: colors.border,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs
   },
@@ -179,16 +217,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     minHeight: spacing.touchTargetMobile
   },
-  tabButtonActive: {
+  tabButtonActiveLight: {
     backgroundColor: '#FEF2F2'
+  },
+  tabButtonActiveDark: {
+    backgroundColor: '#1E293B'
   },
   tabButtonText: {
     fontSize: typography.sizes.xs,
-    color: colors.textMuted,
     fontWeight: typography.weights.medium
   },
   tabButtonTextActive: {
-    color: colors.primary,
     fontWeight: typography.weights.bold
   }
 });

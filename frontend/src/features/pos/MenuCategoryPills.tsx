@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
 import { CategoryDto } from '../../api/contracts';
-import { colors, typography, spacing } from '../../theme';
+import { useTheme } from '../../contexts/ThemeContext';
+import { typography, spacing } from '../../theme';
 
 interface Props {
   categories: CategoryDto[];
@@ -16,8 +17,10 @@ export const MenuCategoryPills: React.FC<Props> = ({
   onSelectCategory,
   totalItemCount
 }) => {
+  const { theme, isDark } = useTheme();
+
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -25,10 +28,20 @@ export const MenuCategoryPills: React.FC<Props> = ({
       >
         {/* All Items Pill */}
         <TouchableOpacity
-          style={[styles.pill, selectedCategoryId === null && styles.pillActive]}
+          style={[
+            styles.pill,
+            { backgroundColor: isDark ? '#334155' : '#F1F5F9', borderColor: theme.border },
+            selectedCategoryId === null && { backgroundColor: theme.primary, borderColor: theme.primary }
+          ]}
           onPress={() => onSelectCategory(null)}
         >
-          <Text style={[styles.pillText, selectedCategoryId === null && styles.pillTextActive]}>
+          <Text
+            style={[
+              styles.pillText,
+              { color: selectedCategoryId === null ? '#FFFFFF' : theme.text },
+              selectedCategoryId === null && styles.pillTextActive
+            ]}
+          >
             🍗 Tất cả ({totalItemCount})
           </Text>
         </TouchableOpacity>
@@ -40,10 +53,20 @@ export const MenuCategoryPills: React.FC<Props> = ({
           return (
             <TouchableOpacity
               key={cat.id}
-              style={[styles.pill, isActive && styles.pillActive]}
+              style={[
+                styles.pill,
+                { backgroundColor: isDark ? '#334155' : '#F1F5F9', borderColor: theme.border },
+                isActive && { backgroundColor: theme.primary, borderColor: theme.primary }
+              ]}
               onPress={() => onSelectCategory(cat.id)}
             >
-              <Text style={[styles.pillText, isActive && styles.pillTextActive]}>
+              <Text
+                style={[
+                  styles.pillText,
+                  { color: isActive ? '#FFFFFF' : theme.text },
+                  isActive && styles.pillTextActive
+                ]}
+              >
                 {cat.name} ({count})
               </Text>
             </TouchableOpacity>
@@ -56,9 +79,7 @@ export const MenuCategoryPills: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: '#FFFFFF',
     borderBottomWidth: 1,
-    borderBottomColor: colors.border,
     paddingVertical: spacing.sm
   },
   scrollContent: {
@@ -66,27 +87,19 @@ const styles = StyleSheet.create({
     gap: spacing.sm
   },
   pill: {
-    backgroundColor: '#F1F5F9',
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
     borderRadius: 24,
     borderWidth: 1,
-    borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
     minHeight: spacing.touchTargetMobile
   },
-  pillActive: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary
-  },
   pillText: {
     fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    color: colors.text
+    fontWeight: typography.weights.semibold
   },
   pillTextActive: {
-    color: '#FFFFFF',
     fontWeight: typography.weights.bold
   }
 });

@@ -1,7 +1,8 @@
 import React from 'react';
 import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import { MenuItemDto } from '../../api/contracts';
-import { colors, typography, spacing } from '../../theme';
+import { useTheme } from '../../contexts/ThemeContext';
+import { typography, spacing } from '../../theme';
 
 interface Props {
   item: MenuItemDto;
@@ -9,6 +10,8 @@ interface Props {
 }
 
 export const MenuItemCard: React.FC<Props> = ({ item, onPress }) => {
+  const { theme, isDark } = useTheme();
+
   const formattedPrice = new Intl.NumberFormat('vi-VN', {
     style: 'currency',
     currency: 'VND'
@@ -32,13 +35,17 @@ export const MenuItemCard: React.FC<Props> = ({ item, onPress }) => {
 
   return (
     <TouchableOpacity
-      style={[styles.card, !isAvailable && styles.cardDisabled]}
+      style={[
+        styles.card,
+        { backgroundColor: theme.card, borderColor: theme.border },
+        !isAvailable && (isDark ? styles.cardDisabledDark : styles.cardDisabledLight)
+      ]}
       onPress={() => isAvailable && onPress(item)}
       activeOpacity={isAvailable ? 0.7 : 1}
       disabled={!isAvailable}
     >
       {/* Icon / Image Placeholder */}
-      <View style={styles.imageBox}>
+      <View style={[styles.imageBox, { backgroundColor: isDark ? '#334155' : '#FFF7ED' }]}>
         <Text style={styles.emoji}>{getItemEmoji(item.name)}</Text>
         {!isAvailable && (
           <View style={styles.soldOutOverlay}>
@@ -49,22 +56,24 @@ export const MenuItemCard: React.FC<Props> = ({ item, onPress }) => {
 
       {/* Info */}
       <View style={styles.info}>
-        <Text style={styles.name} numberOfLines={2}>
+        <Text style={[styles.name, { color: theme.text }]} numberOfLines={2}>
           {item.name}
         </Text>
 
         {item.description && (
-          <Text style={styles.desc} numberOfLines={2}>
+          <Text style={[styles.desc, { color: theme.textMuted }]} numberOfLines={2}>
             {item.description}
           </Text>
         )}
 
         <View style={styles.footer}>
-          <Text style={styles.price}>{formattedPrice}</Text>
+          <Text style={[styles.price, { color: theme.primary }]}>{formattedPrice}</Text>
 
           {hasModifiers && isAvailable && (
-            <View style={styles.modifierBadge}>
-              <Text style={styles.modifierBadgeText}>Tùy chọn</Text>
+            <View style={[styles.modifierBadge, { backgroundColor: isDark ? '#7C2D12' : '#FFEDD5' }]}>
+              <Text style={[styles.modifierBadgeText, { color: isDark ? '#FDBA74' : theme.secondary }]}>
+                Tùy chọn
+              </Text>
             </View>
           )}
         </View>
@@ -75,10 +84,8 @@ export const MenuItemCard: React.FC<Props> = ({ item, onPress }) => {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: colors.card,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: colors.border,
     overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -89,13 +96,16 @@ const styles = StyleSheet.create({
     margin: spacing.xs,
     minHeight: 180
   },
-  cardDisabled: {
+  cardDisabledLight: {
     opacity: 0.55,
     backgroundColor: '#F8FAFC'
   },
+  cardDisabledDark: {
+    opacity: 0.45,
+    backgroundColor: '#0F172A'
+  },
   imageBox: {
     height: 90,
-    backgroundColor: '#FFF7ED',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative'
@@ -126,12 +136,10 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.text
+    fontWeight: typography.weights.bold
   },
   desc: {
     fontSize: 11,
-    color: colors.textMuted,
     marginTop: 2
   },
   footer: {
@@ -142,18 +150,15 @@ const styles = StyleSheet.create({
   },
   price: {
     fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.extraBold,
-    color: colors.primary
+    fontWeight: typography.weights.extraBold
   },
   modifierBadge: {
-    backgroundColor: '#FFEDD5',
     paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4
   },
   modifierBadgeText: {
     fontSize: 10,
-    color: colors.secondary,
     fontWeight: typography.weights.bold
   }
 });

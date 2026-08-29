@@ -10,7 +10,8 @@ import {
   SafeAreaView
 } from 'react-native';
 import { MenuItemDto, SelectedModifierDto } from '../../api/contracts';
-import { colors, typography, spacing } from '../../theme';
+import { useTheme } from '../../contexts/ThemeContext';
+import { typography, spacing } from '../../theme';
 
 interface Props {
   visible: boolean;
@@ -25,8 +26,9 @@ interface Props {
 }
 
 export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddToCart }) => {
+  const { theme, isDark } = useTheme();
   const [quantity, setQuantity] = useState<number>(1);
-  const [selectedModifiers, setSelectedModifiers] = useState<Record<number, number[]>>({}); // groupId -> array of optionIds
+  const [selectedModifiers, setSelectedModifiers] = useState<Record<number, number[]>>({});
   const [notes, setNotes] = useState<string>('');
 
   // Reset state when opening modal for a new item
@@ -36,7 +38,6 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
       setNotes('');
       const initialSelection: Record<number, number[]> = {};
 
-      // Auto pre-select default option for single-choice required groups if option price is 0
       item.modifierGroups?.forEach((group) => {
         if (group.isRequired && group.minSelect === 1 && group.maxSelect === 1 && group.options.length > 0) {
           initialSelection[group.id] = [group.options[0].id];
@@ -55,15 +56,13 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
     setSelectedModifiers((prev) => {
       const current = prev[groupId] || [];
       if (maxSelect === 1) {
-        // Single choice radio
         return { ...prev, [groupId]: [optionId] };
       } else {
-        // Multi choice
         if (current.includes(optionId)) {
           return { ...prev, [groupId]: current.filter((id) => id !== optionId) };
         } else {
           if (current.length >= maxSelect) {
-            return prev; // Exceeded max
+            return prev;
           }
           return { ...prev, [groupId]: [...current, optionId] };
         }
@@ -71,7 +70,7 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
     });
   };
 
-  // Validation: check if all required modifier groups satisfy minSelect
+  // Validation
   const validationErrors: string[] = [];
   item.modifierGroups?.forEach((group) => {
     const selectedCount = (selectedModifiers[group.id] || []).length;
@@ -106,7 +105,6 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
   const handleConfirm = () => {
     if (!isValid) return;
 
-    // Convert selected map to array of SelectedModifierDto
     const resultModifiers: SelectedModifierDto[] = [];
     item.modifierGroups?.forEach((group) => {
       const selectedOptionIds = selectedModifiers[group.id] || [];
@@ -131,16 +129,21 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={styles.modalBackdrop}>
-        <SafeAreaView style={styles.modalContainer}>
+      <View style={[styles.modalBackdrop, { backgroundColor: theme.overlay }]}>
+        <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.card }]}>
           {/* Header */}
-          <View style={styles.modalHeader}>
+          <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
             <View>
-              <Text style={styles.modalTitle}>{item.name}</Text>
-              <Text style={styles.basePriceText}>Giá cơ bản: {formatVND(item.basePrice)}</Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>{item.name}</Text>
+              <Text style={[styles.basePriceText, { color: theme.textMuted }]}>
+                Giá cơ bản: {formatVND(item.basePrice)}
+              </Text>
             </View>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-              <Text style={styles.closeButtonText}>✕</Text>
+            <TouchableOpacity
+              style={[styles.closeButton, { backgroundColor: isDark ? '#334155' : '#F1F5F9' }]}
+              onPress={onClose}
+            >
+              <Text style={[styles.closeButtonText, { color: theme.text }]}>✕</Text>
             </TouchableOpacity>
           </View>
 
@@ -160,19 +163,32 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
             {item.modifierGroups?.map((group) => {
               const currentSelected = selectedModifiers[group.id] || [];
               return (
-                <View key={group.id} style={styles.groupCard}>
+                <View
+                  key={group.id}
+                  style={[
+                    styles.groupCard,
+                    {
+                      backgroundColor: isDark ? '#0F172A' : '#FAFAFA',
+                      borderColor: theme.border
+                    }
+                  ]}
+                >
                   <View style={styles.groupHeader}>
-                    <Text style={styles.groupName}>{group.name}</Text>
+                    <Text style={[styles.groupName, { color: theme.text }]}>{group.name}</Text>
                     <View
                       style={[
                         styles.badge,
-                        group.isRequired ? styles.badgeRequired : styles.badgeOptional
+                        group.isRequired
+                          ? (isDark ? styles.badgeRequiredDark : styles.badgeRequiredLight)
+                          : (isDark ? styles.badgeOptionalDark : styles.badgeOptionalLight)
                       ]}
                     >
                       <Text
                         style={[
                           styles.badgeText,
-                          group.isRequired ? styles.badgeRequiredText : styles.badgeOptionalText
+                          group.isRequired
+                            ? { color: isDark ? '#FCA5A5' : '#DC2626' }
+                            : { color: isDark ? '#94A3B8' : '#64748B' }
                         ]}
                       >
                         {group.isRequired ? 'BẮT BUỘC' : 'Tùy chọn'}
@@ -187,19 +203,38 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
                       return (
                         <TouchableOpacity
                           key={opt.id}
-                          style={[styles.optionItem, isSelected && styles.optionItemSelected]}
+                          style={[
+                            styles.optionItem,
+                            {
+                              backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
+                              borderColor: isSelected ? theme.primary : theme.border
+                            },
+                            isSelected && (isDark ? styles.optionItemSelectedDark : styles.optionItemSelectedLight)
+                          ]}
                           onPress={() => handleSelectOption(group.id, opt.id, group.maxSelect)}
                         >
                           <View style={styles.optionLeft}>
-                            <View style={[styles.radio, isSelected && styles.radioSelected]}>
-                              {isSelected && <View style={styles.radioInner} />}
+                            <View style={[styles.radio, { borderColor: isSelected ? theme.primary : theme.textMuted }]}>
+                              {isSelected && <View style={[styles.radioInner, { backgroundColor: theme.primary }]} />}
                             </View>
-                            <Text style={[styles.optionName, isSelected && styles.optionNameSelected]}>
+                            <Text
+                              style={[
+                                styles.optionName,
+                                { color: isSelected ? theme.primary : theme.text },
+                                isSelected && styles.optionNameSelected
+                              ]}
+                            >
                               {opt.name}
                             </Text>
                           </View>
 
-                          <Text style={[styles.optionPrice, isSelected && styles.optionPriceSelected]}>
+                          <Text
+                            style={[
+                              styles.optionPrice,
+                              { color: isSelected ? theme.primary : theme.textMuted },
+                              isSelected && styles.optionPriceSelected
+                            ]}
+                          >
                             {opt.priceDelta > 0 ? `+${formatVND(opt.priceDelta)}` : 'Miễn phí'}
                           </Text>
                         </TouchableOpacity>
@@ -212,10 +247,18 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
 
             {/* Ghi chú */}
             <View style={styles.notesGroup}>
-              <Text style={styles.notesLabel}>Ghi chú cho bếp (không bắt buộc):</Text>
+              <Text style={[styles.notesLabel, { color: theme.text }]}>Ghi chú cho bếp (không bắt buộc):</Text>
               <TextInput
-                style={styles.notesInput}
+                style={[
+                  styles.notesInput,
+                  {
+                    backgroundColor: isDark ? '#0F172A' : '#F8FAFC',
+                    borderColor: theme.border,
+                    color: theme.text
+                  }
+                ]}
                 placeholder="Ví dụ: Ít đá, không tương ớt, lấy thêm khăn giấy..."
+                placeholderTextColor={theme.textMuted}
                 value={notes}
                 onChangeText={setNotes}
                 maxLength={120}
@@ -223,40 +266,48 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
             </View>
 
             {/* Quantity Selector */}
-            <View style={styles.quantityRow}>
-              <Text style={styles.quantityLabel}>Số lượng:</Text>
+            <View style={[styles.quantityRow, { borderTopColor: theme.border }]}>
+              <Text style={[styles.quantityLabel, { color: theme.text }]}>Số lượng:</Text>
               <View style={styles.quantityControls}>
                 <TouchableOpacity
-                  style={styles.qtyBtn}
+                  style={[styles.qtyBtn, { backgroundColor: isDark ? '#334155' : '#F1F5F9', borderColor: theme.border }]}
                   onPress={() => setQuantity((q) => Math.max(1, q - 1))}
                 >
-                  <Text style={styles.qtyBtnText}>-</Text>
+                  <Text style={[styles.qtyBtnText, { color: theme.text }]}>-</Text>
                 </TouchableOpacity>
-                <Text style={styles.qtyNumber}>{quantity}</Text>
+                <Text style={[styles.qtyNumber, { color: theme.text }]}>{quantity}</Text>
                 <TouchableOpacity
-                  style={styles.qtyBtn}
+                  style={[styles.qtyBtn, { backgroundColor: isDark ? '#334155' : '#F1F5F9', borderColor: theme.border }]}
                   onPress={() => setQuantity((q) => q + 1)}
                 >
-                  <Text style={styles.qtyBtnText}>+</Text>
+                  <Text style={[styles.qtyBtnText, { color: theme.text }]}>+</Text>
                 </TouchableOpacity>
               </View>
             </View>
           </ScrollView>
 
-          {/* Footer Submit */}
-          <View style={styles.modalFooter}>
+          {/* Footer */}
+          <View style={[styles.modalFooter, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
             <View style={styles.footerPrice}>
-              <Text style={styles.footerPriceLabel}>Tổng cộng ({quantity} phần):</Text>
-              <Text style={styles.footerPriceValue}>{formatVND(totalPrice)}</Text>
+              <Text style={[styles.footerPriceLabel, { color: theme.textMuted }]}>
+                Đơn giá: {formatVND(unitPrice)}
+              </Text>
+              <Text style={[styles.footerPriceValue, { color: theme.primary }]}>
+                Tổng: {formatVND(totalPrice)}
+              </Text>
             </View>
 
             <TouchableOpacity
-              style={[styles.confirmButton, !isValid && styles.confirmButtonDisabled]}
+              style={[
+                styles.confirmButton,
+                { backgroundColor: theme.primary },
+                !isValid && styles.confirmButtonDisabled
+              ]}
               onPress={handleConfirm}
               disabled={!isValid}
             >
               <Text style={styles.confirmButtonText}>
-                {isValid ? 'THÊM VÀO ĐƠN HÀNG ➔' : 'VUI LÒNG CHỌN TÙY CHỌN'}
+                {isValid ? `THÊM VÀO GIỎ • ${formatVND(totalPrice)}` : 'CHỌN ĐỦ MỤC BẮT BUỘC'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -269,71 +320,60 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
 const styles = StyleSheet.create({
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
     justifyContent: 'flex-end'
   },
   modalContainer: {
-    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     maxHeight: '90%',
-    flex: 1
+    minHeight: '60%'
   },
   modalHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border
+    borderBottomWidth: 1
   },
   modalTitle: {
     fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold,
-    color: colors.text
+    fontWeight: typography.weights.bold
   },
   basePriceText: {
     fontSize: typography.sizes.xs,
-    color: colors.primary,
-    fontWeight: typography.weights.bold,
     marginTop: 2
   },
   closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#F1F5F9',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center'
   },
   closeButtonText: {
     fontSize: 16,
-    fontWeight: typography.weights.bold,
-    color: colors.textMuted
+    fontWeight: typography.weights.bold
   },
   modalBody: {
-    padding: spacing.lg,
-    flex: 1
+    padding: spacing.lg
   },
   warningBox: {
     backgroundColor: '#FEF2F2',
-    borderColor: '#F87171',
     borderWidth: 1,
+    borderColor: '#FCA5A5',
     borderRadius: 8,
-    padding: spacing.sm,
+    padding: spacing.md,
     marginBottom: spacing.md
   },
   warningText: {
     color: '#DC2626',
-    fontSize: 12,
+    fontSize: typography.sizes.xs,
     fontWeight: typography.weights.semibold,
-    marginVertical: 2
+    lineHeight: 18
   },
   groupCard: {
-    backgroundColor: '#F8FAFC',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.border,
     padding: spacing.md,
     marginBottom: spacing.md
   },
@@ -345,29 +385,28 @@ const styles = StyleSheet.create({
   },
   groupName: {
     fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.text
+    fontWeight: typography.weights.bold
   },
   badge: {
-    paddingHorizontal: 8,
+    paddingHorizontal: spacing.sm,
     paddingVertical: 2,
     borderRadius: 4
   },
-  badgeRequired: {
+  badgeRequiredLight: {
     backgroundColor: '#FEE2E2'
   },
-  badgeOptional: {
-    backgroundColor: '#E2E8F0'
+  badgeRequiredDark: {
+    backgroundColor: '#7F1D1D'
+  },
+  badgeOptionalLight: {
+    backgroundColor: '#F1F5F9'
+  },
+  badgeOptionalDark: {
+    backgroundColor: '#334155'
   },
   badgeText: {
     fontSize: 10,
     fontWeight: typography.weights.bold
-  },
-  badgeRequiredText: {
-    color: '#DC2626'
-  },
-  badgeOptionalText: {
-    color: '#475569'
   },
   optionsList: {
     gap: spacing.xs
@@ -376,55 +415,48 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
-    padding: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: colors.border,
     minHeight: spacing.touchTargetMobile
   },
-  optionItemSelected: {
-    borderColor: colors.primary,
+  optionItemSelectedLight: {
     backgroundColor: '#FEF2F2'
+  },
+  optionItemSelectedDark: {
+    backgroundColor: '#3B1818'
   },
   optionLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm
+    gap: spacing.sm,
+    flex: 1
   },
   radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     borderWidth: 2,
-    borderColor: '#94A3B8',
     alignItems: 'center',
     justifyContent: 'center'
-  },
-  radioSelected: {
-    borderColor: colors.primary
   },
   radioInner: {
     width: 10,
     height: 10,
-    borderRadius: 5,
-    backgroundColor: colors.primary
+    borderRadius: 5
   },
   optionName: {
-    fontSize: typography.sizes.sm,
-    color: colors.text
+    fontSize: typography.sizes.sm
   },
   optionNameSelected: {
-    fontWeight: typography.weights.bold,
-    color: colors.primary
+    fontWeight: typography.weights.bold
   },
   optionPrice: {
-    fontSize: typography.sizes.xs,
-    color: colors.textMuted
+    fontSize: typography.sizes.xs
   },
   optionPriceSelected: {
-    fontWeight: typography.weights.bold,
-    color: colors.primary
+    fontWeight: typography.weights.bold
   },
   notesGroup: {
     marginBottom: spacing.lg
@@ -432,17 +464,13 @@ const styles = StyleSheet.create({
   notesLabel: {
     fontSize: typography.sizes.xs,
     fontWeight: typography.weights.semibold,
-    color: colors.text,
     marginBottom: spacing.xs
   },
   notesInput: {
-    backgroundColor: '#F8FAFC',
     borderWidth: 1,
-    borderColor: colors.border,
     borderRadius: 8,
     padding: spacing.sm,
-    fontSize: typography.sizes.xs,
-    color: colors.text
+    fontSize: typography.sizes.xs
   },
   quantityRow: {
     flexDirection: 'row',
@@ -450,13 +478,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: spacing.xl,
     paddingTop: spacing.sm,
-    borderTopWidth: 1,
-    borderTopColor: colors.border
+    borderTopWidth: 1
   },
   quantityLabel: {
     fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    color: colors.text
+    fontWeight: typography.weights.bold
   },
   quantityControls: {
     flexDirection: 'row',
@@ -467,16 +493,13 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#F1F5F9',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: colors.border
+    borderWidth: 1
   },
   qtyBtnText: {
     fontSize: 18,
-    fontWeight: typography.weights.bold,
-    color: colors.text
+    fontWeight: typography.weights.bold
   },
   qtyNumber: {
     fontSize: typography.sizes.md,
@@ -486,9 +509,7 @@ const styles = StyleSheet.create({
   },
   modalFooter: {
     padding: spacing.lg,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-    backgroundColor: '#FFFFFF'
+    borderTopWidth: 1
   },
   footerPrice: {
     flexDirection: 'row',
@@ -497,16 +518,13 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm
   },
   footerPriceLabel: {
-    fontSize: typography.sizes.xs,
-    color: colors.textMuted
+    fontSize: typography.sizes.xs
   },
   footerPriceValue: {
     fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.extraBold,
-    color: colors.primary
+    fontWeight: typography.weights.extraBold
   },
   confirmButton: {
-    backgroundColor: colors.primary,
     paddingVertical: spacing.md,
     borderRadius: 10,
     alignItems: 'center',
