@@ -60,20 +60,58 @@ export class OrdersService {
         throw ApiError.badRequest(`Món ăn "${dbItem.name}" hiện đã hết hàng (86'd)`);
       }
 
-      // Kiem tra modifier bat buoc (isRequired: true)
-      const selectedMods = itemInput.selectedModifiers || [];
+      // Xac thuc modifier va tao snapshot hoan toan tu du lieu DB.
+      const requestedMods = itemInput.selectedModifiers || [];
+      const groupMap = new Map(dbItem.modifierGroups.map((group) => [group.id, group]));
+      const selectedOptionIds = new Set<number>();
+      const selectedMods = requestedMods.map((requestedMod) => {
+        const group = groupMap.get(requestedMod.modifierGroupId);
+        if (!group) {
+          throw ApiError.badRequest(
+            `Nhóm modifier ID ${requestedMod.modifierGroupId} không thuộc món "${dbItem.name}"`
+          );
+        }
+
+        const option = group.options.find((candidate) => candidate.id === requestedMod.optionId);
+        if (!option) {
+          throw ApiError.badRequest(
+            `Lựa chọn modifier ID ${requestedMod.optionId} không thuộc nhóm "${group.name}"`
+          );
+        }
+
+        if (!option.isAvailable) {
+          throw ApiError.badRequest(`Lựa chọn "${option.name}" hiện không còn bán`);
+        }
+
+        if (selectedOptionIds.has(option.id)) {
+          throw ApiError.badRequest(`Lựa chọn "${option.name}" bị chọn trùng`);
+        }
+        selectedOptionIds.add(option.id);
+
+        return {
+          modifierGroupId: group.id,
+          groupName: group.name,
+          optionId: option.id,
+          optionName: option.name,
+          priceDelta: option.priceDelta
+        };
+      });
+
       for (const group of dbItem.modifierGroups) {
-        if (group.isRequired) {
-          const selectedInGroup = selectedMods.filter((m) => m.modifierGroupId === group.id);
-          if (selectedInGroup.length < group.minSelect) {
-            throw ApiError.badRequest(
-              `Món "${dbItem.name}" bắt buộc phải chọn nhóm "${group.name}" (Tối thiểu ${group.minSelect} lựa chọn)`
-            );
-          }
+        const selectedCount = selectedMods.filter((mod) => mod.modifierGroupId === group.id).length;
+        if (selectedCount < group.minSelect) {
+          throw ApiError.badRequest(
+            `Món "${dbItem.name}" phải chọn tối thiểu ${group.minSelect} lựa chọn trong nhóm "${group.name}"`
+          );
+        }
+        if (selectedCount > group.maxSelect) {
+          throw ApiError.badRequest(
+            `Món "${dbItem.name}" chỉ được chọn tối đa ${group.maxSelect} lựa chọn trong nhóm "${group.name}"`
+          );
         }
       }
 
-      // Tinh gia tien chinh xac tu DB
+      // Tinh gia tien chinh xac tu snapshot da xac thuc voi DB
       const modifierDelta = selectedMods.reduce((sum, mod) => sum + mod.priceDelta, 0);
       const unitPrice = dbItem.basePrice + modifierDelta;
       const subtotal = unitPrice * itemInput.quantity;
