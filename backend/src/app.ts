@@ -4,6 +4,8 @@ import { env } from './config/env';
 import { systemRouter } from './modules/system/system.routes';
 import { authRouter } from './modules/auth/auth.routes';
 import { menuRouter } from './modules/menu/menu.routes';
+import { tablesRouter } from './modules/tables/tables.routes';
+import { ordersRouter } from './modules/orders/orders.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
 export const app = express();
@@ -31,6 +33,12 @@ app.use('/api/auth', authRouter);
 
 // Menu & Modifiers routes
 app.use('/api/menu', menuRouter);
+
+// Dining Tables routes
+app.use('/api/tables', tablesRouter);
+
+// Orders & Checkout routes
+app.use('/api/orders', ordersRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);

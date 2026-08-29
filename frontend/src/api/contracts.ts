@@ -102,6 +102,7 @@ export interface DiningTableDto {
   status: TableStatus;
   capacity: number;
   currentOrderId?: number | null;
+  orders?: OrderDto[];
 }
 
 // ==========================================

@@ -4,10 +4,11 @@ import { useAuth } from '../contexts/AuthContext';
 import { colors, typography, spacing } from '../theme';
 import { POSScreen } from '../features/pos/POSScreen';
 import { TableScreen } from '../features/tables/TableScreen';
+import { TableOrderScreen } from '../features/customer/TableOrderScreen';
 import { KDSScreen } from '../features/kds/KDSScreen';
 import { AdminScreen } from '../features/admin/AdminScreen';
 
-type TabKey = 'pos' | 'tables' | 'kds' | 'admin';
+type TabKey = 'pos' | 'tables' | 'qr_table' | 'kds' | 'admin';
 
 interface TabItem {
   key: TabKey;
@@ -24,7 +25,8 @@ export const RoleTabs: React.FC = () => {
       case 'CASHIER':
         return [
           { key: 'pos', label: '🛒 POS Thu Ngân', component: POSScreen },
-          { key: 'tables', label: '🍽️ Sơ Đồ Bàn', component: TableScreen }
+          { key: 'tables', label: '🍽️ Sơ Đồ Bàn', component: TableScreen },
+          { key: 'qr_table', label: '📱 Khách QR Bàn', component: TableOrderScreen }
         ];
       case 'KITCHEN':
         return [
@@ -35,6 +37,7 @@ export const RoleTabs: React.FC = () => {
         return [
           { key: 'pos', label: '🛒 POS Thu Ngân', component: POSScreen },
           { key: 'tables', label: '🍽️ Sơ Đồ Bàn', component: TableScreen },
+          { key: 'qr_table', label: '📱 Khách QR Bàn', component: TableOrderScreen },
           { key: 'kds', label: '🍳 Bếp KDS', component: KDSScreen },
           { key: 'admin', label: '👑 Quản Trị & KPI', component: AdminScreen }
         ];

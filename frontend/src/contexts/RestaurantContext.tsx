@@ -4,7 +4,15 @@ import {
   CategoryDto,
   MenuItemDto,
   SelectedModifierDto,
-  SocketMenuItemSoldOutChangedPayload
+  DiningTableDto,
+  OrderDto,
+  OrderItemCreateDto,
+  PaymentMethod,
+  SocketMenuItemSoldOutChangedPayload,
+  SocketTableStatusChangedPayload,
+  SocketOrderStatusChangedPayload,
+  SocketOrderNewPayload,
+  ApiResponse
 } from '../api/contracts';
 import { useAuth } from './AuthContext';
 
@@ -49,6 +57,16 @@ interface RestaurantContextType {
   updateCartQuantity: (index: number, quantity: number) => void;
   removeFromCart: (index: number) => void;
   clearCart: () => void;
+
+  // Tables State (Floor Map & Smart Dine-in)
+  tables: DiningTableDto[];
+  isLoadingTables: boolean;
+  activeTableId: number | null;
+  activeTableOrder: OrderDto | null;
+  fetchTables: () => Promise<void>;
+  selectActiveTable: (tableId: number | null) => void;
+  createDineInOrder: (tableId: number, notes?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
+  payOrder: (orderId: number, paymentMethod: PaymentMethod) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
 }
 
 const RestaurantContext = createContext<RestaurantContextType | undefined>(undefined);
@@ -59,6 +77,7 @@ const SOCKET_URL = process.env.EXPO_PUBLIC_SOCKET_URL || API_URL;
 export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { token } = useAuth();
 
+  // Menu State
   const [categories, setCategories] = useState<CategoryDto[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [isLoadingMenu, setIsLoadingMenu] = useState<boolean>(true);
@@ -70,6 +89,12 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Cart State
   const [cart, setCart] = useState<CartItem[]>([]);
+
+  // Tables State
+  const [tables, setTables] = useState<DiningTableDto[]>([]);
+  const [isLoadingTables, setIsLoadingTables] = useState<boolean>(true);
+  const [activeTableId, setActiveTableId] = useState<number | null>(null);
+  const [activeTableOrder, setActiveTableOrder] = useState<OrderDto | null>(null);
 
   // 1. Fetch Menu from Backend API
   const fetchMenu = useCallback(async () => {
@@ -92,11 +117,29 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   }, []);
 
+  // 2. Fetch Tables from Backend API
+  const fetchTables = useCallback(async () => {
+    setIsLoadingTables(true);
+    try {
+      const response = await fetch(`${API_URL}/api/tables`);
+      const json = await response.json();
+
+      if (response.ok) {
+        setTables(json.data.tables || []);
+      }
+    } catch (err: any) {
+      console.error('Loi tai danh sach ban:', err);
+    } finally {
+      setIsLoadingTables(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchMenu();
-  }, [fetchMenu]);
+    fetchTables();
+  }, [fetchMenu, fetchTables]);
 
-  // 2. Real-time Socket.io listener for 86'd Sold-out changes
+  // 3. Real-time Socket.io listeners
   useEffect(() => {
     const socket: Socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
@@ -107,8 +150,8 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       console.log('⚡ Socket connected to Crispy Bite Server');
     });
 
+    // 86'd Sold-out update
     socket.on('menu:itemSoldOutChanged', (payload: SocketMenuItemSoldOutChangedPayload) => {
-      console.log('📢 Nhan su kien 86d thay doi:', payload);
       setCategories((prevCategories) =>
         prevCategories.map((cat) => ({
           ...cat,
@@ -119,12 +162,39 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       );
     });
 
+    // Table Status Changed
+    socket.on('table:statusChanged', (payload: SocketTableStatusChangedPayload) => {
+      setTables((prevTables) =>
+        prevTables.map((t) =>
+          t.id === payload.tableId
+            ? { ...t, status: payload.status, currentOrderId: payload.currentOrderId }
+            : t
+        )
+      );
+    });
+
+    // Order Status Changed
+    socket.on('order:statusChanged', (payload: SocketOrderStatusChangedPayload) => {
+      setActiveTableOrder((prev) => {
+        if (prev && prev.id === payload.orderId) {
+          return { ...prev, status: payload.status };
+        }
+        return prev;
+      });
+    });
+
+    // Order New
+    socket.on('order:new', (_payload: SocketOrderNewPayload) => {
+      // Re-fetch tables to sync fresh floor map
+      fetchTables();
+    });
+
     return () => {
       socket.disconnect();
     };
-  }, [token]);
+  }, [token, fetchTables]);
 
-  // 3. Computed Menu Items
+  // 4. Computed Menu Items
   const allMenuItems = categories.flatMap((cat) => cat.menuItems || []);
   const filteredMenuItems =
     selectedCategoryId === null
@@ -135,7 +205,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     setSelectedCategoryId(categoryId);
   };
 
-  // 4. Modal Handlers
+  // 5. Modal Handlers
   const openModifierModal = (item: MenuItemDto) => {
     setSelectedMenuItemForModal(item);
     setIsModifierModalOpen(true);
@@ -146,7 +216,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     setIsModifierModalOpen(false);
   };
 
-  // 5. Cart Handlers
+  // 6. Cart Handlers
   const addToCart = (
     item: MenuItemDto,
     quantity: number,
@@ -201,6 +271,92 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const cartTotal = cartSubtotal + cartVat;
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
+  // 7. Table & Dine-in Order Handlers
+  const selectActiveTable = (tableId: number | null) => {
+    setActiveTableId(tableId);
+    if (!tableId) {
+      setActiveTableOrder(null);
+    }
+  };
+
+  const createDineInOrder = async (
+    tableId: number,
+    notes?: string
+  ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
+    if (cart.length === 0) {
+      return { success: false, error: 'Giỏ hàng đang trống' };
+    }
+
+    const itemsPayload: OrderItemCreateDto[] = cart.map((c) => ({
+      menuItemId: c.menuItem.id,
+      quantity: c.quantity,
+      selectedModifiers: c.selectedModifiers,
+      notes: c.notes
+    }));
+
+    const idempotencyKey = `idemp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+    try {
+      const response = await fetch(`${API_URL}/api/orders`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({
+          tableId,
+          orderType: 'DINE_IN',
+          items: itemsPayload,
+          notes,
+          idempotencyKey
+        })
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        return { success: false, error: json.error?.message || 'Không thể tạo đơn hàng' };
+      }
+
+      const order = (json as ApiResponse<{ order: OrderDto }>).data.order;
+      setActiveTableOrder(order);
+      clearCart();
+      await fetchTables();
+
+      return { success: true, order };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi gửi đơn xuống bếp' };
+    }
+  };
+
+  const payOrder = async (
+    orderId: number,
+    paymentMethod: PaymentMethod
+  ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/api/orders/${orderId}/pay`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ paymentMethod })
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        return { success: false, error: json.error?.message || 'Thanh toán đơn hàng thất bại' };
+      }
+
+      const order = (json as ApiResponse<{ order: OrderDto }>).data.order;
+      setActiveTableOrder(null);
+      await fetchTables();
+
+      return { success: true, order };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi thanh toán' };
+    }
+  };
+
   return (
     <RestaurantContext.Provider
       value={{
@@ -224,7 +380,15 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         addToCart,
         updateCartQuantity,
         removeFromCart,
-        clearCart
+        clearCart,
+        tables,
+        isLoadingTables,
+        activeTableId,
+        activeTableOrder,
+        fetchTables,
+        selectActiveTable,
+        createDineInOrder,
+        payOrder
       }}
     >
       {children}
