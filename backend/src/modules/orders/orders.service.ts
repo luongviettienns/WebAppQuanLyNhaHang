@@ -138,6 +138,10 @@ export class OrdersService {
 
     // 7. Thuc hien Transaction tao Order va cap nhat Table
     const createdOrder = await prisma.$transaction(async (tx) => {
+      if (input.orderType === 'DINE_IN' && input.tableId) {
+        await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${input.tableId} FOR UPDATE`;
+      }
+
       const order = await tx.order.create({
         data: {
           code,
@@ -206,31 +210,68 @@ export class OrdersService {
       throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
     }
 
-    const updatedOrder = await prisma.$transaction(async (tx) => {
-      const order = await tx.order.update({
-        where: { id: orderId },
-        data: {
-          paymentStatus: 'PAID',
-          paymentMethod: input.paymentMethod as PaymentMethod,
-          paidAt: new Date(),
-          status: 'COMPLETED',
-          completedAt: new Date()
-        },
-        include: { items: true }
-      });
+    const { order: updatedOrder, tableState } = await prisma.$transaction(async (tx) => {
+      if (existingOrder.tableId) {
+        // Serialize create/pay operations on the same table before reading its unpaid orders.
+        await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${existingOrder.tableId} FOR UPDATE`;
+      }
 
-      // Neu don hang co gan voi ban -> reset ban ve AVAILABLE
+      const lockedOrder = await tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          items: true,
+          table: { select: { id: true, tableNumber: true } }
+        }
+      });
+      if (!lockedOrder) {
+        throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
+      }
+
+      const order = lockedOrder.paymentStatus === 'PAID'
+        ? lockedOrder
+        : await tx.order.update({
+            where: { id: orderId },
+            data: {
+              paymentStatus: 'PAID',
+              paymentMethod: input.paymentMethod as PaymentMethod,
+              paidAt: new Date(),
+              status: 'COMPLETED',
+              completedAt: new Date()
+            },
+            include: { items: true }
+          });
+
+      let nextTableState: { tableId: number; tableNumber: number; status: 'AVAILABLE' | 'OCCUPIED'; currentOrderId: number | null } | null = null;
       if (order.tableId) {
+        const remainingOrder = await tx.order.findFirst({
+          where: {
+            tableId: order.tableId,
+            paymentStatus: 'UNPAID',
+            status: { not: 'CANCELLED' }
+          },
+          orderBy: { createdAt: 'desc' },
+          select: { id: true }
+        });
+        const status = remainingOrder ? 'OCCUPIED' as const : 'AVAILABLE' as const;
+        const currentOrderId = remainingOrder?.id ?? null;
         await tx.diningTable.update({
           where: { id: order.tableId },
           data: {
-            status: 'AVAILABLE',
-            currentOrderId: null
+            status,
+            currentOrderId
           }
         });
+        if (lockedOrder.table) {
+          nextTableState = {
+            tableId: lockedOrder.table.id,
+            tableNumber: lockedOrder.table.tableNumber,
+            status,
+            currentOrderId
+          };
+        }
       }
 
-      return order;
+      return { order, tableState: nextTableState };
     });
 
     // Phat su kien WebSocket realtime
@@ -241,18 +282,8 @@ export class OrdersService {
       completedAt: updatedOrder.completedAt?.toISOString()
     });
 
-    if (updatedOrder.tableId) {
-      const table = await prisma.diningTable.findUnique({
-        where: { id: updatedOrder.tableId }
-      });
-      if (table) {
-        emitToAll('table:statusChanged', {
-          tableId: table.id,
-          tableNumber: table.tableNumber,
-          status: 'AVAILABLE',
-          currentOrderId: null
-        });
-      }
+    if (tableState) {
+      emitToAll('table:statusChanged', tableState);
     }
 
     return { order: updatedOrder };

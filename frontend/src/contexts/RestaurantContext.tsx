@@ -348,7 +348,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       const order = (json as ApiResponse<{ order: OrderDto }>).data.order;
-      setActiveTableOrder(null);
+      setActiveTableOrder((current) => current?.id === order.id ? null : current);
       await fetchTables();
 
       return { success: true, order };
