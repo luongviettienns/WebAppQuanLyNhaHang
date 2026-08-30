@@ -12,6 +12,8 @@ export interface AuthUser {
 }
 
 declare global {
+  // Express exposes Request augmentation through its global namespace.
+  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       user?: AuthUser;
@@ -49,4 +51,13 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
   } catch {
     return next(ApiError.unauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn'));
   }
+}
+
+export function optionalAuthenticate(req: Request, res: Response, next: NextFunction): void {
+  if (!req.headers.authorization) {
+    next();
+    return;
+  }
+
+  authenticate(req, res, next);
 }

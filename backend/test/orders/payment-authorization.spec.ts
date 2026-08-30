@@ -77,5 +77,28 @@ describe('Payment authorization', () => {
     expect(res.status).toBe(201);
     expect(res.body.data.order.paymentStatus).toBe('UNPAID');
     expect(OrdersService.createOrder).toHaveBeenCalledOnce();
+    expect(OrdersService.createOrder).toHaveBeenCalledWith(expect.any(Object), undefined);
+  });
+
+  it('associates an authenticated order with its staff user', async () => {
+    vi.mocked(OrdersService.createOrder).mockResolvedValue({
+      order: { id: 44, paymentStatus: 'UNPAID' }, isDuplicate: false
+    } as Awaited<ReturnType<typeof OrdersService.createOrder>>);
+
+    const res = await request(app).post('/api/orders')
+      .set('Authorization', `Bearer ${token('CASHIER')}`)
+      .send({ orderType: 'TAKE_AWAY', items: [{ menuItemId: 1, quantity: 1 }] });
+
+    expect(res.status).toBe(201);
+    expect(OrdersService.createOrder).toHaveBeenCalledWith(expect.any(Object), 1);
+  });
+
+  it('rejects an invalid optional token instead of treating it as a guest', async () => {
+    const res = await request(app).post('/api/orders')
+      .set('Authorization', 'Bearer invalid-token')
+      .send({ orderType: 'TAKE_AWAY', items: [{ menuItemId: 1, quantity: 1 }] });
+
+    expect(res.status).toBe(401);
+    expect(OrdersService.createOrder).not.toHaveBeenCalled();
   });
 });

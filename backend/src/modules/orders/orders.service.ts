@@ -3,22 +3,52 @@ import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { CreateOrderInput, PayOrderInput } from './orders.schemas';
 import { PaymentMethod } from '@prisma/client';
+import { createHash } from 'crypto';
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalize(entry)])
+    );
+  }
+  return value;
+}
+
+function hashOrderRequest(input: CreateOrderInput): string {
+  return createHash('sha256')
+    .update(JSON.stringify(canonicalize({ ...input, idempotencyKey: undefined })))
+    .digest('hex');
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+}
 
 export class OrdersService {
   /**
    * Tao don hang moi (Dat tai ban qua QR hoac POS)
    */
   static async createOrder(input: CreateOrderInput, createdByUserId?: number) {
-    // 1. Idempotency Key check - phong chong gui trung don
-    if (input.idempotencyKey) {
-      const existing = await prisma.order.findFirst({
-        where: { idempotencyKey: input.idempotencyKey },
-        include: { items: true }
-      });
-      if (existing) {
-        return { order: existing, isDuplicate: true };
+    const idempotencyScope = createdByUserId === undefined ? 'guest' : `user:${createdByUserId}`;
+    const requestHash = hashOrderRequest(input);
+    const assertMatchingRequest = (existingHash: string | null) => {
+      if (existingHash && existingHash !== requestHash) {
+        throw ApiError.conflict('Idempotency key đã được dùng cho một nội dung đơn hàng khác');
       }
-    }
+    };
+    const findExisting = (client: any) => client.order.findUnique({
+      where: {
+        idempotencyScope_idempotencyKey: {
+          idempotencyScope,
+          idempotencyKey: input.idempotencyKey
+        }
+      },
+      include: { items: true }
+    });
 
     // 2. Kiem tra tinh hop le cua ban an neu la DINE_IN
     let targetTable: { id: number; tableNumber: number } | null = null;
@@ -137,12 +167,22 @@ export class OrdersService {
     const code = `CRISPY-${dateStr}-${randomSuffix}`;
 
     // 7. Thuc hien Transaction tao Order va cap nhat Table
-    const createdOrder = await prisma.$transaction(async (tx) => {
-      if (input.orderType === 'DINE_IN' && input.tableId) {
-        await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${input.tableId} FOR UPDATE`;
-      }
+    let transactionResult: { order: any; isDuplicate: boolean };
+    try {
+      transactionResult = await prisma.$transaction(async (tx) => {
+        if (input.orderType === 'DINE_IN' && input.tableId) {
+          await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${input.tableId} FOR UPDATE`;
+        }
 
-      const order = await tx.order.create({
+        if (input.idempotencyKey) {
+          const existing = await findExisting(tx);
+          if (existing) {
+            assertMatchingRequest(existing.requestHash);
+            return { order: existing, isDuplicate: true };
+          }
+        }
+
+        const order = await tx.order.create({
         data: {
           code,
           orderType: input.orderType,
@@ -154,6 +194,8 @@ export class OrdersService {
           paymentStatus: 'UNPAID', // Mac dinh chua thanh toan (Post-Paid)
           notes: input.notes,
           idempotencyKey: input.idempotencyKey,
+          idempotencyScope,
+          requestHash,
           createdByUserId,
           items: {
             create: orderItemsData
@@ -168,19 +210,29 @@ export class OrdersService {
         }
       });
 
-      // Neu la don an tai ban -> cap nhat trang thai ban sang OCCUPIED
-      if (input.orderType === 'DINE_IN' && input.tableId) {
-        await tx.diningTable.update({
-          where: { id: input.tableId },
-          data: {
-            status: 'OCCUPIED',
-            currentOrderId: order.id
-          }
-        });
-      }
+        // Neu la don an tai ban -> cap nhat trang thai ban sang OCCUPIED
+        if (input.orderType === 'DINE_IN' && input.tableId) {
+          await tx.diningTable.update({
+            where: { id: input.tableId },
+            data: {
+              status: 'OCCUPIED',
+              currentOrderId: order.id
+            }
+          });
+        }
 
-      return order;
-    });
+        return { order, isDuplicate: false };
+      });
+    } catch (error) {
+      if (!input.idempotencyKey || !isUniqueConstraintError(error)) throw error;
+      const existing = await findExisting(prisma);
+      if (!existing) throw error;
+      assertMatchingRequest(existing.requestHash);
+      transactionResult = { order: existing, isDuplicate: true };
+    }
+
+    if (transactionResult.isDuplicate) return transactionResult;
+    const createdOrder = transactionResult.order;
 
     // 8. Phat su kien WebSocket realtime xuong KDS va POS
     emitToAll('order:new', { order: createdOrder });
@@ -194,7 +246,7 @@ export class OrdersService {
       });
     }
 
-    return { order: createdOrder, isDuplicate: false };
+    return transactionResult;
   }
 
   /**

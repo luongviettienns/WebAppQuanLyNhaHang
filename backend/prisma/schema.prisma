@@ -151,6 +151,7 @@ model Order {
 
   // Idempotency & Fingerprint
   idempotencyKey  String?
+  idempotencyScope String       @default("guest")
   requestHash     String?
 
   createdAt       DateTime      @default(now())
@@ -161,7 +162,7 @@ model Order {
   voidedByUser    User?         @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
   items           OrderItem[]
 
-  @@unique([createdByUserId, idempotencyKey])
+  @@unique([idempotencyScope, idempotencyKey])
 }
 
 model OrderItem {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import io, { Socket } from 'socket.io-client';
 import {
   CategoryDto,
@@ -16,6 +16,7 @@ import {
   OrderType
 } from '../api/contracts';
 import { useAuth } from './AuthContext';
+import { IdempotencyKeyStore } from '../lib/idempotency';
 
 export interface CartItem {
   menuItem: MenuItemDto;
@@ -97,6 +98,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [isLoadingTables, setIsLoadingTables] = useState<boolean>(true);
   const [activeTableId, setActiveTableId] = useState<number | null>(null);
   const [activeTableOrder, setActiveTableOrder] = useState<OrderDto | null>(null);
+  const orderIdempotency = useRef(new IdempotencyKeyStore());
 
   // 1. Fetch Menu from Backend API
   const fetchMenu = useCallback(async () => {
@@ -300,7 +302,13 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       notes: c.notes
     }));
 
-    const idempotencyKey = `idemp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const orderPayload = {
+      ...(orderType === 'DINE_IN' ? { tableId } : {}),
+      orderType,
+      items: itemsPayload,
+      notes
+    };
+    const idempotencyKey = orderIdempotency.current.get(JSON.stringify(orderPayload));
 
     try {
       const response = await fetch(`${API_URL}/api/orders`, {
@@ -309,13 +317,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({
-          ...(orderType === 'DINE_IN' ? { tableId } : {}),
-          orderType,
-          items: itemsPayload,
-          notes,
-          idempotencyKey
-        })
+        body: JSON.stringify({ ...orderPayload, idempotencyKey })
       });
 
       const json = await response.json();
@@ -324,6 +326,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       const order = (json as ApiResponse<{ order: OrderDto }>).data.order;
+      orderIdempotency.current.complete(idempotencyKey);
       if (orderType === 'DINE_IN') {
         setActiveTableId(tableId!);
         setActiveTableOrder(order);
