@@ -1,5 +1,14 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { ThemeColors, ThemeMode, lightTheme, darkTheme } from '../theme/colors';
+import React, { createContext, useCallback, useContext, useState } from 'react';
+import type { Role } from '../api/contracts';
+import {
+  ThemeColors,
+  ThemeMode,
+  ThemeRole,
+  defaultModeForRole,
+  darkTheme,
+  lightTheme,
+  storageKeyForRole
+} from '../theme/colors';
 
 interface ThemeContextType {
   themeMode: ThemeMode;
@@ -7,48 +16,52 @@ interface ThemeContextType {
   isDark: boolean;
   toggleTheme: () => void;
   setThemeMode: (mode: ThemeMode) => void;
+  setRoleTheme: (role: Role | 'GUEST') => void;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const THEME_STORAGE_KEY = 'crispy_bite_theme_mode';
+const savedThemeModeFor = (role: ThemeRole): ThemeMode | null => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const saved = window.localStorage.getItem(storageKeyForRole(role));
+      return saved === 'light' || saved === 'dark' ? saved : null;
+    }
+  } catch {
+    // Fall back to the role default when storage is unavailable.
+  }
+  return null;
+};
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [themeMode, setThemeModeState] = useState<ThemeMode>('light');
+  const [role, setRole] = useState<ThemeRole>('GUEST');
 
-  useEffect(() => {
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        const saved = window.localStorage.getItem(THEME_STORAGE_KEY) as ThemeMode | null;
-        if (saved === 'light' || saved === 'dark') {
-          setThemeModeState(saved);
-        }
-      }
-    } catch {
-      // Fallback silently if storage unavailable
-    }
-  }, []);
-
-  const setThemeMode = (mode: ThemeMode) => {
+  const setThemeMode = useCallback((mode: ThemeMode) => {
     setThemeModeState(mode);
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(THEME_STORAGE_KEY, mode);
+        window.localStorage.setItem(storageKeyForRole(role), mode);
       }
     } catch {
       // Ignore storage errors
     }
-  };
+  }, [role]);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     setThemeMode(themeMode === 'light' ? 'dark' : 'light');
-  };
+  }, [setThemeMode, themeMode]);
+
+  const setRoleTheme = useCallback((nextRole: ThemeRole) => {
+    setRole(nextRole);
+    setThemeModeState(savedThemeModeFor(nextRole) ?? defaultModeForRole(nextRole));
+  }, []);
 
   const theme = themeMode === 'dark' ? darkTheme : lightTheme;
   const isDark = themeMode === 'dark';
 
   return (
-    <ThemeContext.Provider value={{ themeMode, theme, isDark, toggleTheme, setThemeMode }}>
+    <ThemeContext.Provider value={{ themeMode, theme, isDark, toggleTheme, setThemeMode, setRoleTheme }}>
       {children}
     </ThemeContext.Provider>
   );

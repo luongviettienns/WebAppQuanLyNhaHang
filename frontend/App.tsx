@@ -1,12 +1,30 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import {
+  BarlowCondensed_600SemiBold,
+  BarlowCondensed_700Bold,
+  useFonts as useBarlowCondensedFonts
+} from '@expo-google-fonts/barlow-condensed';
+import {
+  Inter_400Regular,
+  Inter_500Medium,
+  Inter_600SemiBold,
+  Inter_700Bold,
+  useFonts as useInterFonts
+} from '@expo-google-fonts/inter';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
-import { AuthProvider } from './src/contexts/AuthContext';
+import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { RestaurantProvider } from './src/contexts/RestaurantContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 function AppContent() {
-  const { isDark } = useTheme();
+  const { isDark, setRoleTheme } = useTheme();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    setRoleTheme(user?.role ?? 'GUEST');
+  }, [setRoleTheme, user?.role]);
+
   return (
     <>
       <StatusBar style={isDark ? 'light' : 'dark'} />
@@ -16,6 +34,21 @@ function AppContent() {
 }
 
 export default function App() {
+  const [barlowFontsLoaded] = useBarlowCondensedFonts({
+    BarlowCondensed_600SemiBold,
+    BarlowCondensed_700Bold
+  });
+  const [interFontsLoaded] = useInterFonts({
+    Inter_400Regular,
+    Inter_500Medium,
+    Inter_600SemiBold,
+    Inter_700Bold
+  });
+
+  if (!barlowFontsLoaded || !interFontsLoaded) {
+    return null;
+  }
+
   return (
     <ThemeProvider>
       <AuthProvider>
