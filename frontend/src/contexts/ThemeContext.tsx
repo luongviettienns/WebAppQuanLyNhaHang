@@ -10,6 +10,7 @@ import {
   storageKeyForRole
 } from '../theme/colors';
 import { themeStorage } from '../lib/themeStorage';
+import { createThemePreferenceCoordinator } from './themePreferenceCoordinator';
 
 interface ThemeContextType {
   themeMode: ThemeMode;
@@ -28,10 +29,12 @@ const isThemeMode = (value: string | null): value is ThemeMode =>
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [themeMode, setThemeModeState] = useState<ThemeMode>('light');
   const [role, setRole] = useState<ThemeRole>('GUEST');
-  const roleThemeRequest = useRef(0);
+  const themePreferenceCoordinator = useRef(
+    createThemePreferenceCoordinator(setThemeModeState)
+  );
 
   const setThemeMode = useCallback((mode: ThemeMode) => {
-    setThemeModeState(mode);
+    themePreferenceCoordinator.current.applyManual(mode);
     void themeStorage.setItem(storageKeyForRole(role), mode);
   }, [role]);
 
@@ -40,15 +43,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [setThemeMode, themeMode]);
 
   const setRoleTheme = useCallback((nextRole: ThemeRole) => {
-    const request = ++roleThemeRequest.current;
     setRole(nextRole);
-    setThemeModeState(defaultModeForRole(nextRole));
+    const savedPreference = themeStorage
+      .getItem(storageKeyForRole(nextRole))
+      .then((savedMode) => isThemeMode(savedMode) ? savedMode : null);
 
-    void themeStorage.getItem(storageKeyForRole(nextRole)).then((savedMode) => {
-      if (roleThemeRequest.current === request && isThemeMode(savedMode)) {
-        setThemeModeState(savedMode);
-      }
-    });
+    themePreferenceCoordinator.current.restore(
+      defaultModeForRole(nextRole),
+      savedPreference
+    );
   }, []);
 
   const theme = themeMode === 'dark' ? darkTheme : lightTheme;
