@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useState } from 'react';
+import React, { createContext, useCallback, useContext, useRef, useState } from 'react';
 import type { Role } from '../api/contracts';
 import {
   ThemeColors,
@@ -9,6 +9,7 @@ import {
   lightTheme,
   storageKeyForRole
 } from '../theme/colors';
+import { themeStorage } from '../lib/themeStorage';
 
 interface ThemeContextType {
   themeMode: ThemeMode;
@@ -21,31 +22,17 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-const savedThemeModeFor = (role: ThemeRole): ThemeMode | null => {
-  try {
-    if (typeof window !== 'undefined' && window.localStorage) {
-      const saved = window.localStorage.getItem(storageKeyForRole(role));
-      return saved === 'light' || saved === 'dark' ? saved : null;
-    }
-  } catch {
-    // Fall back to the role default when storage is unavailable.
-  }
-  return null;
-};
+const isThemeMode = (value: string | null): value is ThemeMode =>
+  value === 'light' || value === 'dark';
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [themeMode, setThemeModeState] = useState<ThemeMode>('light');
   const [role, setRole] = useState<ThemeRole>('GUEST');
+  const roleThemeRequest = useRef(0);
 
   const setThemeMode = useCallback((mode: ThemeMode) => {
     setThemeModeState(mode);
-    try {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        window.localStorage.setItem(storageKeyForRole(role), mode);
-      }
-    } catch {
-      // Ignore storage errors
-    }
+    void themeStorage.setItem(storageKeyForRole(role), mode);
   }, [role]);
 
   const toggleTheme = useCallback(() => {
@@ -53,8 +40,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   }, [setThemeMode, themeMode]);
 
   const setRoleTheme = useCallback((nextRole: ThemeRole) => {
+    const request = ++roleThemeRequest.current;
     setRole(nextRole);
-    setThemeModeState(savedThemeModeFor(nextRole) ?? defaultModeForRole(nextRole));
+    setThemeModeState(defaultModeForRole(nextRole));
+
+    void themeStorage.getItem(storageKeyForRole(nextRole)).then((savedMode) => {
+      if (roleThemeRequest.current === request && isThemeMode(savedMode)) {
+        setThemeModeState(savedMode);
+      }
+    });
   }, []);
 
   const theme = themeMode === 'dark' ? darkTheme : lightTheme;

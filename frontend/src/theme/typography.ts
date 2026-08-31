@@ -24,9 +24,13 @@ export const typography = {
     extraBold: '700' as const
   },
   lineHeights: {
-    compact: 1.1,
-    normal: 1.4,
-    relaxed: 1.6
+    xs: 16,
+    sm: 20,
+    md: 24,
+    lg: 28,
+    xl: 32,
+    xxl: 40,
+    display: 40
   },
   numeric: {
     fontVariant: ['tabular-nums'] as const

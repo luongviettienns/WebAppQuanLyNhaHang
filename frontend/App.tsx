@@ -34,18 +34,20 @@ function AppContent() {
 }
 
 export default function App() {
-  const [barlowFontsLoaded] = useBarlowCondensedFonts({
+  const [barlowFontsLoaded, barlowFontsError] = useBarlowCondensedFonts({
     BarlowCondensed_600SemiBold,
     BarlowCondensed_700Bold
   });
-  const [interFontsLoaded] = useInterFonts({
+  const [interFontsLoaded, interFontsError] = useInterFonts({
     Inter_400Regular,
     Inter_500Medium,
     Inter_600SemiBold,
     Inter_700Bold
   });
 
-  if (!barlowFontsLoaded || !interFontsLoaded) {
+  const fontLoadFailed = Boolean(barlowFontsError || interFontsError);
+
+  if (!fontLoadFailed && (!barlowFontsLoaded || !interFontsLoaded)) {
     return null;
   }
 
