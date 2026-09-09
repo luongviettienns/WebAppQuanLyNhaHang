@@ -2,6 +2,13 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 export function getApiBaseUrl(): string {
+  // Neu dang chay tren Web trong browser, luon dung origin hien tai cua trang web
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+    if (window.location.origin.startsWith('http')) {
+      return window.location.origin;
+    }
+  }
+
   if (process.env.EXPO_PUBLIC_API_URL && !process.env.EXPO_PUBLIC_API_URL.includes('localhost')) {
     return process.env.EXPO_PUBLIC_API_URL;
   }
@@ -27,6 +34,12 @@ export function getApiBaseUrl(): string {
 }
 
 export function getSocketBaseUrl(): string {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+    if (window.location.origin.startsWith('http')) {
+      return window.location.origin;
+    }
+  }
+
   if (process.env.EXPO_PUBLIC_SOCKET_URL && !process.env.EXPO_PUBLIC_SOCKET_URL.includes('localhost')) {
     return process.env.EXPO_PUBLIC_SOCKET_URL;
   }

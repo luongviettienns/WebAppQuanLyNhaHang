@@ -94,6 +94,7 @@ export const RoleTabs: React.FC = () => {
           </TouchableOpacity>
 
           <TouchableOpacity
+            testID="btn-logout"
             style={[styles.logoutButton, { backgroundColor: isDark ? '#7F1D1D' : '#FEE2E2' }]}
             onPress={logout}
           >
@@ -110,10 +111,11 @@ export const RoleTabs: React.FC = () => {
       {/* Role-Gated Bottom / Top Tab Bar */}
       {tabs.length > 1 && (
         <View style={[styles.tabBar, { backgroundColor: theme.tabBarBg, borderTopColor: theme.border }]}>
-          {tabs.map(tab => {
+          {tabs.map((tab) => {
             const isActive = activeTab === tab.key;
             return (
               <TouchableOpacity
+                testID={`tab-${tab.key}`}
                 key={tab.key}
                 style={[
                   styles.tabButton,

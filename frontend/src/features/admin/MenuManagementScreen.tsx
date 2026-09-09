@@ -330,6 +330,7 @@ export const MenuManagementScreen: React.FC = () => {
         </View>
 
         <TouchableOpacity
+          testID="admin-btn-add-item"
           style={[styles.createBtn, { backgroundColor: theme.primary }]}
           onPress={openCreateModal}
           accessibilityLabel="Thêm món ăn mới"
@@ -419,7 +420,7 @@ export const MenuManagementScreen: React.FC = () => {
           <Text style={styles.emptyIcon}>🍽️</Text>
           <Text style={[styles.emptyText, { color: theme.text }]}>Không tìm thấy món ăn nào</Text>
           <Text style={[styles.emptySubtext, { color: theme.textMuted }]}>
-            Hãy thử tìm kiếm với từ khóa khác hoặc nhấn "➕ Thêm Món Mới"
+            Hãy thử tìm kiếm với từ khóa khác hoặc nhấn &quot;➕ Thêm Món Mới&quot;
           </Text>
         </View>
       ) : (
@@ -448,7 +449,7 @@ export const MenuManagementScreen: React.FC = () => {
                   )}
                   {!item.isAvailable && (
                     <View style={styles.soldOutBadgeOverlay}>
-                      <Text style={styles.soldOutBadgeText}>86'd</Text>
+                      <Text style={styles.soldOutBadgeText}>86&apos;d</Text>
                     </View>
                   )}
                 </View>
@@ -495,6 +496,7 @@ export const MenuManagementScreen: React.FC = () => {
                       <ActivityIndicator size="small" color={theme.primary} />
                     ) : (
                       <Switch
+                        testID={`menu-item-switch-${item.id}`}
                         value={item.isAvailable}
                         onValueChange={() => handleToggleSoldOut(item)}
                         trackColor={{ false: '#EF4444', true: '#10B981' }}
@@ -671,7 +673,7 @@ export const MenuManagementScreen: React.FC = () => {
                 {form.modifierGroups.length === 0 ? (
                   <View style={[styles.noModBox, { borderColor: theme.border }]}>
                     <Text style={[styles.noModText, { color: theme.textMuted }]}>
-                      Món này chưa có nhóm tùy chọn nào. Nhấn "Thêm Nhóm" nếu có yêu cầu chọn size, vị, topping...
+                      Món này chưa có nhóm tùy chọn nào. Nhấn &quot;Thêm Nhóm&quot; nếu có yêu cầu chọn size, vị, topping...
                     </Text>
                   </View>
                 ) : (

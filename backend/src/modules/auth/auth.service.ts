@@ -59,6 +59,9 @@ export class AuthService {
       throw new ApiError(401, 'INVALID_CREDENTIALS', 'Tên đăng nhập hoặc mật khẩu không chính xác');
     }
 
+    // Đăng nhập thành công -> Xóa bộ đếm rate limit của IP này để người dùng hợp lệ không bị khóa
+    rateLimitStore.delete(clientIp);
+
     // 4. Tao ma JWT Token HS256
     const payload = {
       sub: user.id.toString(),

@@ -376,7 +376,7 @@ export class OrdersService {
    * Chuyen trang thai don hang theo Finite State Machine (FSM):
    * PENDING -> PREPARING -> READY -> COMPLETED
    */
-  static async updateOrderStatus(orderId: number, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED', userId?: number) {
+  static async updateOrderStatus(orderId: number, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED', _userId?: number) {
     const order = await prisma.order.findUnique({
       where: { id: orderId },
       include: {

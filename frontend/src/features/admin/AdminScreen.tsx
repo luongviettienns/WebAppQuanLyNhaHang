@@ -23,6 +23,7 @@ export const AdminScreen: React.FC = () => {
         {/* Sub Navigation Segmented Tabs */}
         <View style={[styles.tabBar, { backgroundColor: isDark ? '#3B0764' : '#6D28D9' }]}>
           <TouchableOpacity
+            testID="admin-subtab-menu"
             style={[
               styles.tabBtn,
               activeTab === 'menu' && (isDark ? styles.tabBtnActiveDark : styles.tabBtnActiveLight)
@@ -42,6 +43,7 @@ export const AdminScreen: React.FC = () => {
           </TouchableOpacity>
 
           <TouchableOpacity
+            testID="admin-subtab-reports"
             style={[
               styles.tabBtn,
               activeTab === 'reports' && (isDark ? styles.tabBtnActiveDark : styles.tabBtnActiveLight)

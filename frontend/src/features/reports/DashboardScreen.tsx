@@ -169,7 +169,7 @@ export const DashboardScreen: React.FC = () => {
         {/* 4 Primary KPI Cards */}
         <View style={styles.kpiGrid}>
           {/* KPI 1: Doanh Thu */}
-          <View style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View testID="kpi-revenue" style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={styles.kpiHeader}>
               <Text style={[styles.kpiTitle, { color: theme.textMuted }]}>TỔNG DOANH THU</Text>
               <Text style={styles.kpiIcon}>💵</Text>
@@ -183,7 +183,7 @@ export const DashboardScreen: React.FC = () => {
           </View>
 
           {/* KPI 2: Tổng Số Đơn */}
-          <View style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View testID="kpi-orders" style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={styles.kpiHeader}>
               <Text style={[styles.kpiTitle, { color: theme.textMuted }]}>TỔNG ĐƠN HÀNG</Text>
               <Text style={styles.kpiIcon}>🧾</Text>
@@ -202,7 +202,7 @@ export const DashboardScreen: React.FC = () => {
           </View>
 
           {/* KPI 3: Giá Trị Đơn Trung Bình (AOV) */}
-          <View style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View testID="kpi-aov" style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={styles.kpiHeader}>
               <Text style={[styles.kpiTitle, { color: theme.textMuted }]}>GIÁ TRỊ TRUNG BÌNH (AOV)</Text>
               <Text style={styles.kpiIcon}>🎯</Text>
@@ -214,7 +214,7 @@ export const DashboardScreen: React.FC = () => {
           </View>
 
           {/* KPI 4: Tốc Độ Phục Vụ SOS */}
-          <View style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+          <View testID="kpi-sos" style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={styles.kpiHeader}>
               <Text style={[styles.kpiTitle, { color: theme.textMuted }]}>TỐC ĐỘ PHỤC VỤ (SOS)</Text>
               <Text style={styles.kpiIcon}>⏱️</Text>

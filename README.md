@@ -70,7 +70,74 @@ npm run dev:frontend
 
 ---
 
-## 5. Quy Chuan Git & Commit
+### Buoc 5: Dat lai du lieu mau ban dau (Reset Database)
+Khi can reset database ve trang thai seed chuan:
+```bash
+npm run db:reset
+```
+
+---
+
+## 5. Tai Khoan Dang Nhap Mau (Default Seed Accounts)
+
+Tat ca tai khoan mac dinh co mat khau la: `123456`
+
+| Vai tro (Role) | Ten dang nhap (Username) | Mat khau (Password) | Pham vi truy cap (Access Scope) |
+| :--- | :--- | :--- | :--- |
+| **Thu ngan (CASHIER)** | `cashier` | `123456` | POS dat mon, So do ban an, Hoa don |
+| **Nha bep (KITCHEN)** | `kitchen` | `123456` | KDS bep Dark Mode, Bao het mon (86'd), Prep Timer |
+| **Quan tri (ADMIN)** | `admin` | `123456` | Toan quyen: Menu, Void huy don, Bao cao KPI & SOS |
+
+*(Tren giao dien Web Login co thanh Demo Bar 1-cham giup chuyen doi tai khoan tuc thi)*
+
+---
+
+## 6. Kich Ban Demo Hai Thiet Bi Real-Time (Two-Device Live Demo)
+
+1. **Cua so 1 (Thu ngan POS)**:
+   - Mo trinh duyet o che do Desktop (hoac Tablet), dang nhap tai khoan `cashier`.
+   - Vao tab **POS**, chon mon **Combo Ga Gion**, chon Size L va Vi Cay (bat buoc).
+   - Bam **Tao don hang**, chon hinh thuc **Tai ban (Dine-in)** va chon **Ban 01**.
+   - Don hang duoc tao va hien thi **Hoa don dien tu**.
+
+2. **Cua so 2 (Nha bep KDS)**:
+   - Mo trinh duyet song song (tab an danh hoac thiet bi khac), dang nhap tai khoan `kitchen`.
+   - Giao dien KDS tu dong nhan don hang moi tu Bàn 01 qua **WebSocket real-time** ma khong can tai lai trang.
+   - Thoi gian cho chuyen tu Xanh sang Vang va Do theo thoi gian chuan bi thuc te.
+   - Nhan vien bep bam **Che bien (PREPARING)** $\rightarrow$ **San sang (READY)**.
+   - Trạng thai tuc thi duoc dong bo nguoc ve POS va Live Tracker cua khach tai ban.
+
+3. **Quan ly Menu & Bao cao (Admin)**:
+   - Dang nhap `admin` $\rightarrow$ vao **Quan ly Menu** de bat/tat trang thai het mon (86'd).
+   - Vao **Bao cao Doanh thu** de xem doanh thu thuan, bieu do don hang, SOS va xuat hoa don PDF.
+
+---
+
+## 7. Chay Kiem Thu Tu Dong (Automated Test Suites)
+
+```bash
+# 1. Chay toan bo Unit & Integration tests (111 tests pass 100%)
+npm run test
+
+# 2. Kiem tra tinh hop le TypeScript (0 loi)
+npm run typecheck
+
+# 3. Kiem tra quy chuan Expo SDK 54 (18/18 checks pass)
+npm run doctor
+
+# 4. Kiem tra tieu chuan lint ESLint
+npm run lint
+
+# 5. Chay kiem thu E2E Playwright tren ca Desktop va Mobile Viewport (4 tests pass 100%)
+npm run test:e2e
+
+# 6. Kiem tra chat luong tong hop truoc khi release
+npm run check:all
+```
+
+---
+
+## 8. Quy Chuan Git & Commit
 Du an ap dung **Conventional Commits** voi noi dung mo ta bang **tieng Viet khong dau** de dam bao nhat quan va chuyen nghiep:
 - `feat(scope): ...` (Tinh nang moi)
 - `fix(scope): ...` (Sua loi)

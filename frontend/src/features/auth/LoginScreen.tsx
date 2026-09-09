@@ -99,6 +99,7 @@ export const LoginScreen: React.FC = () => {
             <View style={styles.inputGroup}>
               <Text style={[styles.label, { color: theme.text }]}>Tên đăng nhập</Text>
               <TextInput
+                testID="input-username"
                 style={[
                   styles.input,
                   {
@@ -119,6 +120,7 @@ export const LoginScreen: React.FC = () => {
             <View style={styles.inputGroup}>
               <Text style={[styles.label, { color: theme.text }]}>Mật khẩu</Text>
               <TextInput
+                testID="input-password"
                 style={[
                   styles.input,
                   {
@@ -137,6 +139,7 @@ export const LoginScreen: React.FC = () => {
             </View>
 
             <TouchableOpacity
+              testID="btn-login"
               style={[styles.loginButton, { backgroundColor: theme.primary }, isLoading && styles.buttonDisabled]}
               onPress={handleLogin}
               disabled={isLoading}
@@ -160,6 +163,7 @@ export const LoginScreen: React.FC = () => {
             {/* Quick Demo Login Bar */}
             <View style={styles.demoBar}>
               <TouchableOpacity
+                testID="demo-btn-cashier"
                 style={[
                   styles.demoButton,
                   {
@@ -176,6 +180,7 @@ export const LoginScreen: React.FC = () => {
               </TouchableOpacity>
 
               <TouchableOpacity
+                testID="demo-btn-kitchen"
                 style={[
                   styles.demoButton,
                   {
@@ -192,6 +197,7 @@ export const LoginScreen: React.FC = () => {
               </TouchableOpacity>
 
               <TouchableOpacity
+                testID="demo-btn-admin"
                 style={[
                   styles.demoButton,
                   {

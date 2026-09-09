@@ -1,0 +1,107 @@
+import { test, expect } from '@playwright/test';
+
+test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
+  test.beforeEach(async ({ page }) => {
+    // Navigate to local Crispy Bite Web App
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+  });
+
+  test('should login as Cashier, order combo with required modifier, send to kitchen, view receipt, and advance status in KDS', async ({ page }) => {
+    // 1. Login using Cashier Demo Button
+    const cashierBtn = page.getByTestId('demo-btn-cashier');
+    await expect(cashierBtn).toBeVisible({ timeout: 10000 });
+    await cashierBtn.click();
+
+    // Verify logged in and POS Tab is visible
+    const posTab = page.getByTestId('tab-pos');
+    await expect(posTab).toBeVisible({ timeout: 10000 });
+
+    // 2. Select first combo menu item (requires modifiers)
+    const firstMenuItem = page.locator('[data-testid^="menu-item-"]').first();
+    await expect(firstMenuItem).toBeVisible({ timeout: 8000 });
+    await firstMenuItem.click();
+
+    // 3. Modifier Modal appears
+    const addToCartBtn = page.getByTestId('btn-modal-add-to-cart');
+    await expect(addToCartBtn).toBeVisible({ timeout: 5000 });
+
+    // If mandatory modifier is required, select the first available modifier option
+    const firstModifierOpt = page.locator('[data-testid^="modifier-option-"]').first();
+    if (await firstModifierOpt.isVisible()) {
+      await firstModifierOpt.click();
+    }
+
+    // Confirm adding to cart
+    await expect(addToCartBtn).toBeEnabled();
+    await addToCartBtn.click();
+
+    // 4. Open Checkout
+    const openCheckoutBtn = page.getByTestId('btn-open-checkout');
+    await expect(openCheckoutBtn).toBeVisible({ timeout: 5000 });
+    await openCheckoutBtn.click();
+
+    // 5. Select Dine-in and choose table 01
+    const dineInBtn = page.getByTestId('btn-dinein');
+    await expect(dineInBtn).toBeVisible();
+    await dineInBtn.click();
+
+    const table1Btn = page.getByTestId('pos-table-option-1');
+    if (await table1Btn.isVisible()) {
+      await table1Btn.click();
+    }
+
+    // 6. Submit order to kitchen
+    const confirmOrderBtn = page.getByTestId('btn-confirm-order');
+    await expect(confirmOrderBtn).toBeVisible();
+    await confirmOrderBtn.click();
+
+    // 7. Verify success panel and view receipt
+    const viewReceiptBtn = page.getByTestId('btn-view-receipt');
+    await expect(viewReceiptBtn).toBeVisible({ timeout: 8000 });
+    await viewReceiptBtn.click();
+
+    // Assert thermal receipt modal is open and shows VAT
+    const receiptModal = page.getByTestId('receipt-modal');
+    await expect(receiptModal).toBeVisible({ timeout: 5000 });
+    await expect(page.getByText('CRISPY BITE QSR')).toBeVisible();
+    await expect(page.getByText('Thuế GTGT (VAT 8%)')).toBeVisible();
+
+    // Close receipt modal
+    const closeReceiptBtn = page.getByTestId('btn-close-receipt');
+    if (await closeReceiptBtn.isVisible()) {
+      await closeReceiptBtn.click();
+    }
+
+    // Done order
+    const doneOrderBtn = page.getByTestId('btn-done-order');
+    if (await doneOrderBtn.isVisible()) {
+      await doneOrderBtn.click();
+    }
+
+    // 8. Logout
+    const logoutBtn = page.getByTestId('btn-logout');
+    await expect(logoutBtn).toBeVisible();
+    await logoutBtn.click();
+
+    // 9. Login as Kitchen (KDS)
+    const kitchenBtn = page.getByTestId('demo-btn-kitchen');
+    await expect(kitchenBtn).toBeVisible({ timeout: 10000 });
+    await kitchenBtn.scrollIntoViewIfNeeded();
+    await kitchenBtn.click();
+
+    // Verify KDS screen
+    await expect(page.getByTestId('kds-screen-title')).toBeVisible({ timeout: 15000 });
+
+    // Verify at least one order action button is visible and transition it
+    const kdsActionBtn = page.locator('[data-testid^="kds-action-btn-"]').first();
+    if (await kdsActionBtn.isVisible()) {
+      const initialText = await kdsActionBtn.textContent();
+      await kdsActionBtn.click();
+      // Wait for state transition
+      await page.waitForTimeout(1000);
+      const updatedText = await kdsActionBtn.textContent();
+      expect(updatedText).not.toBe(initialText);
+    }
+  });
+});

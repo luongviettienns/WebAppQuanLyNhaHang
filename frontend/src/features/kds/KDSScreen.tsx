@@ -13,7 +13,7 @@ import {
 import { useTheme } from '../../contexts/ThemeContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { typography, spacing } from '../../theme';
-import { OrderDto, OrderStatus, MenuItemDto } from '../../api/contracts';
+import { OrderDto, MenuItemDto } from '../../api/contracts';
 
 type FilterTab = 'ALL' | 'PENDING' | 'PREPARING' | 'READY';
 
@@ -138,7 +138,7 @@ export const KDSScreen: React.FC = () => {
       {/* 1. KDS Header with Theme Switcher & Refresh */}
       <View style={[styles.header, { backgroundColor: isDark ? '#0F172A' : '#0284C7', borderBottomColor: theme.border }]}>
         <View style={styles.headerTitleGroup}>
-          <Text style={styles.title}>🍳 KDS BẾP (KITCHEN DISPLAY SYSTEM)</Text>
+          <Text testID="kds-screen-title" style={styles.title}>🍳 KDS BẾP (KITCHEN DISPLAY SYSTEM)</Text>
           <Text style={[styles.subtitle, { color: isDark ? '#94A3B8' : '#E0F2FE' }]}>
             {kdsOrders.length} đơn hàng đang xử lý thời gian thực
           </Text>
@@ -153,7 +153,7 @@ export const KDSScreen: React.FC = () => {
             }}
             accessibilityLabel="Quản lý món hết hàng 86'd"
           >
-            <Text style={styles.headerBtnText}>📦 Báo hết món (86'd)</Text>
+            <Text style={styles.headerBtnText}>📦 Báo hết món (86&apos;d)</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -248,6 +248,7 @@ export const KDSScreen: React.FC = () => {
 
             return (
               <View
+                testID={`kds-card-${order.code}`}
                 key={order.id}
                 style={[
                   styles.orderCard,
@@ -346,6 +347,7 @@ export const KDSScreen: React.FC = () => {
                 <View style={[styles.cardFooter, { borderTopColor: theme.border }]}>
                   {order.status === 'PENDING' && (
                     <TouchableOpacity
+                      testID={`kds-action-btn-${order.code}`}
                       style={[styles.actionBtn, { backgroundColor: '#EA580C' }]}
                       onPress={() => handleTransition(order)}
                       disabled={isUpdating}
@@ -360,6 +362,7 @@ export const KDSScreen: React.FC = () => {
 
                   {order.status === 'PREPARING' && (
                     <TouchableOpacity
+                      testID={`kds-action-btn-${order.code}`}
                       style={[styles.actionBtn, { backgroundColor: '#16A34A' }]}
                       onPress={() => handleTransition(order)}
                       disabled={isUpdating}
@@ -374,6 +377,7 @@ export const KDSScreen: React.FC = () => {
 
                   {order.status === 'READY' && (
                     <TouchableOpacity
+                      testID={`kds-action-btn-${order.code}`}
                       style={[styles.actionBtn, { backgroundColor: '#0284C7' }]}
                       onPress={() => handleTransition(order)}
                       disabled={isUpdating}
@@ -399,7 +403,7 @@ export const KDSScreen: React.FC = () => {
             <View style={[styles.soldOutModalHeader, { borderBottomColor: theme.border }]}>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.soldOutModalTitle, { color: theme.text }]}>
-                  📦 Báo Hết Món Bếp (86'd Menu)
+                  📦 Báo Hết Món Bếp (86&apos;d Menu)
                 </Text>
                 <Text style={[styles.soldOutModalSubtitle, { color: theme.textMuted }]}>
                   Bật/tắt trạng thái món ăn. Máy POS và Khách đặt QR sẽ cập nhật ngay sau khi máy chủ xác nhận.
@@ -500,15 +504,17 @@ const styles = StyleSheet.create({
     flex: 1
   },
   header: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
     borderBottomWidth: 1
   },
   headerTitleGroup: {
-    flex: 1
+    minWidth: 200
   },
   title: {
     color: '#FFFFFF',
@@ -522,7 +528,8 @@ const styles = StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.sm
+    flexWrap: 'wrap',
+    gap: spacing.xs
   },
   headerBtn: {
     paddingHorizontal: spacing.md,

@@ -2,18 +2,19 @@
   "name": "crispy-bite-backend",
   "version": "1.0.0",
   "private": true,
-  "main": "dist/server.js",
+  "main": "dist/src/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only --exit-child src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "node dist/src/server.js",
     "test": "vitest run --fileParallelism=false",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:seed": "ts-node-dev prisma/seed.ts"
+    "prisma:seed": "ts-node-dev prisma/seed.ts",
+    "db:reset": "ts-node-dev src/scripts/reset-db.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",

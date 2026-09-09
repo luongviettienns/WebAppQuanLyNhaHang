@@ -23,6 +23,10 @@
     "doctor": "npm run doctor --workspace=frontend",
     "lint": "npm run lint --workspaces --if-present",
     "build:backend": "npm run build --workspace=backend",
+    "build:frontend": "npm run build --workspace=frontend",
+    "build": "npm run build:frontend && npm run build:backend",
+    "db:reset": "npm run db:reset --workspace=backend",
+    "test:e2e": "playwright test",
     "check": "npm run typecheck && npm run doctor && npm run test:backend",
     "check:all": "npm run typecheck && npm run lint && npm run doctor && npm run test"
   },
@@ -37,5 +41,8 @@
     "socket.io"
   ],
   "author": "luongviettienns",
-  "license": "UNLICENSED"
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@playwright/test": "^1.63.0"
+  }
 }

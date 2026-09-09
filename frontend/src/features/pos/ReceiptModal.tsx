@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import {
   StyleSheet,
   Text,
@@ -69,11 +69,11 @@ export const ReceiptModal: React.FC<Props> = ({ visible, order, onClose }) => {
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <SafeAreaView style={styles.overlay}>
-        <View style={[styles.container, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: theme.border }]}>
+        <View testID="receipt-modal" style={[styles.container, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: theme.border }]}>
           {/* Top Actions */}
           <View style={[styles.topActions, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.modalHeading, { color: theme.text }]}>Hóa Đơn Bán Hàng</Text>
-            <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
+            <Text testID="receipt-modal-title" style={[styles.modalHeading, { color: theme.text }]}>Hóa Đơn Bán Hàng</Text>
+            <TouchableOpacity testID="btn-close-receipt" onPress={onClose} style={styles.closeBtn}>
               <Text style={[styles.closeBtnText, { color: theme.textMuted }]}>✕</Text>
             </TouchableOpacity>
           </View>

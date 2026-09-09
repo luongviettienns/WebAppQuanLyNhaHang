@@ -202,6 +202,7 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
                       const isSelected = currentSelected.includes(opt.id);
                       return (
                         <TouchableOpacity
+                          testID={`modifier-option-${opt.id}`}
                           key={opt.id}
                           style={[
                             styles.optionItem,
@@ -298,6 +299,7 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
             </View>
 
             <TouchableOpacity
+              testID="btn-modal-add-to-cart"
               style={[
                 styles.confirmButton,
                 { backgroundColor: theme.primary },

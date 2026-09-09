@@ -159,6 +159,7 @@ export const POSScreen: React.FC = () => {
             </TouchableOpacity>
 
             <TouchableOpacity
+              testID="btn-open-checkout"
               style={[styles.checkoutBtn, { backgroundColor: theme.primary }]}
               onPress={handleOpenConfirmModal}
             >
@@ -195,12 +196,14 @@ export const POSScreen: React.FC = () => {
                 <Text style={styles.successText}>Đã gửi đơn {successOrderCode} xuống bếp thành công!</Text>
                 <View style={styles.successActionsRow}>
                   <TouchableOpacity
+                    testID="btn-view-receipt"
                     style={[styles.receiptBtn, { backgroundColor: theme.primary }]}
                     onPress={() => setIsReceiptModalOpen(true)}
                   >
                     <Text style={styles.receiptBtnText}>🧾 Xem Hóa Đơn</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
+                    testID="btn-done-order"
                     style={[styles.doneBtn, { backgroundColor: isDark ? '#334155' : '#1E293B' }]}
                     onPress={handleCloseConfirmModal}
                   >
@@ -213,6 +216,7 @@ export const POSScreen: React.FC = () => {
                 <Text style={[styles.fieldLabel, { color: theme.text }]}>Hình thức phục vụ:</Text>
                 <View style={styles.orderTypeRow}>
                   <TouchableOpacity
+                    testID="btn-dinein"
                     style={[
                       styles.typeBtn,
                       { borderColor: theme.border, backgroundColor: isDark ? '#0F172A' : '#FFFFFF' },
@@ -228,6 +232,7 @@ export const POSScreen: React.FC = () => {
                     </Text>
                   </TouchableOpacity>
                   <TouchableOpacity
+                    testID="btn-takeaway"
                     style={[
                       styles.typeBtn,
                       { borderColor: theme.border, backgroundColor: isDark ? '#0F172A' : '#FFFFFF' },
@@ -250,6 +255,7 @@ export const POSScreen: React.FC = () => {
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tableScroller}>
                       {selectableTables.map((table) => (
                         <TouchableOpacity
+                          testID={`pos-table-option-${table.tableNumber}`}
                           key={table.id}
                           style={[
                             styles.tableBtn,
@@ -279,6 +285,7 @@ export const POSScreen: React.FC = () => {
                 {submitError && <Text style={[styles.submitError, { color: theme.danger }]}>{submitError}</Text>}
 
                 <TouchableOpacity
+                  testID="btn-confirm-order"
                   style={[styles.submitOrderBtn, { backgroundColor: theme.primary }, isSubmitting && styles.submitOrderBtnDisabled]}
                   disabled={isSubmitting}
                   onPress={handleConfirmOrder}

@@ -34,6 +34,8 @@ web-build/
 coverage/
 *.lcov
 .nyc_output/
+test-results/
+playwright-report/
 
 # Prisma generated clients
 backend/prisma/generated/

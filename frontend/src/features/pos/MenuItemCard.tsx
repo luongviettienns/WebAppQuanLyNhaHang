@@ -35,6 +35,7 @@ export const MenuItemCard: React.FC<Props> = ({ item, onPress }) => {
 
   return (
     <TouchableOpacity
+      testID={`menu-item-${item.id}`}
       style={[
         styles.card,
         { backgroundColor: theme.card, borderColor: theme.border },
@@ -49,7 +50,7 @@ export const MenuItemCard: React.FC<Props> = ({ item, onPress }) => {
         <Text style={styles.emoji}>{getItemEmoji(item.name)}</Text>
         {!isAvailable && (
           <View style={styles.soldOutOverlay}>
-            <Text style={styles.soldOutText}>HẾT HÀNG (86'd)</Text>
+            <Text style={styles.soldOutText}>HẾT HÀNG (86&apos;d)</Text>
           </View>
         )}
       </View>

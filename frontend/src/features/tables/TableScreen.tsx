@@ -252,6 +252,7 @@ export const TableScreen: React.FC = () => {
 
             return (
               <TouchableOpacity
+                testID={`table-card-${table.tableNumber}`}
                 key={table.id}
                 style={[
                   styles.tableCard,
@@ -318,9 +319,9 @@ export const TableScreen: React.FC = () => {
       {/* Table Detail & Checkout Modal */}
       <Modal visible={isDetailModalOpen} transparent animationType="slide">
         <View style={[styles.modalBackdrop, { backgroundColor: theme.overlay }]}>
-          <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.card }]}>
+          <SafeAreaView testID="table-detail-modal" style={[styles.modalContainer, { backgroundColor: theme.card }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>
+              <Text testID="table-detail-title" style={[styles.modalTitle, { color: theme.text }]}>
                 🍽️ Chi Tiết Bàn {selectedTable?.tableNumber} -{' '}
                 {selectedTable ? getStatusColor(selectedTable.status).label : ''}
               </Text>
@@ -513,6 +514,7 @@ export const TableScreen: React.FC = () => {
 
                   {/* Pay Action Button */}
                   <TouchableOpacity
+                    testID="btn-confirm-pay"
                     style={[
                       styles.payConfirmBtn,
                       { backgroundColor: theme.primary },
@@ -533,6 +535,7 @@ export const TableScreen: React.FC = () => {
                   {/* Admin Audited Void Action */}
                   {user?.role === 'ADMIN' && (
                     <TouchableOpacity
+                      testID="btn-open-void-modal"
                       style={[styles.adminVoidBtn, { borderColor: '#EF4444' }]}
                       onPress={handleOpenVoidModal}
                       disabled={isProcessingPay || isProcessingVoid}
@@ -549,6 +552,7 @@ export const TableScreen: React.FC = () => {
                     Bàn ăn vừa dùng xong và chưa được lau dọn. Sau khi dọn sạch bàn ghế, vui lòng xác nhận bên dưới.
                   </Text>
                   <TouchableOpacity
+                    testID="btn-confirm-clean-table"
                     style={[styles.cleanConfirmBtn, { backgroundColor: '#F59E0B' }]}
                     onPress={() => handleCleanTable(selectedTable.id)}
                     disabled={isProcessingClean}
@@ -622,6 +626,7 @@ export const TableScreen: React.FC = () => {
               Lý do hủy đơn (Bắt buộc, tối thiểu 3 ký tự):
             </Text>
             <TextInput
+              testID="input-void-reason"
               style={[
                 styles.voidInput,
                 {
@@ -653,6 +658,7 @@ export const TableScreen: React.FC = () => {
               </TouchableOpacity>
 
               <TouchableOpacity
+                testID="btn-confirm-void"
                 style={[
                   styles.voidConfirmBtn,
                   { backgroundColor: '#EF4444' },

@@ -1,5 +1,7 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import path from 'path';
+import fs from 'fs';
 import { env } from './config/env';
 import { systemRouter } from './modules/system/system.routes';
 import { authRouter } from './modules/auth/auth.routes';
@@ -46,6 +48,24 @@ app.use('/api/reports', reportsRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);
+
+// Frontend static distribution (neu ton tai va khong phai moi truong test)
+const possibleFrontendPaths = [
+  path.resolve(__dirname, '../../frontend/dist'),
+  path.resolve(process.cwd(), '../frontend/dist'),
+  path.resolve(process.cwd(), 'frontend/dist')
+];
+const frontendDist = possibleFrontendPaths.find((p) => fs.existsSync(p));
+
+if (process.env.NODE_ENV !== 'test' && frontendDist) {
+  app.use(express.static(frontendDist));
+  app.get('*', (req: Request, res: Response, next) => {
+    if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+      return next();
+    }
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
 
 // 404 Handler cho cac endpoint khong hop le
 app.use(notFoundHandler);
