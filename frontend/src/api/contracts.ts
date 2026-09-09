@@ -205,6 +205,7 @@ export interface SocketOrderStatusChangedPayload {
   code: string;
   status: OrderStatus;
   prepTimeSec?: number;
+  preparingAt?: string;
   readyAt?: string;
   completedAt?: string;
 }

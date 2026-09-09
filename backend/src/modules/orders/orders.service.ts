@@ -1,6 +1,6 @@
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
-import { emitToAll } from '../../lib/socket';
+import { emitToAll, emitToRoom } from '../../lib/socket';
 import { CreateOrderInput, PayOrderInput } from './orders.schemas';
 import { PaymentMethod } from '@prisma/client';
 import { createHash } from 'crypto';
@@ -190,6 +190,7 @@ export class OrdersService {
             orderType: input.orderType,
             status: 'PENDING',
             tableId: input.tableId,
+            buzzerNumber: input.buzzerNumber,
             totalAmount,
             vatAmount,
             finalAmount,
@@ -236,8 +237,8 @@ export class OrdersService {
     if (transactionResult.isDuplicate) return transactionResult;
     const createdOrder = transactionResult.order;
 
-    // 8. Phat su kien WebSocket realtime xuong KDS va POS
-    emitToAll('order:new', { order: createdOrder });
+    // Phat su kien don hang moi chi vao phong KDS bep
+    emitToRoom('restaurant:kds', 'order:new', { order: createdOrder });
 
     if (targetTable) {
       emitToAll('table:statusChanged', {
@@ -349,4 +350,146 @@ export class OrdersService {
 
     return { order: updatedOrder };
   }
+
+  /**
+   * Lay danh sach don hang cho man hinh bep KDS hoac quan ly
+   */
+  static async getOrders(filter?: { status?: string[] }) {
+    const where: any = {};
+    if (filter?.status && filter.status.length > 0) {
+      where.status = { in: filter.status };
+    }
+
+    const orders = await prisma.order.findMany({
+      where,
+      orderBy: { createdAt: 'asc' },
+      include: {
+        items: true,
+        table: { select: { id: true, tableNumber: true } }
+      }
+    });
+
+    return orders.map(formatOrderDto);
+  }
+
+  /**
+   * Chuyen trang thai don hang theo Finite State Machine (FSM):
+   * PENDING -> PREPARING -> READY -> COMPLETED
+   */
+  static async updateOrderStatus(orderId: number, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED', userId?: number) {
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        items: true,
+        table: { select: { id: true, tableNumber: true } }
+      }
+    });
+
+    if (!order) {
+      throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
+    }
+
+    // FSM State transitions: PENDING -> PREPARING -> READY -> COMPLETED
+    const validTransitions: Record<string, string[]> = {
+      PENDING: ['PREPARING'],
+      PREPARING: ['READY'],
+      READY: ['COMPLETED']
+    };
+
+    const allowed = validTransitions[order.status];
+    if (!allowed || !allowed.includes(nextStatus)) {
+      throw ApiError.orderStateInvalid(
+        `Không thể chuyển trạng thái từ ${order.status} sang ${nextStatus}. Luồng trạng thái hợp lệ: PENDING -> PREPARING -> READY -> COMPLETED`
+      );
+    }
+
+    const now = new Date();
+    const data: any = { status: nextStatus };
+
+    if (nextStatus === 'PREPARING') {
+      if (!order.preparingAt) {
+        data.preparingAt = now;
+      }
+    } else if (nextStatus === 'READY') {
+      if (!order.readyAt) {
+        data.readyAt = now;
+      }
+    } else if (nextStatus === 'COMPLETED') {
+      if (!order.completedAt) {
+        data.completedAt = now;
+      }
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data,
+      include: {
+        items: true,
+        table: { select: { id: true, tableNumber: true } }
+      }
+    });
+
+    const orderDto = formatOrderDto(updatedOrder);
+
+    // Phat su kien Socket toi room restaurant:kds va toan he thong
+    const socketPayload = {
+      orderId: updatedOrder.id,
+      code: updatedOrder.code,
+      status: updatedOrder.status,
+      prepTimeSec: orderDto.prepTimeSec,
+      preparingAt: orderDto.preparingAt,
+      readyAt: orderDto.readyAt,
+      completedAt: orderDto.completedAt
+    };
+
+    emitToRoom('restaurant:kds', 'order:statusChanged', socketPayload);
+    emitToAll('order:statusChanged', socketPayload);
+
+    return orderDto;
+  }
 }
+
+function formatOrderDto(order: any) {
+  let prepTimeSec: number | null = null;
+  if (order.readyAt && order.preparingAt) {
+    prepTimeSec = Math.max(0, Math.round((new Date(order.readyAt).getTime() - new Date(order.preparingAt).getTime()) / 1000));
+  } else if (order.readyAt) {
+    prepTimeSec = Math.max(0, Math.round((new Date(order.readyAt).getTime() - new Date(order.createdAt).getTime()) / 1000));
+  }
+
+  return {
+    id: order.id,
+    code: order.code,
+    orderType: order.orderType,
+    status: order.status,
+    tableId: order.tableId,
+    tableNumber: order.table?.tableNumber ?? null,
+    buzzerNumber: order.buzzerNumber ?? null,
+    totalAmount: order.totalAmount,
+    vatAmount: order.vatAmount,
+    finalAmount: order.finalAmount,
+    paymentMethod: order.paymentMethod,
+    paymentStatus: order.paymentStatus,
+    paidAt: order.paidAt?.toISOString() ?? null,
+    notes: order.notes,
+    createdAt: order.createdAt.toISOString(),
+    updatedAt: order.updatedAt.toISOString(),
+    preparingAt: order.preparingAt?.toISOString() ?? null,
+    readyAt: order.readyAt?.toISOString() ?? null,
+    completedAt: order.completedAt?.toISOString() ?? null,
+    cancelledAt: order.cancelledAt?.toISOString() ?? null,
+    prepTimeSec,
+    items: (order.items || []).map((item: any) => ({
+      id: item.id,
+      orderId: item.orderId,
+      menuItemId: item.menuItemId,
+      menuItemName: item.menuItemName,
+      quantity: item.quantity,
+      unitPrice: item.unitPrice,
+      subtotal: item.subtotal,
+      selectedModifiersJson: item.selectedModifiersJson,
+      notes: item.notes
+    }))
+  };
+}
+

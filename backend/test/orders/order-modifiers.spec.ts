@@ -12,7 +12,10 @@ vi.mock('../../src/config/prisma', () => ({
   }
 }));
 
-vi.mock('../../src/lib/socket', () => ({ emitToAll: vi.fn() }));
+vi.mock('../../src/lib/socket', () => ({
+  emitToAll: vi.fn(),
+  emitToRoom: vi.fn()
+}));
 
 const menuItem = {
   id: 1,

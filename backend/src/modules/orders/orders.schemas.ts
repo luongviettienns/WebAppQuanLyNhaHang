@@ -15,6 +15,7 @@ export const orderItemCreateSchema = z.object({
 export const createOrderSchema = z.object({
   orderType: z.enum(['DINE_IN', 'TAKE_AWAY']).default('DINE_IN'),
   tableId: z.number().optional(),
+  buzzerNumber: z.number().optional(),
   idempotencyKey: z.string().optional(),
   notes: z.string().max(200).optional(),
   items: z.array(orderItemCreateSchema).min(1, 'Đơn hàng phải chứa ít nhất 1 món')
@@ -26,5 +27,18 @@ export const payOrderSchema = z.object({
   })
 });
 
+export const updateOrderStatusSchema = z.object({
+  status: z.enum(['PREPARING', 'READY', 'COMPLETED'], {
+    required_error: 'Trạng thái là bắt buộc (PREPARING | READY | COMPLETED)'
+  })
+});
+
+export const getOrdersQuerySchema = z.object({
+  status: z.string().optional()
+});
+
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type PayOrderInput = z.infer<typeof payOrderSchema>;
+export type UpdateOrderStatusInput = z.infer<typeof updateOrderStatusSchema>;
+export type GetOrdersQueryInput = z.infer<typeof getOrdersQuerySchema>;
+

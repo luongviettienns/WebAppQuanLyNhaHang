@@ -75,6 +75,13 @@ interface RestaurantContextType {
   }) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   createDineInOrder: (tableId: number, notes?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   payOrder: (orderId: number, paymentMethod: PaymentMethod) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
+
+  // KDS State (Bếp thời gian thực)
+  kdsOrders: OrderDto[];
+  isLoadingKDS: boolean;
+  kdsError: string | null;
+  fetchKDSOrders: () => Promise<void>;
+  updateOrderStatus: (orderId: number, status: 'PREPARING' | 'READY' | 'COMPLETED') => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
 }
 
 const RestaurantContext = createContext<RestaurantContextType | undefined>(undefined);
@@ -104,6 +111,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [activeTableId, setActiveTableId] = useState<number | null>(null);
   const [activeTableOrder, setActiveTableOrder] = useState<OrderDto | null>(null);
   const orderIdempotency = useRef(new IdempotencyKeyStore());
+
+  // KDS State (Bếp thời gian thực)
+  const [kdsOrders, setKdsOrders] = useState<OrderDto[]>([]);
+  const [isLoadingKDS, setIsLoadingKDS] = useState<boolean>(false);
+  const [kdsError, setKdsError] = useState<string | null>(null);
 
   // 1. Fetch Menu from Backend API
   const fetchMenu = useCallback(async () => {
@@ -143,16 +155,75 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   }, []);
 
+  // 3. Fetch KDS Orders from Backend API
+  const fetchKDSOrders = useCallback(async () => {
+    setIsLoadingKDS(true);
+    setKdsError(null);
+    try {
+      const response = await fetch(`${API_URL}/api/orders?status=PENDING,PREPARING,READY`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json.error?.message || 'Không thể tải danh sách đơn bếp');
+      }
+
+      setKdsOrders(json.data || []);
+    } catch (err: any) {
+      console.error('Lỗi tải đơn KDS:', err);
+      setKdsError(err.message || 'Lỗi kết nối máy chủ');
+    } finally {
+      setIsLoadingKDS(false);
+    }
+  }, [token]);
+
+  // 4. Update Order Status (FSM: PENDING -> PREPARING -> READY -> COMPLETED)
+  const updateOrderStatus = useCallback(
+    async (orderId: number, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED') => {
+      try {
+        const response = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {})
+          },
+          body: JSON.stringify({ status: nextStatus })
+        });
+        const json = await response.json();
+
+        if (!response.ok) {
+          throw new Error(json.error?.message || 'Không thể cập nhật trạng thái đơn');
+        }
+
+        const updatedOrder = json.data as OrderDto;
+        setKdsOrders((prev) => {
+          if (nextStatus === 'COMPLETED') {
+            return prev.filter((o) => o.id !== orderId);
+          }
+          return prev.map((o) => (o.id === orderId ? { ...o, ...updatedOrder } : o));
+        });
+
+        return { success: true, order: updatedOrder };
+      } catch (err: any) {
+        console.error('Lỗi cập nhật trạng thái đơn bếp:', err);
+        return { success: false, error: err.message || 'Lỗi kết nối máy chủ' };
+      }
+    },
+    [token]
+  );
+
   useEffect(() => {
     fetchMenu();
     fetchTables();
   }, [fetchMenu, fetchTables]);
 
-  // 3. Real-time Socket.io listeners
+  // 5. Real-time Socket.io listeners
   useEffect(() => {
     const socket: Socket = io(SOCKET_URL, {
       transports: ['websocket', 'polling'],
-      autoConnect: true
+      autoConnect: true,
+      auth: token ? { token } : undefined
     });
 
     socket.on('connect', () => {
@@ -190,12 +261,37 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         }
         return prev;
       });
+
+      setKdsOrders((prev) => {
+        if (payload.status === 'COMPLETED' || payload.status === 'CANCELLED') {
+          return prev.filter((o) => o.id !== payload.orderId);
+        }
+        return prev.map((o) =>
+          o.id === payload.orderId
+            ? {
+                ...o,
+                status: payload.status,
+                prepTimeSec: payload.prepTimeSec ?? o.prepTimeSec,
+                preparingAt: payload.preparingAt ?? o.preparingAt,
+                readyAt: payload.readyAt ?? o.readyAt,
+                completedAt: payload.completedAt ?? o.completedAt
+              }
+            : o
+        );
+      });
     });
 
-    // Order New
-    socket.on('order:new', (_payload: SocketOrderNewPayload) => {
+    // Order New (Xuất hiện đơn mới từ POS hoặc QR khách)
+    socket.on('order:new', (payload: SocketOrderNewPayload) => {
       // Re-fetch tables to sync fresh floor map
       fetchTables();
+      if (payload?.order) {
+        setKdsOrders((prev) => {
+          const exists = prev.some((o) => o.id === payload.order.id);
+          if (exists) return prev;
+          return [...prev, payload.order];
+        });
+      }
     });
 
     return () => {
@@ -421,7 +517,12 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         selectActiveTable,
         createOrder,
         createDineInOrder,
-        payOrder
+        payOrder,
+        kdsOrders,
+        isLoadingKDS,
+        kdsError,
+        fetchKDSOrders,
+        updateOrderStatus
       }}
     >
       {children}
