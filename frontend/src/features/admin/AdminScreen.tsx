@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity } from 'react-na
 import { useTheme } from '../../contexts/ThemeContext';
 import { typography, spacing } from '../../theme';
 import { MenuManagementScreen } from './MenuManagementScreen';
+import { DashboardScreen } from '../reports/DashboardScreen';
 
 type AdminTab = 'menu' | 'reports';
 
@@ -63,21 +64,7 @@ export const AdminScreen: React.FC = () => {
 
       {/* Main Tab Content */}
       <View style={styles.content}>
-        {activeTab === 'menu' ? (
-          <MenuManagementScreen />
-        ) : (
-          <View style={styles.reportsPlaceholder}>
-            <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Text style={[styles.badge, { backgroundColor: isDark ? '#5B21B6' : '#EDE9FE', color: isDark ? '#DDD6FE' : '#6D28D9' }]}>
-                Mô đun M8 (Task 13)
-              </Text>
-              <Text style={[styles.cardTitle, { color: theme.text }]}>Báo Cáo Doanh Thu & SOS</Text>
-              <Text style={[styles.cardText, { color: theme.textMuted }]}>
-                Chỉ số doanh thu theo múi giờ Việt Nam (Asia/Ho_Chi_Minh), thời gian chuẩn bị SOS, Top món bán chạy và xuất hóa đơn PDF.
-              </Text>
-            </View>
-          </View>
-        )}
+        {activeTab === 'menu' ? <MenuManagementScreen /> : <DashboardScreen />}
       </View>
     </SafeAreaView>
   );

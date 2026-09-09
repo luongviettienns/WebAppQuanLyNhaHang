@@ -14,7 +14,8 @@ import {
   SocketOrderStatusChangedPayload,
   SocketOrderNewPayload,
   ApiResponse,
-  MenuItemUpsertDto
+  MenuItemUpsertDto,
+  DailyReportDto
 } from '../api/contracts';
 import { useAuth } from './AuthContext';
 import { getApiBaseUrl, getSocketBaseUrl } from '../api/config';
@@ -87,9 +88,10 @@ interface RestaurantContextType {
   updateOrderStatus: (orderId: number, status: 'PREPARING' | 'READY' | 'COMPLETED') => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   toggleMenuItemSoldOut: (menuItemId: number, isAvailable: boolean) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
 
-  // Admin Menu Management
+  // Admin Menu Management & Reports
   createMenuItem: (payload: MenuItemUpsertDto) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
   updateMenuItem: (id: number, payload: MenuItemUpsertDto) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
+  fetchDailyReport: (date?: string) => Promise<{ success: boolean; report?: DailyReportDto; error?: string }>;
 }
 
 const RestaurantContext = createContext<RestaurantContextType | undefined>(undefined);
@@ -635,6 +637,30 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
+  const fetchDailyReport = async (
+    date?: string
+  ): Promise<{ success: boolean; report?: DailyReportDto; error?: string }> => {
+    try {
+      const url = date ? `${API_URL}/api/reports/daily?date=${date}` : `${API_URL}/api/reports/daily`;
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        }
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        return { success: false, error: json.error?.message || 'Không thể tải báo cáo doanh thu' };
+      }
+
+      return { success: true, report: json.data.report as DailyReportDto };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi tải báo cáo doanh thu' };
+    }
+  };
+
   return (
     <RestaurantContext.Provider
       value={{
@@ -677,7 +703,8 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         updateOrderStatus,
         toggleMenuItemSoldOut,
         createMenuItem,
-        updateMenuItem
+        updateMenuItem,
+        fetchDailyReport
       }}
     >
       {children}

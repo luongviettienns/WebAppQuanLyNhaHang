@@ -16,7 +16,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { MenuCategoryPills } from './MenuCategoryPills';
 import { MenuItemCard } from './MenuItemCard';
 import { ModifierModal } from './ModifierModal';
-import { MenuItemDto, OrderType } from '../../api/contracts';
+import { ReceiptModal } from './ReceiptModal';
+import { MenuItemDto, OrderType, OrderDto } from '../../api/contracts';
 
 export const POSScreen: React.FC = () => {
   const { theme, isDark } = useTheme();
@@ -47,6 +48,8 @@ export const POSScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successOrderCode, setSuccessOrderCode] = useState<string | null>(null);
+  const [createdOrder, setCreatedOrder] = useState<OrderDto | null>(null);
+  const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
 
   const formatVND = (amount: number) =>
     new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -87,6 +90,7 @@ export const POSScreen: React.FC = () => {
 
     if (result.success && result.order) {
       setSuccessOrderCode(result.order.code);
+      setCreatedOrder(result.order);
     } else {
       setSubmitError(result.error || 'Gửi đơn thất bại. Vui lòng thử lại.');
     }
@@ -189,12 +193,20 @@ export const POSScreen: React.FC = () => {
               <View style={styles.successPanel}>
                 <Text style={styles.successIcon}>✓</Text>
                 <Text style={styles.successText}>Đã gửi đơn {successOrderCode} xuống bếp thành công!</Text>
-                <TouchableOpacity
-                  style={[styles.doneBtn, { backgroundColor: isDark ? '#334155' : '#1E293B' }]}
-                  onPress={handleCloseConfirmModal}
-                >
-                  <Text style={styles.doneBtnText}>Hoàn tất</Text>
-                </TouchableOpacity>
+                <View style={styles.successActionsRow}>
+                  <TouchableOpacity
+                    style={[styles.receiptBtn, { backgroundColor: theme.primary }]}
+                    onPress={() => setIsReceiptModalOpen(true)}
+                  >
+                    <Text style={styles.receiptBtnText}>🧾 Xem Hóa Đơn</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.doneBtn, { backgroundColor: isDark ? '#334155' : '#1E293B' }]}
+                    onPress={handleCloseConfirmModal}
+                  >
+                    <Text style={styles.doneBtnText}>Hoàn tất</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             ) : (
               <>
@@ -288,6 +300,13 @@ export const POSScreen: React.FC = () => {
         item={selectedMenuItemForModal}
         onClose={closeModifierModal}
         onAddToCart={addToCart}
+      />
+
+      {/* 6. Immutable Receipt Modal */}
+      <ReceiptModal
+        visible={isReceiptModalOpen}
+        order={createdOrder}
+        onClose={() => setIsReceiptModalOpen(false)}
       />
     </SafeAreaView>
   );
@@ -527,13 +546,36 @@ const styles = StyleSheet.create({
     textAlign: 'center'
   },
   doneBtn: {
-    marginTop: spacing.lg,
     borderRadius: 8,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    minHeight: spacing.touchTargetMobile,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   doneBtnText: {
     color: '#FFFFFF',
-    fontWeight: typography.weights.bold
+    fontWeight: typography.weights.bold,
+    fontSize: typography.sizes.xs
+  },
+  successActionsRow: {
+    flexDirection: 'row',
+    gap: spacing.md,
+    width: '100%',
+    marginTop: spacing.lg
+  },
+  receiptBtn: {
+    flex: 1,
+    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    minHeight: spacing.touchTargetMobile,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  receiptBtnText: {
+    color: '#FFFFFF',
+    fontWeight: typography.weights.bold,
+    fontSize: typography.sizes.xs
   }
 });

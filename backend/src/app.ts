@@ -6,6 +6,7 @@ import { authRouter } from './modules/auth/auth.routes';
 import { menuRouter } from './modules/menu/menu.routes';
 import { tablesRouter } from './modules/tables/tables.routes';
 import { ordersRouter } from './modules/orders/orders.routes';
+import { reportsRouter } from './modules/reports/reports.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
 export const app = express();
@@ -39,6 +40,9 @@ app.use('/api/tables', tablesRouter);
 
 // Orders & Checkout routes
 app.use('/api/orders', ordersRouter);
+
+// Daily Reports & KPI routes (Admin only)
+app.use('/api/reports', reportsRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);
