@@ -92,6 +92,33 @@ export interface CategoryDto {
   menuItems?: MenuItemDto[];
 }
 
+export interface ModifierOptionUpsertDto {
+  id?: number;
+  name: string;
+  priceDelta: number;
+  isAvailable?: boolean;
+}
+
+export interface ModifierGroupUpsertDto {
+  id?: number;
+  name: string;
+  isRequired?: boolean;
+  minSelect: number;
+  maxSelect: number;
+  options: ModifierOptionUpsertDto[];
+}
+
+export interface MenuItemUpsertDto {
+  categoryId?: number;
+  name?: string;
+  description?: string | null;
+  basePrice?: number;
+  imageUrl?: string | null;
+  isAvailable?: boolean;
+  displayOrder?: number;
+  modifierGroups?: ModifierGroupUpsertDto[];
+}
+
 // ==========================================
 // 5. TABLE DTOs
 // ==========================================

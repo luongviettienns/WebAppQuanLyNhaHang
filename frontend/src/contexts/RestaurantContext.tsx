@@ -13,7 +13,8 @@ import {
   SocketTableStatusChangedPayload,
   SocketOrderStatusChangedPayload,
   SocketOrderNewPayload,
-  ApiResponse
+  ApiResponse,
+  MenuItemUpsertDto
 } from '../api/contracts';
 import { useAuth } from './AuthContext';
 import { getApiBaseUrl, getSocketBaseUrl } from '../api/config';
@@ -85,6 +86,10 @@ interface RestaurantContextType {
   fetchKDSOrders: () => Promise<void>;
   updateOrderStatus: (orderId: number, status: 'PREPARING' | 'READY' | 'COMPLETED') => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   toggleMenuItemSoldOut: (menuItemId: number, isAvailable: boolean) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
+
+  // Admin Menu Management
+  createMenuItem: (payload: MenuItemUpsertDto) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
+  updateMenuItem: (id: number, payload: MenuItemUpsertDto) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
 }
 
 const RestaurantContext = createContext<RestaurantContextType | undefined>(undefined);
@@ -577,6 +582,59 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
+  const createMenuItem = async (
+    payload: MenuItemUpsertDto
+  ): Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/api/menu`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        return { success: false, error: json.error?.message || 'Không thể tạo món ăn mới' };
+      }
+
+      const created = json.data.menuItem as MenuItemDto;
+      await fetchMenu();
+      return { success: true, menuItem: created };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi tạo món ăn' };
+    }
+  };
+
+  const updateMenuItem = async (
+    id: number,
+    payload: MenuItemUpsertDto
+  ): Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/api/menu/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        return { success: false, error: json.error?.message || 'Không thể cập nhật món ăn' };
+      }
+
+      const updated = json.data.menuItem as MenuItemDto;
+      await fetchMenu();
+      return { success: true, menuItem: updated };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi cập nhật món ăn' };
+    }
+  };
+
   return (
     <RestaurantContext.Provider
       value={{
@@ -617,7 +675,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         kdsError,
         fetchKDSOrders,
         updateOrderStatus,
-        toggleMenuItemSoldOut
+        toggleMenuItemSoldOut,
+        createMenuItem,
+        updateMenuItem
       }}
     >
       {children}
