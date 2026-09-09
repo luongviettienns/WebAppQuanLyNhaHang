@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useRef } from 'react';
 import io, { Socket } from 'socket.io-client';
 import {
   CategoryDto,
@@ -8,6 +8,7 @@ import {
   OrderDto,
   OrderItemCreateDto,
   PaymentMethod,
+  OrderType,
   SocketMenuItemSoldOutChangedPayload,
   SocketTableStatusChangedPayload,
   SocketOrderStatusChangedPayload,
@@ -16,6 +17,7 @@ import {
 } from '../api/contracts';
 import { useAuth } from './AuthContext';
 import { getApiBaseUrl, getSocketBaseUrl } from '../api/config';
+import { IdempotencyKeyStore } from '../lib/idempotency';
 
 export interface CartItem {
   menuItem: MenuItemDto;
@@ -66,6 +68,11 @@ interface RestaurantContextType {
   activeTableOrder: OrderDto | null;
   fetchTables: () => Promise<void>;
   selectActiveTable: (tableId: number | null) => void;
+  createOrder: (payload: {
+    orderType: OrderType;
+    tableId?: number | null;
+    notes?: string;
+  }) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   createDineInOrder: (tableId: number, notes?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   payOrder: (orderId: number, paymentMethod: PaymentMethod) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
 }
@@ -96,6 +103,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [isLoadingTables, setIsLoadingTables] = useState<boolean>(true);
   const [activeTableId, setActiveTableId] = useState<number | null>(null);
   const [activeTableOrder, setActiveTableOrder] = useState<OrderDto | null>(null);
+  const orderIdempotency = useRef(new IdempotencyKeyStore());
 
   // 1. Fetch Menu from Backend API
   const fetchMenu = useCallback(async () => {
@@ -280,22 +288,40 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
-  const createDineInOrder = async (
-    tableId: number,
-    notes?: string
-  ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
+  const createOrder = async ({
+    orderType,
+    tableId,
+    notes
+  }: {
+    orderType: OrderType;
+    tableId?: number | null;
+    notes?: string;
+  }): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
     if (cart.length === 0) {
       return { success: false, error: 'Giỏ hàng đang trống' };
+    }
+
+    if (orderType === 'DINE_IN' && !tableId) {
+      return { success: false, error: 'Vui lòng chọn bàn ăn cho đơn tại chỗ' };
     }
 
     const itemsPayload: OrderItemCreateDto[] = cart.map((c) => ({
       menuItemId: c.menuItem.id,
       quantity: c.quantity,
-      selectedModifiers: c.selectedModifiers,
+      selectedModifiers: c.selectedModifiers.map(m => ({
+        modifierGroupId: m.modifierGroupId,
+        optionId: m.optionId
+      })) as any,
       notes: c.notes
     }));
 
-    const idempotencyKey = `idemp-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    const orderPayload = {
+      ...(orderType === 'DINE_IN' && tableId ? { tableId } : {}),
+      orderType,
+      items: itemsPayload,
+      notes
+    };
+    const idempotencyKey = orderIdempotency.current.get(JSON.stringify(orderPayload));
 
     try {
       const response = await fetch(`${API_URL}/api/orders`, {
@@ -304,13 +330,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({
-          tableId,
-          orderType: 'DINE_IN',
-          items: itemsPayload,
-          notes,
-          idempotencyKey
-        })
+        body: JSON.stringify({ ...orderPayload, idempotencyKey })
       });
 
       const json = await response.json();
@@ -319,7 +339,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       const order = (json as ApiResponse<{ order: OrderDto }>).data.order;
-      setActiveTableOrder(order);
+      orderIdempotency.current.complete(idempotencyKey);
+      if (orderType === 'DINE_IN' && tableId) {
+        setActiveTableId(tableId);
+        setActiveTableOrder(order);
+      }
       clearCart();
       await fetchTables();
 
@@ -327,6 +351,13 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     } catch (err: any) {
       return { success: false, error: err.message || 'Lỗi kết nối khi gửi đơn xuống bếp' };
     }
+  };
+
+  const createDineInOrder = async (
+    tableId: number,
+    notes?: string
+  ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
+    return createOrder({ orderType: 'DINE_IN', tableId, notes });
   };
 
   const payOrder = async (
@@ -349,7 +380,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       const order = (json as ApiResponse<{ order: OrderDto }>).data.order;
-      setActiveTableOrder(null);
+      setActiveTableOrder((current) => current?.id === order.id ? null : current);
       await fetchTables();
 
       return { success: true, order };
@@ -388,6 +419,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         activeTableOrder,
         fetchTables,
         selectActiveTable,
+        createOrder,
         createDineInOrder,
         payOrder
       }}

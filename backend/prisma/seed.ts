@@ -3,10 +3,18 @@ import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import path from 'path';
 
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '../.env') });
 dotenv.config();
 
-const defaultPrisma = new PrismaClient();
+const defaultPrisma = new PrismaClient({
+  datasources: {
+    db: {
+      url: process.env.DATABASE_URL
+    }
+  }
+});
 
 export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
   console.log('🌱 Bat dau seed du lieu mau cho CRISPY BITE...');

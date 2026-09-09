@@ -70,16 +70,15 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
 
     // Chon modifier option neu co
     const selectedMods: any[] = [];
+    let expectedModDelta = 0;
     if (item!.modifierGroups.length > 0) {
       const group = item!.modifierGroups[0];
       const opt = group.options[0];
       selectedMods.push({
         modifierGroupId: group.id,
-        groupName: group.name,
-        optionId: opt.id,
-        optionName: opt.name,
-        priceDelta: opt.priceDelta
+        optionId: opt.id
       });
+      expectedModDelta = opt.priceDelta;
     }
 
     const idempotencyKey = `test-idemp-key-dinein-${Date.now()}-${Math.random()}`;
@@ -111,7 +110,6 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     expect(createdOrder.items.length).toBe(1);
 
     // Kiem tra gia tinh toan
-    const expectedModDelta = selectedMods.reduce((s, m) => s + m.priceDelta, 0);
     const expectedUnitPrice = item!.basePrice + expectedModDelta;
     const expectedTotal = expectedUnitPrice * 2;
     const expectedVat = Math.round(expectedTotal * 0.08); // 8% VAT

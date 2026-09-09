@@ -1,6 +1,15 @@
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 
+function deriveTableState<T extends { status: string; orders: Array<{ id: number }> }>(table: T) {
+  const currentOrder = table.orders[0];
+  return {
+    ...table,
+    status: currentOrder ? 'OCCUPIED' : table.status === 'OCCUPIED' ? 'AVAILABLE' : table.status,
+    currentOrderId: currentOrder?.id ?? null
+  };
+}
+
 export class TablesService {
   static async getAllTables() {
     const tables = await prisma.diningTable.findMany({
@@ -11,7 +20,6 @@ export class TablesService {
             paymentStatus: 'UNPAID',
             status: { not: 'CANCELLED' }
           },
-          take: 1,
           orderBy: { createdAt: 'desc' },
           include: {
             items: true
@@ -20,7 +28,7 @@ export class TablesService {
       }
     });
 
-    return { tables };
+    return { tables: tables.map(deriveTableState) };
   }
 
   static async getTableById(id: number) {
@@ -32,7 +40,6 @@ export class TablesService {
             paymentStatus: 'UNPAID',
             status: { not: 'CANCELLED' }
           },
-          take: 1,
           orderBy: { createdAt: 'desc' },
           include: {
             items: true
@@ -45,6 +52,6 @@ export class TablesService {
       throw ApiError.notFound(`Bàn ăn ID ${id} không tồn tại`);
     }
 
-    return { table };
+    return { table: deriveTableState(table) };
   }
 }

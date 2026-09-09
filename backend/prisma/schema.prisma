@@ -150,17 +150,19 @@ model Order {
   cancelledAt     DateTime?
 
   // Idempotency & Fingerprint
-  idempotencyKey  String?   @unique // DB-level: NULL duoc phep nhieu, non-null phai duy nhat
-  requestHash     String?
+  idempotencyKey   String?
+  idempotencyScope String        @default("guest")
+  requestHash      String?
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
-  table           DiningTable?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
-  createdByUser   User?         @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  voidedByUser    User?         @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
-  items           OrderItem[]
+  table            DiningTable?  @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  createdByUser    User?         @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  voidedByUser     User?         @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  items            OrderItem[]
 
+  @@unique([idempotencyScope, idempotencyKey])
 }
 
 model OrderItem {

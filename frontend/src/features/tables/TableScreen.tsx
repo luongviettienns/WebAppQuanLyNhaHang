@@ -18,6 +18,7 @@ export const TableScreen: React.FC = () => {
   const { theme, isDark } = useTheme();
   const { tables, isLoadingTables, fetchTables, payOrder } = useRestaurant();
   const [selectedTable, setSelectedTable] = useState<DiningTableDto | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [isProcessingPay, setIsProcessingPay] = useState(false);
@@ -28,24 +29,39 @@ export const TableScreen: React.FC = () => {
 
   const handleTablePress = (table: DiningTableDto) => {
     setSelectedTable(table);
+    setSelectedOrderId(table.orders?.[0]?.id ?? null);
     setIsDetailModalOpen(true);
     setPaySuccessMsg(null);
   };
 
   const handlePay = async () => {
     if (!selectedTable?.orders || selectedTable.orders.length === 0) return;
-    const activeOrder = selectedTable.orders[0];
+    const activeOrder = selectedTable.orders.find((order) => order.id === selectedOrderId) || selectedTable.orders[0];
 
     setIsProcessingPay(true);
     const result = await payOrder(activeOrder.id, paymentMethod);
     setIsProcessingPay(false);
 
     if (result.success) {
-      setPaySuccessMsg(`✅ Đã thanh toán thành công đơn ${activeOrder.code}! Bàn số ${selectedTable.tableNumber} đã được giải phóng.`);
-      setTimeout(() => {
-        setIsDetailModalOpen(false);
-        setSelectedTable(null);
-      }, 1500);
+      const remainingOrders = selectedTable.orders.filter((order) => order.id !== activeOrder.id);
+      const nextOrder = remainingOrders[0];
+      setSelectedTable({
+        ...selectedTable,
+        orders: remainingOrders,
+        status: nextOrder ? 'OCCUPIED' : 'AVAILABLE',
+        currentOrderId: nextOrder?.id ?? null
+      });
+      setSelectedOrderId(nextOrder?.id ?? null);
+      setPaySuccessMsg(nextOrder
+        ? `✅ Đã thanh toán đơn ${activeOrder.code}. Bàn số ${selectedTable.tableNumber} còn ${remainingOrders.length} đơn chưa thanh toán.`
+        : `✅ Đã thanh toán đơn ${activeOrder.code}. Bàn số ${selectedTable.tableNumber} đã được giải phóng.`
+      );
+      if (!nextOrder) {
+        setTimeout(() => {
+          setIsDetailModalOpen(false);
+          setSelectedTable(null);
+        }, 1500);
+      }
     } else {
       alert(result.error || 'Thanh toán thất bại');
     }
@@ -78,7 +94,8 @@ export const TableScreen: React.FC = () => {
     }
   };
 
-  const activeOrder = selectedTable?.orders?.[0];
+  const activeOrder = selectedTable?.orders?.find((order) => order.id === selectedOrderId)
+    || selectedTable?.orders?.[0];
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
@@ -130,7 +147,8 @@ export const TableScreen: React.FC = () => {
         <ScrollView contentContainerStyle={styles.gridContainer}>
           {tables.map((table) => {
             const statusConfig = getStatusColor(table.status);
-            const order = table.orders?.[0];
+            const unpaidOrders = table.orders || [];
+            const unpaidTotal = unpaidOrders.reduce((sum, order) => sum + order.finalAmount, 0);
             return (
               <TouchableOpacity
                 key={table.id}
@@ -154,11 +172,13 @@ export const TableScreen: React.FC = () => {
                   <Text style={[styles.tableCapacity, { color: isDark ? '#E2E8F0' : '#475569' }]}>
                     👥 Sức chứa: {table.capacity} khách
                   </Text>
-                  {order ? (
+                  {unpaidOrders.length > 0 ? (
                     <View style={[styles.tableOrderBadge, { backgroundColor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.7)' }]}>
-                      <Text style={[styles.orderCodeText, { color: theme.primary }]}>{order.code}</Text>
+                      <Text style={[styles.orderCodeText, { color: theme.primary }]}>
+                        {unpaidOrders.length} đơn chưa thanh toán
+                      </Text>
                       <Text style={[styles.orderTotalText, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
-                        {formatVND(order.finalAmount)}
+                        {formatVND(unpaidTotal)}
                       </Text>
                     </View>
                   ) : (
@@ -198,6 +218,36 @@ export const TableScreen: React.FC = () => {
 
               {activeOrder ? (
                 <View>
+                  {(selectedTable?.orders?.length || 0) > 1 && (
+                    <View style={styles.orderSelector}>
+                      <Text style={[styles.sectionTitle, { color: theme.text }]}>Chọn đơn cần thanh toán:</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        {selectedTable?.orders?.map((order) => (
+                          <TouchableOpacity
+                            key={order.id}
+                            style={[
+                              styles.orderSelectorBtn,
+                              { borderColor: theme.border, backgroundColor: isDark ? '#0F172A' : '#F8FAFC' },
+                              activeOrder.id === order.id && [styles.orderSelectorBtnActive, { borderColor: theme.primary, backgroundColor: isDark ? '#451A03' : '#FEF2F2' }]
+                            ]}
+                            onPress={() => {
+                              setSelectedOrderId(order.id);
+                              setPaySuccessMsg(null);
+                            }}
+                          >
+                            <Text style={[
+                              styles.orderSelectorText,
+                              { color: theme.textMuted },
+                              activeOrder.id === order.id && { color: theme.primary, fontWeight: typography.weights.bold }
+                            ]}>
+                              {order.code} · {formatVND(order.finalAmount)}
+                            </Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    </View>
+                  )}
+
                   <View style={[styles.billHeader, { backgroundColor: isDark ? '#0F172A' : '#FEF3C7', borderColor: theme.border }]}>
                     <Text style={[styles.billCode, { color: theme.text }]}>Mã đơn: {activeOrder.code}</Text>
                     <Text style={[styles.billStatus, { color: theme.primary }]}>Trạng thái: {activeOrder.status}</Text>
@@ -508,6 +558,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center'
+  },
+  orderSelector: {
+    marginBottom: spacing.sm
+  },
+  orderSelectorBtn: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    marginRight: spacing.xs
+  },
+  orderSelectorBtnActive: {},
+  orderSelectorText: {
+    fontSize: 11,
+    fontWeight: typography.weights.semibold
   },
   billCode: {
     fontSize: typography.sizes.sm,

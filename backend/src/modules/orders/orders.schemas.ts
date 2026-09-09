@@ -2,10 +2,7 @@ import { z } from 'zod';
 
 export const selectedModifierSchema = z.object({
   modifierGroupId: z.number(),
-  groupName: z.string(),
-  optionId: z.number(),
-  optionName: z.string(),
-  priceDelta: z.number()
+  optionId: z.number()
 });
 
 export const orderItemCreateSchema = z.object({
