@@ -17,4 +17,8 @@ ordersRouter.patch('/:id/status', authenticate, authorize('KITCHEN', 'ADMIN'), O
 // POST /api/orders/:id/pay (Thanh toan don hang: Chi CASHIER va ADMIN duoc thu tien)
 ordersRouter.post('/:id/pay', authenticate, authorize('CASHIER', 'ADMIN'), OrdersController.payOrder);
 
+// PATCH /api/orders/:id/void (Huy don hang kiem toan: Chi ADMIN)
+ordersRouter.patch('/:id/void', authenticate, authorize('ADMIN'), OrdersController.voidOrder);
+
+
 

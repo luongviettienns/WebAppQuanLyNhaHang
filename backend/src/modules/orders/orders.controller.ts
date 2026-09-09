@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { OrdersService } from './orders.service';
-import { createOrderSchema, payOrderSchema, updateOrderStatusSchema } from './orders.schemas';
+import { createOrderSchema, payOrderSchema, updateOrderStatusSchema, voidOrderSchema } from './orders.schemas';
 
 export class OrdersController {
   static async getOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -50,6 +50,24 @@ export class OrdersController {
       const input = payOrderSchema.parse(req.body);
 
       const result = await OrdersService.payOrder(orderId, input);
+
+      res.status(200).json({
+        data: {
+          order: result.order
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async voidOrder(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const orderId = parseInt(req.params.id, 10);
+      const input = voidOrderSchema.parse(req.body);
+      const voidedByUserId = req.user?.id;
+
+      const result = await OrdersService.voidOrder(orderId, input, voidedByUserId);
 
       res.status(200).json({
         data: {

@@ -30,6 +30,7 @@ enum OrderStatus {
 enum TableStatus {
   AVAILABLE
   OCCUPIED
+  DIRTY
   NEED_CLEANING
 }
 
@@ -42,6 +43,7 @@ enum PaymentMethod {
 enum PaymentStatus {
   UNPAID
   PAID
+  VOIDED
 }
 
 model User {

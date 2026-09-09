@@ -37,8 +37,14 @@ export const getOrdersQuerySchema = z.object({
   status: z.string().optional()
 });
 
+export const voidOrderSchema = z.object({
+  reason: z.string({ required_error: 'Lý do hủy đơn là bắt buộc' }).trim().min(3, 'Lý do hủy phải có ít nhất 3 ký tự')
+});
+
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type PayOrderInput = z.infer<typeof payOrderSchema>;
 export type UpdateOrderStatusInput = z.infer<typeof updateOrderStatusSchema>;
 export type GetOrdersQueryInput = z.infer<typeof getOrdersQuerySchema>;
+export type VoidOrderInput = z.infer<typeof voidOrderSchema>;
+
 

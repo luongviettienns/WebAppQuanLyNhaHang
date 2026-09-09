@@ -7,9 +7,9 @@
 export type Role = 'CASHIER' | 'KITCHEN' | 'ADMIN';
 export type OrderType = 'DINE_IN' | 'TAKE_AWAY';
 export type OrderStatus = 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
-export type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'NEED_CLEANING';
+export type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'NEED_CLEANING' | 'DIRTY';
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD';
-export type PaymentStatus = 'UNPAID' | 'PAID';
+export type PaymentStatus = 'UNPAID' | 'PAID' | 'VOIDED';
 
 export type ErrorCode =
   | 'VALIDATION_ERROR'
@@ -168,6 +168,9 @@ export interface OrderDto {
   completedAt?: string | null;
   cancelledAt?: string | null;
   prepTimeSec?: number | null;
+  voidedByUserId?: number | null;
+  voidReason?: string | null;
+  voidedAt?: string | null;
 
   items: OrderItemDto[];
 }

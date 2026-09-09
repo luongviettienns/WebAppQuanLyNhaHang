@@ -7,22 +7,47 @@ import {
   TouchableOpacity,
   ScrollView,
   ActivityIndicator,
-  Alert
+  Alert,
+  Modal
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { typography, spacing } from '../../theme';
-import { OrderDto, OrderStatus } from '../../api/contracts';
+import { OrderDto, OrderStatus, MenuItemDto } from '../../api/contracts';
 
 type FilterTab = 'ALL' | 'PENDING' | 'PREPARING' | 'READY';
 
 export const KDSScreen: React.FC = () => {
   const { theme, isDark, toggleTheme } = useTheme();
-  const { kdsOrders, isLoadingKDS, kdsError, fetchKDSOrders, updateOrderStatus } = useRestaurant();
+  const {
+    kdsOrders,
+    isLoadingKDS,
+    kdsError,
+    fetchKDSOrders,
+    updateOrderStatus,
+    categories,
+    fetchMenu,
+    toggleMenuItemSoldOut
+  } = useRestaurant();
 
   const [activeTab, setActiveTab] = useState<FilterTab>('ALL');
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
   const [now, setNow] = useState<number>(Date.now());
+
+  // Sold-Out (86'd) Management States
+  const [isSoldOutModalOpen, setIsSoldOutModalOpen] = useState(false);
+  const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
+  const [soldOutError, setSoldOutError] = useState<string | null>(null);
+
+  const handleToggleSoldOut = async (item: MenuItemDto) => {
+    setTogglingItemId(item.id);
+    setSoldOutError(null);
+    const result = await toggleMenuItemSoldOut(item.id, !item.isAvailable);
+    setTogglingItemId(null);
+    if (!result.success) {
+      setSoldOutError(result.error || 'Cập nhật món hết hàng thất bại');
+    }
+  };
 
   // Load KDS orders on mount
   useEffect(() => {
@@ -120,6 +145,17 @@ export const KDSScreen: React.FC = () => {
         </View>
 
         <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.headerBtn, { backgroundColor: isDark ? '#B45309' : '#D97706' }]}
+            onPress={() => {
+              fetchMenu();
+              setIsSoldOutModalOpen(true);
+            }}
+            accessibilityLabel="Quản lý món hết hàng 86'd"
+          >
+            <Text style={styles.headerBtnText}>📦 Báo hết món (86'd)</Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.headerBtn, { backgroundColor: isDark ? '#1E293B' : '#0369A1' }]}
             onPress={fetchKDSOrders}
@@ -355,6 +391,106 @@ export const KDSScreen: React.FC = () => {
           })}
         </ScrollView>
       )}
+
+      {/* 4. Sold-Out (86'd) Management Modal */}
+      <Modal visible={isSoldOutModalOpen} transparent animationType="slide">
+        <View style={[styles.modalBackdrop, { backgroundColor: theme.overlay }]}>
+          <SafeAreaView style={[styles.soldOutModalContainer, { backgroundColor: theme.card }]}>
+            <View style={[styles.soldOutModalHeader, { borderBottomColor: theme.border }]}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.soldOutModalTitle, { color: theme.text }]}>
+                  📦 Báo Hết Món Bếp (86'd Menu)
+                </Text>
+                <Text style={[styles.soldOutModalSubtitle, { color: theme.textMuted }]}>
+                  Bật/tắt trạng thái món ăn. Máy POS và Khách đặt QR sẽ cập nhật ngay sau khi máy chủ xác nhận.
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.modalCloseBtn, { backgroundColor: isDark ? '#334155' : '#F1F5F9' }]}
+                onPress={() => setIsSoldOutModalOpen(false)}
+              >
+                <Text style={[styles.modalCloseText, { color: theme.text }]}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            {soldOutError && (
+              <View style={styles.errorBanner}>
+                <Text style={styles.errorBannerText}>❌ {soldOutError}</Text>
+              </View>
+            )}
+
+            <ScrollView style={styles.soldOutList}>
+              {categories.map((cat) => (
+                <View key={cat.id} style={styles.categorySection}>
+                  <Text style={[styles.categoryTitle, { color: theme.primary }]}>
+                    📂 {cat.name}
+                  </Text>
+                  {cat.menuItems?.map((item) => {
+                    const isToggling = togglingItemId === item.id;
+                    return (
+                      <View
+                        key={item.id}
+                        style={[
+                          styles.soldOutItemRow,
+                          {
+                            borderBottomColor: theme.border,
+                            backgroundColor: !item.isAvailable
+                              ? isDark
+                                ? '#450A0A'
+                                : '#FEF2F2'
+                              : 'transparent'
+                          }
+                        ]}
+                      >
+                        <View style={{ flex: 1 }}>
+                          <Text
+                            style={[
+                              styles.soldOutItemName,
+                              {
+                                color: !item.isAvailable ? '#EF4444' : theme.text,
+                                textDecorationLine: !item.isAvailable ? 'line-through' : 'none'
+                              }
+                            ]}
+                          >
+                            {item.name}
+                          </Text>
+                          <Text
+                            style={[
+                              styles.soldOutItemStatus,
+                              { color: !item.isAvailable ? '#EF4444' : '#16A34A' }
+                            ]}
+                          >
+                            {!item.isAvailable ? "🔴 Đang hết món (86'd)" : '🟢 Đang phục vụ'}
+                          </Text>
+                        </View>
+
+                        <TouchableOpacity
+                          style={[
+                            styles.soldOutToggleBtn,
+                            {
+                              backgroundColor: !item.isAvailable ? '#16A34A' : '#EF4444'
+                            }
+                          ]}
+                          onPress={() => handleToggleSoldOut(item)}
+                          disabled={isToggling}
+                        >
+                          {isToggling ? (
+                            <ActivityIndicator size="small" color="#FFFFFF" />
+                          ) : (
+                            <Text style={styles.soldOutToggleText}>
+                              {!item.isAvailable ? 'Mở bán lại' : 'Báo hết món'}
+                            </Text>
+                          )}
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </ScrollView>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -584,5 +720,98 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.sm,
     fontWeight: typography.weights.bold,
     letterSpacing: 0.5
+  },
+  modalBackdrop: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.md
+  },
+  soldOutModalContainer: {
+    width: '100%',
+    maxWidth: 700,
+    maxHeight: '85%',
+    borderRadius: 16,
+    overflow: 'hidden'
+  },
+  soldOutModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.md,
+    borderBottomWidth: 1
+  },
+  soldOutModalTitle: {
+    fontSize: typography.sizes.md,
+    fontWeight: typography.weights.bold
+  },
+  soldOutModalSubtitle: {
+    fontSize: typography.sizes.xs,
+    marginTop: 2
+  },
+  modalCloseBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  modalCloseText: {
+    fontSize: 14,
+    fontWeight: typography.weights.bold
+  },
+  errorBanner: {
+    backgroundColor: '#FEE2E2',
+    padding: spacing.sm,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    borderRadius: 8
+  },
+  errorBannerText: {
+    color: '#DC2626',
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold
+  },
+  soldOutList: {
+    padding: spacing.md
+  },
+  categorySection: {
+    marginBottom: spacing.lg
+  },
+  categoryTitle: {
+    fontSize: typography.sizes.sm,
+    fontWeight: typography.weights.bold,
+    marginBottom: spacing.xs
+  },
+  soldOutItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderBottomWidth: 1,
+    borderRadius: 6
+  },
+  soldOutItemName: {
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.semibold
+  },
+  soldOutItemStatus: {
+    fontSize: 11,
+    fontWeight: typography.weights.medium,
+    marginTop: 2
+  },
+  soldOutToggleBtn: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: 8,
+    minHeight: 38,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  soldOutToggleText: {
+    color: '#FFFFFF',
+    fontSize: typography.sizes.xs,
+    fontWeight: typography.weights.bold
   }
 });

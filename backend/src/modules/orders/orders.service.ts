@@ -1,7 +1,7 @@
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll, emitToRoom } from '../../lib/socket';
-import { CreateOrderInput, PayOrderInput } from './orders.schemas';
+import { CreateOrderInput, PayOrderInput, VoidOrderInput } from './orders.schemas';
 import { PaymentMethod } from '@prisma/client';
 import { createHash } from 'crypto';
 
@@ -447,6 +447,99 @@ export class OrdersService {
 
     return orderDto;
   }
+
+  static async voidOrder(orderId: number, input: VoidOrderInput, voidedByUserId?: number) {
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+      include: {
+        table: true
+      }
+    });
+
+    if (!existingOrder) {
+      throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
+    }
+
+    if (existingOrder.status === 'CANCELLED') {
+      throw ApiError.orderStateInvalid('Đơn hàng đã bị hủy trước đó');
+    }
+
+    if (existingOrder.status === 'COMPLETED') {
+      throw ApiError.orderStateInvalid('Không thể hủy đơn hàng đã hoàn tất phục vụ');
+    }
+
+    const { order, tableState } = await prisma.$transaction(async (tx) => {
+      const now = new Date();
+      const updatedOrder = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: 'CANCELLED',
+          paymentStatus: 'VOIDED',
+          voidedByUserId: voidedByUserId ?? null,
+          voidReason: input.reason,
+          voidedAt: now,
+          cancelledAt: now
+        },
+        include: {
+          items: true,
+          table: true
+        }
+      });
+
+      let nextTableState: any = null;
+      if (existingOrder.tableId) {
+        const remainingOrder = await tx.order.findFirst({
+          where: {
+            tableId: existingOrder.tableId,
+            paymentStatus: 'UNPAID',
+            status: { not: 'CANCELLED' },
+            id: { not: orderId }
+          },
+          select: { id: true }
+        });
+
+        const status = remainingOrder ? 'OCCUPIED' : 'AVAILABLE';
+        const currentOrderId = remainingOrder?.id ?? null;
+
+        await tx.diningTable.update({
+          where: { id: existingOrder.tableId },
+          data: {
+            status,
+            currentOrderId
+          }
+        });
+
+        if (updatedOrder.table) {
+          nextTableState = {
+            tableId: updatedOrder.table.id,
+            tableNumber: updatedOrder.table.tableNumber,
+            status,
+            currentOrderId
+          };
+        }
+      }
+
+      return { order: updatedOrder, tableState: nextTableState };
+    });
+
+    const orderDto = formatOrderDto(order);
+
+    const socketPayload = {
+      orderId: orderDto.id,
+      code: orderDto.code,
+      status: orderDto.status,
+      cancelledAt: orderDto.cancelledAt
+    };
+
+    emitToRoom('restaurant:kds', 'order:statusChanged', socketPayload);
+    emitToAll('order:statusChanged', socketPayload);
+
+    if (tableState) {
+      emitToAll('table:statusChanged', tableState);
+    }
+
+    return { order: orderDto };
+  }
 }
 
 function formatOrderDto(order: any) {
@@ -470,15 +563,18 @@ function formatOrderDto(order: any) {
     finalAmount: order.finalAmount,
     paymentMethod: order.paymentMethod,
     paymentStatus: order.paymentStatus,
-    paidAt: order.paidAt?.toISOString() ?? null,
+    paidAt: order.paidAt ? (order.paidAt instanceof Date ? order.paidAt.toISOString() : order.paidAt) : null,
     notes: order.notes,
-    createdAt: order.createdAt.toISOString(),
-    updatedAt: order.updatedAt.toISOString(),
-    preparingAt: order.preparingAt?.toISOString() ?? null,
-    readyAt: order.readyAt?.toISOString() ?? null,
-    completedAt: order.completedAt?.toISOString() ?? null,
-    cancelledAt: order.cancelledAt?.toISOString() ?? null,
+    createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,
+    updatedAt: order.updatedAt instanceof Date ? order.updatedAt.toISOString() : order.updatedAt,
+    preparingAt: order.preparingAt ? (order.preparingAt instanceof Date ? order.preparingAt.toISOString() : order.preparingAt) : null,
+    readyAt: order.readyAt ? (order.readyAt instanceof Date ? order.readyAt.toISOString() : order.readyAt) : null,
+    completedAt: order.completedAt ? (order.completedAt instanceof Date ? order.completedAt.toISOString() : order.completedAt) : null,
+    cancelledAt: order.cancelledAt ? (order.cancelledAt instanceof Date ? order.cancelledAt.toISOString() : order.cancelledAt) : null,
     prepTimeSec,
+    voidedByUserId: order.voidedByUserId ?? null,
+    voidReason: order.voidReason ?? null,
+    voidedAt: order.voidedAt ? (order.voidedAt instanceof Date ? order.voidedAt.toISOString() : order.voidedAt) : null,
     items: (order.items || []).map((item: any) => ({
       id: item.id,
       orderId: item.orderId,
@@ -492,4 +588,3 @@ function formatOrderDto(order: any) {
     }))
   };
 }
-

@@ -8,7 +8,7 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "test": "jest",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "doctor": "expo-doctor",
     "lint": "eslint src --ext .ts,.tsx"

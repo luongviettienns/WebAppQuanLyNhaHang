@@ -75,6 +75,8 @@ interface RestaurantContextType {
   }) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   createDineInOrder: (tableId: number, notes?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   payOrder: (orderId: number, paymentMethod: PaymentMethod) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
+  updateTableStatus: (tableId: number, status: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') => Promise<{ success: boolean; table?: DiningTableDto; error?: string }>;
+  voidOrder: (orderId: number, reason: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
 
   // KDS State (Bếp thời gian thực)
   kdsOrders: OrderDto[];
@@ -82,6 +84,7 @@ interface RestaurantContextType {
   kdsError: string | null;
   fetchKDSOrders: () => Promise<void>;
   updateOrderStatus: (orderId: number, status: 'PREPARING' | 'READY' | 'COMPLETED') => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
+  toggleMenuItemSoldOut: (menuItemId: number, isAvailable: boolean) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
 }
 
 const RestaurantContext = createContext<RestaurantContextType | undefined>(undefined);
@@ -485,6 +488,95 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
+  const updateTableStatus = async (
+    tableId: number,
+    status: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING'
+  ): Promise<{ success: boolean; table?: DiningTableDto; error?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/api/tables/${tableId}/status`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ status })
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        return { success: false, error: json.error?.message || 'Cập nhật trạng thái bàn thất bại' };
+      }
+
+      const table = (json as ApiResponse<{ table: DiningTableDto }>).data.table;
+      setTables((prev) => prev.map((t) => (t.id === table.id ? table : t)));
+      return { success: true, table };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi cập nhật trạng thái bàn' };
+    }
+  };
+
+  const voidOrder = async (
+    orderId: number,
+    reason: string
+  ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/api/orders/${orderId}/void`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ reason })
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        return { success: false, error: json.error?.message || 'Hủy đơn hàng thất bại' };
+      }
+
+      const order = (json as ApiResponse<{ order: OrderDto }>).data.order;
+      setActiveTableOrder((current) => (current?.id === order.id ? null : current));
+      await fetchTables();
+
+      return { success: true, order };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi hủy đơn hàng' };
+    }
+  };
+
+  const toggleMenuItemSoldOut = async (
+    menuItemId: number,
+    isAvailable: boolean
+  ): Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }> => {
+    try {
+      const response = await fetch(`${API_URL}/api/menu/${menuItemId}/sold-out`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ isAvailable })
+      });
+
+      const json = await response.json();
+      if (!response.ok) {
+        return { success: false, error: json.error?.message || 'Không thể cập nhật trạng thái món' };
+      }
+
+      const updated = json.data.menuItem as MenuItemDto;
+      setCategories((prev) =>
+        prev.map((cat) => ({
+          ...cat,
+          menuItems: cat.menuItems?.map((item) => (item.id === updated.id ? updated : item))
+        }))
+      );
+
+      return { success: true, menuItem: updated };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi cập nhật món hết hàng' };
+    }
+  };
+
   return (
     <RestaurantContext.Provider
       value={{
@@ -518,11 +610,14 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         createOrder,
         createDineInOrder,
         payOrder,
+        updateTableStatus,
+        voidOrder,
         kdsOrders,
         isLoadingKDS,
         kdsError,
         fetchKDSOrders,
-        updateOrderStatus
+        updateOrderStatus,
+        toggleMenuItemSoldOut
       }}
     >
       {children}
