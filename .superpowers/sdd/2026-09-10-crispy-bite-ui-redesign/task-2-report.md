@@ -51,3 +51,33 @@ All commands were run in the UI redesign worktree after the final source edit.
 ## Concerns
 
 No blocking concerns. These are foundational primitives only; feature screens have not yet been migrated to consume them.
+
+## Fix round 1 — accessibility and surface hierarchy
+
+Addressed the three Important review findings only:
+
+- Dark primary and danger buttons now use the dedicated `#B42318` / `#FFFFFF` operational token pair, whose tested contrast ratio is at least 4.5:1.
+- Raised `Surface` now uses the background and subtle border hierarchy only; it no longer borrows floating-action elevation.
+- `Field editable={false}` now applies semantic sunken background, subtle border, muted text, and muted placeholder colors after consumer input styles so the disabled state stays visible.
+
+### RED
+
+Command: `npm run test --workspace=frontend -- src/ui/ui.test.ts`
+
+Output: 2 existing tests passed; the 2 new contracts failed as expected because `buttonTone`, `surfaceTreatment`, and `fieldState` were undefined (`Cannot read properties of undefined`).
+
+### GREEN and verification
+
+| Command | Result |
+| --- | --- |
+| `npm run test --workspace=frontend -- src/ui/ui.test.ts` | PASS — 4 tests in 1 file |
+| `npm run test:frontend` | PASS — 12 tests in 5 files |
+| `npm run typecheck:frontend` | PASS — `tsc --noEmit` exit 0 |
+| `git diff --check` | PASS — no whitespace errors |
+
+### Fix-round self-review
+
+- The dark-only background override and white foreground are used by both primary and danger button palettes, including their normal visual state.
+- Pressed dark buttons use the existing deeper `#B42318` semantic pressed color, which also exceeds the contrast threshold with white text.
+- `Surface` no longer imports or applies elevation; its raised treatment is tokenized as a one-pixel border and zero elevation.
+- Disabled field styles take precedence over `inputStyle`, preserving the visible disabled state.

@@ -4,7 +4,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { useTheme } from '../contexts/ThemeContext';
 import { radii, typography } from '../theme';
 import { AppIcon } from './AppIcon';
-import { buttonMetrics } from './tokens';
+import { buttonMetrics, buttonTone } from './tokens';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger';
 
@@ -32,10 +32,18 @@ export const Button: React.FC<ButtonProps> = ({
   const isDisabled = disabled || loading;
   const metrics = buttonMetrics[variant];
   const palette = {
-    primary: { background: theme.interactivePrimary, pressed: theme.interactivePrimaryPressed, text: theme.textInverse },
+    primary: {
+      background: theme.mode === 'dark' ? buttonTone.primary.dark.background : theme.interactivePrimary,
+      pressed: theme.interactivePrimaryPressed,
+      text: buttonTone.primary.dark.foreground
+    },
     secondary: { background: theme.interactiveSecondary, pressed: theme.interactiveSecondaryPressed, text: theme.textPrimary },
     quiet: { background: theme.interactiveQuiet, pressed: theme.surfaceSunken, text: theme.textPrimary },
-    danger: { background: theme.interactiveDanger, pressed: theme.interactiveDangerPressed, text: theme.textInverse }
+    danger: {
+      background: theme.mode === 'dark' ? buttonTone.danger.dark.background : theme.interactiveDanger,
+      pressed: theme.interactiveDangerPressed,
+      text: buttonTone.danger.dark.foreground
+    }
   }[variant];
 
   return (

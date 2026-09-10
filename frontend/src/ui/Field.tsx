@@ -3,6 +3,7 @@ import type { TextInputProps } from 'react-native';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { radii, spacing, typography } from '../theme';
+import { fieldState } from './tokens';
 
 export interface FieldProps extends TextInputProps {
   label: string;
@@ -24,16 +25,30 @@ export const Field: React.FC<FieldProps> = ({
 }) => {
   const { theme } = useTheme();
   const [focused, setFocused] = useState(false);
+  const isDisabled = inputProps.editable === false;
   const helperText = error || description;
+  const inputColors = isDisabled
+    ? {
+      backgroundColor: theme[fieldState.disabled.background],
+      borderColor: theme[fieldState.disabled.border],
+      color: theme[fieldState.disabled.text],
+      placeholderColor: theme[fieldState.disabled.placeholder]
+    }
+    : {
+      backgroundColor: theme.surfaceBase,
+      borderColor: error ? theme.danger : focused ? theme.focusRing : theme.borderSubtle,
+      color: theme.textPrimary,
+      placeholderColor: theme.textSecondary
+    };
 
   return (
     <View style={styles.container}>
-      <Text style={[styles.label, { color: theme.textPrimary }]}>{label}</Text>
+      <Text style={[styles.label, { color: isDisabled ? theme.textSecondary : theme.textPrimary }]}>{label}</Text>
       <TextInput
         {...inputProps}
         testID={testID}
         accessibilityLabel={accessibilityLabel || label}
-        accessibilityState={{ disabled: inputProps.editable === false }}
+        accessibilityState={{ disabled: isDisabled }}
         onFocus={(event) => {
           setFocused(true);
           onFocus?.(event);
@@ -42,15 +57,15 @@ export const Field: React.FC<FieldProps> = ({
           setFocused(false);
           onBlur?.(event);
         }}
-        placeholderTextColor={theme.textSecondary}
+        placeholderTextColor={inputColors.placeholderColor}
         style={[
           styles.input,
+          inputStyle,
           {
-            backgroundColor: theme.surfaceBase,
-            borderColor: error ? theme.danger : focused ? theme.focusRing : theme.borderSubtle,
-            color: theme.textPrimary
-          },
-          inputStyle
+            backgroundColor: inputColors.backgroundColor,
+            borderColor: inputColors.borderColor,
+            color: inputColors.color
+          }
         ]}
       />
       {helperText && (
