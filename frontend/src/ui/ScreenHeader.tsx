@@ -1,0 +1,35 @@
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
+import { spacing, typography } from '../theme';
+
+export interface ScreenHeaderProps {
+  title: string;
+  description?: string;
+  actions?: React.ReactNode;
+  leading?: React.ReactNode;
+}
+
+export const ScreenHeader: React.FC<ScreenHeaderProps> = ({ title, description, actions, leading }) => {
+  const { theme } = useTheme();
+
+  return (
+    <View accessibilityRole="header" style={styles.header}>
+      {leading && <View style={styles.leading}>{leading}</View>}
+      <View style={styles.copy}>
+        <Text style={[styles.title, { color: theme.textPrimary }]}>{title}</Text>
+        {description && <Text style={[styles.description, { color: theme.textSecondary }]}>{description}</Text>}
+      </View>
+      {actions && <View style={styles.actions}>{actions}</View>}
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  header: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },
+  leading: { alignItems: 'center', justifyContent: 'center' },
+  copy: { flex: 1, gap: 2 },
+  title: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xxl, lineHeight: typography.lineHeights.xxl },
+  description: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
+  actions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }
+});
