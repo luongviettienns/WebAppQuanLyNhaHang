@@ -7,8 +7,9 @@ test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
     await page.waitForLoadState('networkidle');
   });
 
-  test('should login as Cashier, order combo with required modifier, send to kitchen, view receipt, and advance status in KDS', async ({ page }) => {
+  test('should login as cashier, order combo with required modifier, send to kitchen, view receipt, and advance status in KDS', async ({ page }) => {
     // 1. Login using Cashier Demo Button
+    await expect(page.getByRole('heading', { name: 'Đăng nhập' })).toBeVisible();
     const cashierBtn = page.getByTestId('demo-btn-cashier');
     await expect(cashierBtn).toBeVisible({ timeout: 10000 });
     await cashierBtn.click();
@@ -16,6 +17,7 @@ test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
     // Verify logged in and POS Tab is visible
     const posTab = page.getByTestId('tab-pos');
     await expect(posTab).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('Bán hàng')).toBeVisible();
 
     // 2. Select first combo menu item (requires modifiers)
     const firstMenuItem = page.locator('[data-testid^="menu-item-"]').first();

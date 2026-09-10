@@ -1,218 +1,164 @@
 import React, { useState } from 'react';
 import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
-  TextInput,
-  TouchableOpacity,
-  ActivityIndicator,
-  SafeAreaView,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView
+  useWindowDimensions
 } from 'react-native';
-import { typography, spacing } from '../../theme';
+import { ChefHat, Moon, ShieldCheck, Sun, UserRound } from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
+import { Role } from '../../api/contracts';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { Role } from '../../api/contracts';
+import { radii, spacing, typography } from '../../theme';
+import { AppIcon, BrandMark, Button, Field, InlineAlert, Surface } from '../../ui';
+
+const demoRoles: Array<{ role: Role; label: string; description: string; icon: LucideIcon; testID: string }> = [
+  { role: 'CASHIER', label: 'Thu ngân', description: 'Bán hàng và quản lý bàn', icon: UserRound, testID: 'demo-btn-cashier' },
+  { role: 'KITCHEN', label: 'Bếp', description: 'Tiếp nhận và chế biến món', icon: ChefHat, testID: 'demo-btn-kitchen' },
+  { role: 'ADMIN', label: 'Quản trị', description: 'Thực đơn và báo cáo vận hành', icon: ShieldCheck, testID: 'demo-btn-admin' }
+];
 
 export const LoginScreen: React.FC = () => {
   const { login, demoLogin, isLoading } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isDesktop = width >= 900;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
-      setErrorMessage('Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu');
+      setErrorMessage('Nhập đầy đủ tên đăng nhập và mật khẩu để tiếp tục.');
       return;
     }
+
     setErrorMessage(null);
     const result = await login(username.trim(), password);
-    if (!result.success && result.error) {
-      setErrorMessage(result.error);
+    if (!result.success) {
+      setErrorMessage(result.error || 'Đăng nhập không thành công. Vui lòng thử lại.');
     }
   };
 
   const handleDemoLogin = async (role: Role) => {
     setErrorMessage(null);
-    const creds: Record<Role, { u: string; p: string }> = {
-      CASHIER: { u: 'cashier', p: 'cashier123' },
-      KITCHEN: { u: 'kitchen', p: 'kitchen123' },
-      ADMIN: { u: 'admin', p: 'admin123' }
-    };
-    const { u, p } = creds[role];
-    setUsername(u);
-    setPassword(p);
     const result = await demoLogin(role);
-    if (!result.success && result.error) {
-      setErrorMessage(result.error);
+    if (!result.success) {
+      setErrorMessage(result.error || 'Không thể mở tài khoản dùng thử. Vui lòng thử lại.');
     }
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Theme Switcher at Top-Right */}
-      <View style={styles.topBar}>
-        <TouchableOpacity
-          style={[
-            styles.themeToggleBtn,
-            { backgroundColor: isDark ? '#334155' : '#FEF3C7', borderColor: isDark ? '#475569' : '#FDE68A' }
-          ]}
-          onPress={toggleTheme}
-          accessibilityLabel="Chuyển đổi giao diện Sáng / Tối"
-        >
-          <Text style={[styles.themeToggleText, { color: isDark ? '#F8FAFC' : '#B45309' }]}>
-            {isDark ? '🌙 Tối' : '☀️ Sáng'}
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      <KeyboardAvoidingView
-        style={styles.keyboardContainer}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
-        <ScrollView contentContainerStyle={styles.scrollContent}>
-          {/* Brand Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerEmoji}>🍔</Text>
-            <Text style={[styles.brandTitle, { color: theme.primary }]}>CRISPY BITE</Text>
-            <Text style={[styles.brandSubtitle, { color: theme.textMuted }]}>
-              Hệ Thống Đặt Món & Quản Lý Nhà Hàng QSR
-            </Text>
-          </View>
-
-          {/* Login Card */}
-          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.cardTitle, { color: theme.text }]}>Đăng Nhập Hệ Thống</Text>
-            <Text style={[styles.cardDesc, { color: theme.textMuted }]}>
-              Vui lòng nhập tài khoản được cấp để tiếp tục
-            </Text>
-
-            {errorMessage && (
-              <View style={styles.errorBox}>
-                <Text style={styles.errorText}>⚠️ {errorMessage}</Text>
-              </View>
-            )}
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: theme.text }]}>Tên đăng nhập</Text>
-              <TextInput
-                testID="input-username"
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? '#0F172A' : '#F8FAFC',
-                    borderColor: theme.border,
-                    color: theme.text
-                  }
-                ]}
-                placeholder="Nhập tên đăng nhập (cashier, kitchen, admin)..."
-                placeholderTextColor={theme.textMuted}
-                value={username}
-                onChangeText={setUsername}
-                autoCapitalize="none"
-                editable={!isLoading}
-              />
-            </View>
-
-            <View style={styles.inputGroup}>
-              <Text style={[styles.label, { color: theme.text }]}>Mật khẩu</Text>
-              <TextInput
-                testID="input-password"
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: isDark ? '#0F172A' : '#F8FAFC',
-                    borderColor: theme.border,
-                    color: theme.text
-                  }
-                ]}
-                placeholder="Nhập mật khẩu..."
-                placeholderTextColor={theme.textMuted}
-                value={password}
-                onChangeText={setPassword}
-                secureTextEntry
-                editable={!isLoading}
-              />
-            </View>
-
-            <TouchableOpacity
-              testID="btn-login"
-              style={[styles.loginButton, { backgroundColor: theme.primary }, isLoading && styles.buttonDisabled]}
-              onPress={handleLogin}
-              disabled={isLoading}
+    <SafeAreaView style={[styles.safeArea, { backgroundColor: theme.surfaceCanvas }]}>
+      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, isDesktop && styles.scrollContentDesktop]} keyboardShouldPersistTaps="handled">
+          <View style={[styles.composition, isDesktop && styles.compositionDesktop]}>
+            <View
+              style={[
+                styles.brandPanel,
+                isDesktop && styles.brandPanelDesktop,
+                { backgroundColor: isDark ? theme.surfaceSunken : theme.interactivePrimary }
+              ]}
             >
-              {isLoading ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.loginButtonText}>ĐĂNG NHẬP</Text>
-              )}
-            </TouchableOpacity>
-
-            {/* Divider */}
-            <View style={styles.divider}>
-              <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
-              <Text style={[styles.dividerText, { color: theme.textMuted }]}>
-                HOẶC ĐĂNG NHẬP NHANH (DEMO BAR)
-              </Text>
-              <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+              <View style={[styles.brandPlate, { backgroundColor: theme.surfaceBase }]}>
+                <BrandMark />
+              </View>
+              <View style={styles.brandMessage}>
+                <Text style={[styles.brandHeading, { color: isDark ? theme.textPrimary : theme.textInverse }]}>Ca làm việc bắt đầu tại đây.</Text>
+                <Text style={[styles.brandBody, { color: isDark ? theme.textSecondary : theme.textInverse }]}>Một màn hình chung cho quầy, bếp và quản trị nhà hàng.</Text>
+              </View>
+              <View style={[styles.shiftStatus, { borderColor: isDark ? theme.borderStrong : theme.textInverse }]}>
+                <View style={[styles.statusDot, { backgroundColor: isDark ? theme.success : theme.textInverse }]} />
+                <Text style={[styles.shiftText, { color: isDark ? theme.textPrimary : theme.textInverse }]}>Hệ thống sẵn sàng nhận ca</Text>
+              </View>
             </View>
 
-            {/* Quick Demo Login Bar */}
-            <View style={styles.demoBar}>
-              <TouchableOpacity
-                testID="demo-btn-cashier"
-                style={[
-                  styles.demoButton,
-                  {
-                    backgroundColor: isDark ? '#7C2D12' : '#FFEDD5',
-                    borderColor: isDark ? '#F97316' : theme.secondary
-                  }
-                ]}
-                onPress={() => handleDemoLogin('CASHIER')}
-                disabled={isLoading}
-              >
-                <Text style={[styles.demoButtonText, { color: isDark ? '#FDBA74' : theme.secondary }]}>
-                  👤 Thu Ngân (Cashier)
-                </Text>
-              </TouchableOpacity>
+            <Surface level="base" style={[styles.formPanel, isDesktop && styles.formPanelDesktop]}>
+              <View style={styles.formHeader}>
+                <View style={styles.titleGroup}>
+                  <Text accessibilityRole="header" style={[styles.title, { color: theme.textPrimary }]}>Đăng nhập</Text>
+                  <Text style={[styles.description, { color: theme.textSecondary }]}>Dùng tài khoản được cấp cho ca làm việc của bạn.</Text>
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={isDark ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}
+                  onPress={toggleTheme}
+                  style={({ pressed }) => [styles.themeButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet, borderColor: theme.borderSubtle }]}
+                >
+                  <AppIcon icon={isDark ? Sun : Moon} color={theme.textPrimary} size={18} />
+                </Pressable>
+              </View>
 
-              <TouchableOpacity
-                testID="demo-btn-kitchen"
-                style={[
-                  styles.demoButton,
-                  {
-                    backgroundColor: isDark ? '#075985' : '#E0F2FE',
-                    borderColor: isDark ? '#38BDF8' : '#0284C7'
-                  }
-                ]}
-                onPress={() => handleDemoLogin('KITCHEN')}
-                disabled={isLoading}
-              >
-                <Text style={[styles.demoButtonText, { color: isDark ? '#7DD3FC' : '#0284C7' }]}>
-                  👨‍🍳 Đầu Bếp (KDS)
-                </Text>
-              </TouchableOpacity>
+              {errorMessage && <InlineAlert title="Chưa thể đăng nhập" message={errorMessage} />}
 
-              <TouchableOpacity
-                testID="demo-btn-admin"
-                style={[
-                  styles.demoButton,
-                  {
-                    backgroundColor: isDark ? '#5B21B6' : '#EDE9FE',
-                    borderColor: isDark ? '#A855F7' : '#7C3AED'
-                  }
-                ]}
-                onPress={() => handleDemoLogin('ADMIN')}
-                disabled={isLoading}
-              >
-                <Text style={[styles.demoButtonText, { color: isDark ? '#C4B5FD' : '#7C3AED' }]}>
-                  👑 Quản Lý (Admin)
-                </Text>
-              </TouchableOpacity>
-            </View>
+              <View style={styles.fields}>
+                <Field
+                  testID="input-username"
+                  label="Tên đăng nhập"
+                  placeholder="Ví dụ: cashier"
+                  value={username}
+                  onChangeText={setUsername}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  editable={!isLoading}
+                  returnKeyType="next"
+                />
+                <Field
+                  testID="input-password"
+                  label="Mật khẩu"
+                  placeholder="Nhập mật khẩu"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry
+                  editable={!isLoading}
+                  returnKeyType="done"
+                  onSubmitEditing={() => void handleLogin()}
+                />
+              </View>
+
+              <Button testID="btn-login" variant="primary" label="Đăng nhập" loading={isLoading} onPress={() => void handleLogin()} />
+
+              <View style={styles.demoSection}>
+                <View style={styles.dividerRow}>
+                  <View style={[styles.divider, { backgroundColor: theme.borderSubtle }]} />
+                  <Text style={[styles.demoTitle, { color: theme.textSecondary }]}>Tài khoản dùng thử</Text>
+                  <View style={[styles.divider, { backgroundColor: theme.borderSubtle }]} />
+                </View>
+                <View style={[styles.demoList, { borderColor: theme.borderSubtle }]}>
+                  {demoRoles.map((item, index) => (
+                    <Pressable
+                      key={item.role}
+                      testID={item.testID}
+                      accessibilityRole="button"
+                      accessibilityState={{ disabled: isLoading }}
+                      disabled={isLoading}
+                      onPress={() => void handleDemoLogin(item.role)}
+                      style={({ pressed }) => [
+                        styles.demoRow,
+                        index > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 },
+                        pressed && { backgroundColor: theme.surfaceSunken },
+                        isLoading && styles.disabled
+                      ]}
+                    >
+                      <View style={[styles.demoIcon, { backgroundColor: theme.interactiveQuiet }]}>
+                        <AppIcon icon={item.icon} color={theme.textPrimary} size={19} />
+                      </View>
+                      <View style={styles.demoCopy}>
+                        <Text style={[styles.demoLabel, { color: theme.textPrimary }]}>{item.label}</Text>
+                        <Text style={[styles.demoDescription, { color: theme.textSecondary }]}>{item.description}</Text>
+                      </View>
+                      <Text style={[styles.openLabel, { color: theme.primary }]}>Mở</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </Surface>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
@@ -221,147 +167,39 @@ export const LoginScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  topBar: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.sm
-  },
-  themeToggleBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 4,
-    borderRadius: 16,
-    borderWidth: 1
-  },
-  themeToggleText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  keyboardContainer: {
-    flex: 1
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: spacing.lg,
-    paddingTop: spacing.sm
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: spacing.lg
-  },
-  headerEmoji: {
-    fontSize: 52,
-    marginBottom: spacing.xs
-  },
-  brandTitle: {
-    fontSize: typography.sizes.display,
-    fontWeight: typography.weights.extraBold,
-    letterSpacing: 2
-  },
-  brandSubtitle: {
-    fontSize: typography.sizes.sm,
-    marginTop: spacing.xs,
-    textAlign: 'center'
-  },
-  card: {
-    borderRadius: 20,
-    padding: spacing.xl,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4
-  },
-  cardTitle: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.bold,
-    textAlign: 'center'
-  },
-  cardDesc: {
-    fontSize: typography.sizes.xs,
-    textAlign: 'center',
-    marginTop: spacing.xs,
-    marginBottom: spacing.lg
-  },
-  errorBox: {
-    backgroundColor: '#FEF2F2',
-    borderColor: '#F87171',
-    borderWidth: 1,
-    padding: spacing.md,
-    borderRadius: 8,
-    marginBottom: spacing.md
-  },
-  errorText: {
-    color: '#DC2626',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
-  },
-  inputGroup: {
-    marginBottom: spacing.md
-  },
-  label: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    marginBottom: spacing.xs
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.md,
-    fontSize: typography.sizes.sm,
-    minHeight: spacing.touchTargetMobile
-  },
-  loginButton: {
-    paddingVertical: spacing.md,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: spacing.touchTargetPOS,
-    marginTop: spacing.sm
-  },
-  buttonDisabled: {
-    opacity: 0.6
-  },
-  loginButtonText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    letterSpacing: 1
-  },
-  divider: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginVertical: spacing.lg
-  },
-  dividerLine: {
-    flex: 1,
-    height: 1
-  },
-  dividerText: {
-    fontSize: 10,
-    fontWeight: typography.weights.semibold,
-    paddingHorizontal: spacing.sm
-  },
-  demoBar: {
-    gap: spacing.sm
-  },
-  demoButton: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: spacing.touchTargetMobile
-  },
-  demoButtonText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  }
+  safeArea: { flex: 1 },
+  flex: { flex: 1 },
+  scrollContent: { flexGrow: 1, justifyContent: 'center', padding: spacing.md },
+  scrollContentDesktop: { padding: spacing.xxl },
+  composition: { alignSelf: 'center', maxWidth: 1080, width: '100%' },
+  compositionDesktop: { flexDirection: 'row', minHeight: 640 },
+  brandPanel: { borderRadius: radii.md, gap: spacing.xl, padding: spacing.xl },
+  brandPanelDesktop: { borderBottomRightRadius: 0, borderTopRightRadius: 0, justifyContent: 'space-between', padding: spacing.xxl, width: '40%' },
+  brandPlate: { alignSelf: 'flex-start', borderRadius: radii.md, padding: spacing.sm },
+  brandMessage: { gap: spacing.sm, maxWidth: 360 },
+  brandHeading: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xxl, lineHeight: typography.lineHeights.xxl },
+  brandBody: { fontFamily: typography.families.body, fontSize: typography.sizes.md, lineHeight: typography.lineHeights.md },
+  shiftStatus: { alignItems: 'center', alignSelf: 'flex-start', borderRadius: radii.sm, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.md },
+  statusDot: { borderRadius: radii.pill, height: 8, width: 8 },
+  shiftText: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
+  formPanel: { gap: spacing.lg, marginTop: spacing.md, padding: spacing.xl },
+  formPanelDesktop: { borderBottomLeftRadius: 0, borderLeftWidth: 0, borderTopLeftRadius: 0, justifyContent: 'center', marginTop: 0, paddingHorizontal: 56, width: '60%' },
+  formHeader: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },
+  titleGroup: { flex: 1, gap: spacing.xs },
+  title: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xxl, lineHeight: typography.lineHeights.xxl },
+  description: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm, maxWidth: 440 },
+  themeButton: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, height: 44, justifyContent: 'center', width: 44 },
+  fields: { gap: spacing.md },
+  demoSection: { gap: spacing.md, marginTop: spacing.xs },
+  dividerRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  divider: { flex: 1, height: 1 },
+  demoTitle: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs },
+  demoList: { borderRadius: radii.md, borderWidth: 1, overflow: 'hidden' },
+  demoRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, minHeight: 58, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  demoIcon: { alignItems: 'center', borderRadius: radii.sm, height: 36, justifyContent: 'center', width: 36 },
+  demoCopy: { flex: 1 },
+  demoLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  demoDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
+  openLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  disabled: { opacity: 0.55 }
 });

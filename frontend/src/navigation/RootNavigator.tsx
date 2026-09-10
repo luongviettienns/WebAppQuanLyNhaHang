@@ -1,17 +1,18 @@
 import React from 'react';
 import { StyleSheet, View, ActivityIndicator } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { RoleTabs } from './RoleTabs';
-import { colors } from '../theme';
 
 export const RootNavigator: React.FC = () => {
   const { user, isLoading } = useAuth();
+  const { theme } = useTheme();
 
   if (isLoading && !user) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={colors.primary} />
+      <View style={[styles.loadingContainer, { backgroundColor: theme.surfaceCanvas }]}>
+        <ActivityIndicator size="large" color={theme.primary} />
       </View>
     );
   }
@@ -26,7 +27,6 @@ export const RootNavigator: React.FC = () => {
 const styles = StyleSheet.create({
   loadingContainer: {
     flex: 1,
-    backgroundColor: colors.background,
     justifyContent: 'center',
     alignItems: 'center'
   }

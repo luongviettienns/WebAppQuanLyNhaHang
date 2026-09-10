@@ -6,8 +6,9 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
     await page.waitForLoadState('networkidle');
   });
 
-  test('should login as Admin, toggle 86 item status, and inspect daily KPI dashboard and SOS', async ({ page }) => {
+  test('should login as admin, toggle 86 item status, and inspect daily KPI dashboard and SOS', async ({ page }) => {
     // 1. Login using Admin Demo Button
+    await expect(page.getByRole('heading', { name: 'Đăng nhập' })).toBeVisible();
     const adminBtn = page.getByTestId('demo-btn-admin');
     await expect(adminBtn).toBeVisible({ timeout: 10000 });
     await adminBtn.click();
@@ -15,6 +16,7 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
     // 2. Navigate to Admin Screen
     const adminTab = page.getByTestId('tab-admin');
     await expect(adminTab).toBeVisible({ timeout: 10000 });
+    await expect(adminTab.getByText('Quản trị')).toBeVisible();
     await adminTab.click();
 
     // Verify Admin Header
