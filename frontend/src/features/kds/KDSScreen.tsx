@@ -1,24 +1,258 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  Modal,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
-  SafeAreaView,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-  Alert,
-  Modal
+  useWindowDimensions
 } from 'react-native';
-import { useTheme } from '../../contexts/ThemeContext';
+import {
+  ChefHat,
+  Clock3,
+  Moon,
+  PackageX,
+  RefreshCw,
+  ShoppingBag,
+  Sun,
+  Utensils,
+  X
+} from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
+import { MenuItemDto, OrderDto } from '../../api/contracts';
 import { useRestaurant } from '../../contexts/RestaurantContext';
-import { typography, spacing } from '../../theme';
-import { OrderDto, MenuItemDto } from '../../api/contracts';
+import { useTheme } from '../../contexts/ThemeContext';
+import { radii, spacing, typography } from '../../theme';
+import {
+  AppIcon,
+  Button,
+  EmptyState,
+  InlineAlert,
+  ScreenHeader,
+  StatusBadge,
+  Surface
+} from '../../ui';
+import type { StatusTone } from '../../ui';
 
-type FilterTab = 'ALL' | 'PENDING' | 'PREPARING' | 'READY';
+type KdsStatus = 'PENDING' | 'PREPARING' | 'READY';
+
+const statusConfig: Record<KdsStatus, {
+  title: string;
+  description: string;
+  emptyDescription: string;
+  tone: StatusTone;
+  actionLabel: string;
+  icon: LucideIcon;
+}> = {
+  PENDING: {
+    title: 'Chờ chế biến',
+    description: 'Ticket mới từ quầy và khách',
+    emptyDescription: 'Ticket mới sẽ xuất hiện tại đây.',
+    tone: 'warning',
+    actionLabel: 'Bắt đầu chế biến',
+    icon: Clock3
+  },
+  PREPARING: {
+    title: 'Đang chế biến',
+    description: 'Món đang được thực hiện',
+    emptyDescription: 'Chưa có ticket nào đang chế biến.',
+    tone: 'info',
+    actionLabel: 'Chuyển sang sẵn sàng',
+    icon: ChefHat
+  },
+  READY: {
+    title: 'Sẵn sàng',
+    description: 'Chờ giao tại quầy hoặc bàn',
+    emptyDescription: 'Chưa có ticket nào chờ giao.',
+    tone: 'success',
+    actionLabel: 'Đã giao khách',
+    icon: Utensils
+  }
+};
+
+const statuses: KdsStatus[] = ['PENDING', 'PREPARING', 'READY'];
+
+const getElapsedInfo = (createdAt: string, now: number): { text: string; label: string; tone: StatusTone } => {
+  const elapsedSeconds = Math.max(0, Math.floor((now - new Date(createdAt).getTime()) / 1000));
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  const text = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+  if (minutes < 3) return { text, label: 'Đúng tiến độ', tone: 'success' };
+  if (minutes < 5) return { text, label: 'Cần chú ý', tone: 'warning' };
+  return { text, label: 'Trễ đơn', tone: 'danger' };
+};
+
+interface TicketProps {
+  order: OrderDto;
+  now: number;
+  updating: boolean;
+  onTransition: (order: OrderDto) => void;
+}
+
+const OrderTicket: React.FC<TicketProps> = ({ order, now, updating, onTransition }) => {
+  const { theme } = useTheme();
+  const status = order.status as KdsStatus;
+  const config = statusConfig[status];
+  const elapsed = getElapsedInfo(order.createdAt, now);
+  const edgeColor = {
+    success: theme.success,
+    warning: theme.warning,
+    danger: theme.danger,
+    info: theme.focusRing,
+    neutral: theme.borderStrong
+  }[elapsed.tone];
+  const serviceLabel = order.orderType === 'DINE_IN'
+    ? `Bàn ${order.tableNumber ?? order.tableId ?? 'chưa gán'}`
+    : `Mang đi · Số nhận món ${order.buzzerNumber ?? 'chưa gán'}`;
+
+  return (
+    <View testID={`kds-card-${order.code}`}>
+      <Surface level="raised" style={[styles.ticket, { borderLeftColor: edgeColor }]}>
+        <View
+          accessibilityLabel={`${config.title}, đơn ${order.code}, ${serviceLabel}, thời gian chờ ${elapsed.text}, ${elapsed.label}`}
+          style={[styles.ticketHeader, { borderBottomColor: theme.borderSubtle }]}
+        >
+          <View style={styles.ticketIdentity}>
+            <Text style={[styles.orderCode, { color: theme.textPrimary }]}>{order.code}</Text>
+            <View style={styles.serviceRow}>
+              <AppIcon icon={order.orderType === 'DINE_IN' ? Utensils : ShoppingBag} color={theme.textSecondary} size={16} />
+              <Text style={[styles.serviceText, { color: theme.textSecondary }]}>{serviceLabel}</Text>
+            </View>
+          </View>
+          <View style={styles.timerGroup}>
+            <Text style={[styles.timer, { color: theme.textPrimary }]}>{elapsed.text}</Text>
+            <Text style={[styles.timerLabel, { color: theme.textSecondary }]}>{elapsed.label}</Text>
+          </View>
+        </View>
+
+        <View style={styles.ticketStatus}>
+          <StatusBadge tone={config.tone} label={config.title} icon={config.icon} />
+        </View>
+
+        <View style={styles.ticketBody}>
+          {order.items.map((item, index) => (
+            <View key={item.id || index} style={styles.itemRow}>
+              <Text style={[styles.quantity, { color: theme.textPrimary }]}>{item.quantity}×</Text>
+              <View style={styles.itemDetails}>
+                <Text style={[styles.itemName, { color: theme.textPrimary }]}>{item.menuItemName}</Text>
+                {(item.selectedModifiersJson || []).map((modifier, modifierIndex) => (
+                  <Text key={`${modifier.optionId}-${modifierIndex}`} style={[styles.itemMeta, { color: theme.textSecondary }]}>
+                    {modifier.groupName}: {modifier.optionName}
+                  </Text>
+                ))}
+                {item.notes ? (
+                  <Text style={[styles.itemNote, { color: theme.warning }]}>Ghi chú món: {item.notes}</Text>
+                ) : null}
+              </View>
+            </View>
+          ))}
+
+          {order.notes ? (
+            <View style={[styles.orderNote, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+              <Text style={[styles.orderNoteLabel, { color: theme.warning }]}>Lời dặn đơn</Text>
+              <Text style={[styles.orderNoteText, { color: theme.textPrimary }]}>{order.notes}</Text>
+            </View>
+          ) : null}
+        </View>
+
+        <View style={[styles.ticketFooter, { borderTopColor: theme.borderSubtle }]}>
+          <Button
+            testID={`kds-action-btn-${order.code}`}
+            variant="primary"
+            label={config.actionLabel}
+            icon={config.icon}
+            loading={updating}
+            onPress={() => onTransition(order)}
+          />
+        </View>
+      </Surface>
+    </View>
+  );
+};
+
+interface LaneProps {
+  status: KdsStatus;
+  orders: OrderDto[];
+  now: number;
+  updatingOrderId: number | null;
+  desktop: boolean;
+  onTransition: (order: OrderDto) => void;
+}
+
+const StatusLane: React.FC<LaneProps> = ({ status, orders, now, updatingOrderId, desktop, onTransition }) => {
+  const { theme } = useTheme();
+  const config = statusConfig[status];
+
+  return (
+    <Surface level="sunken" style={[styles.lane, desktop ? styles.laneDesktop : styles.laneTablet]}>
+      <View style={[styles.laneHeader, { borderBottomColor: theme.borderSubtle }]}>
+        <View style={styles.laneTitleRow}>
+          <Text accessibilityRole="header" style={[styles.laneTitle, { color: theme.textPrimary }]}>{config.title}</Text>
+          <View style={[styles.laneCount, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderSubtle }]}>
+            <Text style={[styles.laneCountText, { color: theme.textPrimary }]}>{orders.length}</Text>
+          </View>
+        </View>
+        <Text style={[styles.laneDescription, { color: theme.textSecondary }]}>{config.description}</Text>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.laneTickets} showsVerticalScrollIndicator={false}>
+        {orders.length === 0 ? (
+          <EmptyState title="Chưa có ticket" description={config.emptyDescription} />
+        ) : (
+          orders.map((order) => (
+            <OrderTicket key={order.id} order={order} now={now} updating={updatingOrderId === order.id} onTransition={onTransition} />
+          ))
+        )}
+      </ScrollView>
+    </Surface>
+  );
+};
+
+interface SegmentProps {
+  status: KdsStatus;
+  count: number;
+  selected: boolean;
+  onPress: () => void;
+}
+
+const StatusSegment: React.FC<SegmentProps> = ({ status, count, selected, onPress }) => {
+  const { theme } = useTheme();
+  const [focused, setFocused] = useState(false);
+  const label = `${statusConfig[status].title}, ${count} ticket`;
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      style={({ pressed }) => [
+        styles.segment,
+        {
+          backgroundColor: selected || pressed ? theme.interactiveSecondary : theme.surfaceBase,
+          borderColor: focused ? theme.focusRing : selected ? theme.borderStrong : theme.borderSubtle,
+          borderWidth: focused ? 3 : 1
+        }
+      ]}
+    >
+      <Text style={[styles.segmentLabel, { color: theme.textPrimary }]}>{statusConfig[status].title}</Text>
+      <Text style={[styles.segmentCount, { color: theme.textSecondary }]}>{count}</Text>
+    </Pressable>
+  );
+};
 
 export const KDSScreen: React.FC = () => {
   const { theme, isDark, toggleTheme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isMobile = width < 768;
+  const isDesktop = width >= 1200;
   const {
     kdsOrders,
     isLoadingKDS,
@@ -30,469 +264,206 @@ export const KDSScreen: React.FC = () => {
     toggleMenuItemSoldOut
   } = useRestaurant();
 
-  const [activeTab, setActiveTab] = useState<FilterTab>('ALL');
+  const [activeMobileStatus, setActiveMobileStatus] = useState<KdsStatus>('PENDING');
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
-  const [now, setNow] = useState<number>(Date.now());
-
-  // Sold-Out (86'd) Management States
+  const [now, setNow] = useState(Date.now());
   const [isSoldOutModalOpen, setIsSoldOutModalOpen] = useState(false);
   const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
   const [soldOutError, setSoldOutError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchKDSOrders();
+  }, [fetchKDSOrders]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const ordersByStatus = statuses.reduce<Record<KdsStatus, OrderDto[]>>(
+    (grouped, status) => ({ ...grouped, [status]: kdsOrders.filter((order) => order.status === status) }),
+    { PENDING: [], PREPARING: [], READY: [] }
+  );
+
+  const handleTransition = async (order: OrderDto) => {
+    const nextStatus = ({
+      PENDING: 'PREPARING',
+      PREPARING: 'READY',
+      READY: 'COMPLETED'
+    } as Partial<Record<OrderDto['status'], 'PREPARING' | 'READY' | 'COMPLETED'>>)[order.status];
+
+    if (!nextStatus) return;
+    setUpdatingOrderId(order.id);
+    const result = await updateOrderStatus(order.id, nextStatus);
+    setUpdatingOrderId(null);
+    if (!result.success) Alert.alert('Lỗi cập nhật', result.error || 'Không thể cập nhật trạng thái đơn');
+  };
 
   const handleToggleSoldOut = async (item: MenuItemDto) => {
     setTogglingItemId(item.id);
     setSoldOutError(null);
     const result = await toggleMenuItemSoldOut(item.id, !item.isAvailable);
     setTogglingItemId(null);
-    if (!result.success) {
-      setSoldOutError(result.error || 'Cập nhật món hết hàng thất bại');
-    }
+    if (!result.success) setSoldOutError(result.error || 'Cập nhật món hết hàng thất bại');
   };
 
-  // Load KDS orders on mount
-  useEffect(() => {
-    fetchKDSOrders();
-  }, [fetchKDSOrders]);
-
-  // Live timer tick every 1 second
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setNow(Date.now());
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Filter orders by tab
-  const filteredOrders = kdsOrders.filter((order) => {
-    if (activeTab === 'ALL') return true;
-    return order.status === activeTab;
-  });
-
-  // Calculate order counts for tabs
-  const pendingCount = kdsOrders.filter((o) => o.status === 'PENDING').length;
-  const preparingCount = kdsOrders.filter((o) => o.status === 'PREPARING').length;
-  const readyCount = kdsOrders.filter((o) => o.status === 'READY').length;
-
-  // Handle status transition button press
-  const handleTransition = async (order: OrderDto) => {
-    let nextStatus: 'PREPARING' | 'READY' | 'COMPLETED';
-
-    if (order.status === 'PENDING') {
-      nextStatus = 'PREPARING';
-    } else if (order.status === 'PREPARING') {
-      nextStatus = 'READY';
-    } else if (order.status === 'READY') {
-      nextStatus = 'COMPLETED';
-    } else {
-      return;
-    }
-
-    setUpdatingOrderId(order.id);
-    const result = await updateOrderStatus(order.id, nextStatus);
-    setUpdatingOrderId(null);
-
-    if (!result.success) {
-      Alert.alert('Lỗi cập nhật', result.error || 'Không thể cập nhật trạng thái đơn');
-    }
+  const openSoldOutModal = () => {
+    fetchMenu();
+    setIsSoldOutModalOpen(true);
   };
 
-  // Helper: Format elapsed time and urgency
-  const getElapsedInfo = (createdAt: string) => {
-    const elapsedSeconds = Math.max(0, Math.floor((now - new Date(createdAt).getTime()) / 1000));
-    const mins = Math.floor(elapsedSeconds / 60);
-    const secs = elapsedSeconds % 60;
-    const formatted = `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-
-    if (mins < 3) {
-      return {
-        text: formatted,
-        urgency: 'NORMAL',
-        bgColor: isDark ? '#052E16' : '#DCFCE7',
-        textColor: isDark ? '#4ADE80' : '#166534',
-        borderColor: '#16A34A',
-        label: 'Tốt'
-      };
-    } else if (mins < 5) {
-      return {
-        text: formatted,
-        urgency: 'WARNING',
-        bgColor: isDark ? '#422006' : '#FEF9C3',
-        textColor: isDark ? '#FACC15' : '#854D0E',
-        borderColor: '#CA8A04',
-        label: 'Cần chú ý'
-      };
-    } else {
-      return {
-        text: formatted,
-        urgency: 'DELAYED',
-        bgColor: isDark ? '#450A0A' : '#FEE2E2',
-        textColor: isDark ? '#F87171' : '#991B1B',
-        borderColor: '#DC2626',
-        label: 'Trễ đơn'
-      };
-    }
-  };
+  const connectionTone: StatusTone = kdsError ? 'danger' : isLoadingKDS ? 'warning' : 'success';
+  const connectionState = kdsError ? 'Cần kết nối lại' : isLoadingKDS ? 'Đang đồng bộ' : 'Đã kết nối';
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* 1. KDS Header with Theme Switcher & Refresh */}
-      <View style={[styles.header, { backgroundColor: isDark ? '#0F172A' : '#0284C7', borderBottomColor: theme.border }]}>
-        <View style={styles.headerTitleGroup}>
-          <Text testID="kds-screen-title" style={styles.title}>🍳 KDS BẾP (KITCHEN DISPLAY SYSTEM)</Text>
-          <Text style={[styles.subtitle, { color: isDark ? '#94A3B8' : '#E0F2FE' }]}>
-            {kdsOrders.length} đơn hàng đang xử lý thời gian thực
-          </Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
+      <View style={[styles.header, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
+        <View testID="kds-screen-title">
+          <ScreenHeader
+            title="KDS bếp"
+            description={`${kdsOrders.length} ticket đang xử lý`}
+            leading={<AppIcon icon={ChefHat} color={theme.primary} size={32} />}
+          />
         </View>
-
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={[styles.headerBtn, { backgroundColor: isDark ? '#B45309' : '#D97706' }]}
-            onPress={() => {
-              fetchMenu();
-              setIsSoldOutModalOpen(true);
-            }}
-            accessibilityLabel="Quản lý món hết hàng 86'd"
-          >
-            <Text style={styles.headerBtnText}>📦 Báo hết món (86&apos;d)</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.headerBtn, { backgroundColor: isDark ? '#1E293B' : '#0369A1' }]}
-            onPress={fetchKDSOrders}
-            accessibilityLabel="Làm mới danh sách đơn"
-          >
-            <Text style={styles.headerBtnText}>🔄 Làm mới</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.headerBtn, { backgroundColor: isDark ? '#334155' : '#0369A1' }]}
-            onPress={toggleTheme}
-            accessibilityLabel="Chuyển chế độ Sáng / Tối KDS"
-          >
-            <Text style={styles.headerBtnText}>
-              {isDark ? '☀️ Giao diện Sáng' : '🌙 Giao diện Tối'}
-            </Text>
-          </TouchableOpacity>
+        <View style={[styles.headerUtility, !isMobile && styles.headerUtilityWide]}>
+          <View style={styles.connectionGroup}>
+            <Text style={[styles.connectionLabel, { color: theme.textSecondary }]}>Kết nối thời gian thực</Text>
+            <StatusBadge tone={connectionTone} label={connectionState} />
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.headerActions}>
+            <Button variant="secondary" label="Báo hết món" icon={PackageX} onPress={openSoldOutModal} />
+            <Button variant="quiet" label="Làm mới" icon={RefreshCw} onPress={fetchKDSOrders} />
+            <Button
+              variant="quiet"
+              label={isDark ? 'Giao diện sáng' : 'Giao diện tối'}
+              icon={isDark ? Sun : Moon}
+              onPress={toggleTheme}
+            />
+          </ScrollView>
         </View>
       </View>
 
-      {/* 2. Status Filter Tabs */}
-      <View style={[styles.tabsContainer, { backgroundColor: theme.backgroundSecondary, borderBottomColor: theme.border }]}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'ALL' && [styles.activeTab, { borderBottomColor: theme.primary }]]}
-          onPress={() => setActiveTab('ALL')}
-        >
-          <Text style={[styles.tabText, { color: activeTab === 'ALL' ? theme.primary : theme.textMuted }]}>
-            Tất cả ({kdsOrders.length})
-          </Text>
-        </TouchableOpacity>
+      {kdsError ? (
+        <View style={styles.alertArea}>
+          <InlineAlert title="Không thể đồng bộ ticket" message={`${kdsError}. Kiểm tra kết nối rồi thử lại.`} />
+          <Button variant="secondary" label="Thử lại" icon={RefreshCw} onPress={fetchKDSOrders} />
+        </View>
+      ) : null}
 
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'PENDING' && [styles.activeTab, { borderBottomColor: '#EA580C' }]]}
-          onPress={() => setActiveTab('PENDING')}
-        >
-          <Text style={[styles.tabText, { color: activeTab === 'PENDING' ? '#EA580C' : theme.textMuted }]}>
-            ⏳ Chờ làm ({pendingCount})
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'PREPARING' && [styles.activeTab, { borderBottomColor: '#2563EB' }]]}
-          onPress={() => setActiveTab('PREPARING')}
-        >
-          <Text style={[styles.tabText, { color: activeTab === 'PREPARING' ? '#2563EB' : theme.textMuted }]}>
-            👨‍🍳 Đang nấu ({preparingCount})
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'READY' && [styles.activeTab, { borderBottomColor: '#16A34A' }]]}
-          onPress={() => setActiveTab('READY')}
-        >
-          <Text style={[styles.tabText, { color: activeTab === 'READY' ? '#16A34A' : theme.textMuted }]}>
-            ✅ Đã xong ({readyCount})
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* 3. Main KDS Content */}
       {isLoadingKDS && kdsOrders.length === 0 ? (
-        <View style={styles.centerContainer}>
+        <View style={styles.centerState} accessibilityLiveRegion="polite">
           <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={[styles.loadingText, { color: theme.textMuted }]}>
-            Đang tải đơn hàng KDS...
-          </Text>
+          <Text style={[styles.stateText, { color: theme.textSecondary }]}>Đang đồng bộ ticket bếp...</Text>
         </View>
-      ) : kdsError ? (
-        <View style={styles.centerContainer}>
-          <Text style={[styles.errorTitle, { color: theme.danger }]}>⚠️ {kdsError}</Text>
-          <TouchableOpacity style={[styles.retryBtn, { backgroundColor: theme.primary }]} onPress={fetchKDSOrders}>
-            <Text style={styles.retryBtnText}>Thử lại kết nối</Text>
-          </TouchableOpacity>
+      ) : kdsError && kdsOrders.length === 0 ? null : isMobile ? (
+        <View style={styles.mobileBoard}>
+          <View accessibilityRole="tablist" style={styles.mobileSegments}>
+            {statuses.map((status) => (
+              <StatusSegment
+                key={status}
+                status={status}
+                count={ordersByStatus[status].length}
+                selected={activeMobileStatus === status}
+                onPress={() => setActiveMobileStatus(status)}
+              />
+            ))}
+          </View>
+          <ScrollView contentContainerStyle={styles.mobileTickets} showsVerticalScrollIndicator={false}>
+            {ordersByStatus[activeMobileStatus].length === 0 ? (
+              <EmptyState title="Chưa có ticket" description={statusConfig[activeMobileStatus].emptyDescription} />
+            ) : (
+              ordersByStatus[activeMobileStatus].map((order) => (
+                <OrderTicket key={order.id} order={order} now={now} updating={updatingOrderId === order.id} onTransition={handleTransition} />
+              ))
+            )}
+          </ScrollView>
         </View>
-      ) : filteredOrders.length === 0 ? (
-        <View style={styles.centerContainer}>
-          <Text style={styles.emptyIcon}>🎉</Text>
-          <Text style={[styles.emptyTitle, { color: theme.text }]}>
-            Bếp Trống - Không có đơn hàng cần làm!
-          </Text>
-          <Text style={[styles.emptySubtitle, { color: theme.textMuted }]}>
-            Mọi món ăn đã hoàn tất hoặc chưa có đơn hàng mới từ POS/QR.
-          </Text>
+      ) : isDesktop ? (
+        <View style={styles.desktopBoard}>
+          {statuses.map((status) => (
+            <StatusLane
+              key={status}
+              status={status}
+              orders={ordersByStatus[status]}
+              now={now}
+              updatingOrderId={updatingOrderId}
+              desktop
+              onTransition={handleTransition}
+            />
+          ))}
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.cardsGrid}>
-          {filteredOrders.map((order) => {
-            const elapsed = getElapsedInfo(order.createdAt);
-            const isUpdating = updatingOrderId === order.id;
-
-            return (
-              <View
-                testID={`kds-card-${order.code}`}
-                key={order.id}
-                style={[
-                  styles.orderCard,
-                  {
-                    backgroundColor: theme.card,
-                    borderColor: elapsed.urgency === 'DELAYED' ? '#DC2626' : theme.border,
-                    borderWidth: elapsed.urgency === 'DELAYED' ? 2 : 1
-                  }
-                ]}
-              >
-                {/* Card Header */}
-                <View style={[styles.cardHeader, { borderBottomColor: theme.border }]}>
-                  <View style={styles.cardHeaderLeft}>
-                    <Text style={[styles.orderCode, { color: theme.text }]}>
-                      #{order.code.slice(-4)}
-                    </Text>
-                    <View
-                      style={[
-                        styles.orderTypeBadge,
-                        {
-                          backgroundColor:
-                            order.orderType === 'DINE_IN'
-                              ? isDark ? '#1E3A8A' : '#DBEAFE'
-                              : isDark ? '#431407' : '#FFEDD5'
-                        }
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.orderTypeText,
-                          {
-                            color:
-                              order.orderType === 'DINE_IN'
-                                ? isDark ? '#93C5FD' : '#1D4ED8'
-                                : isDark ? '#FDBA74' : '#C2410C'
-                          }
-                        ]}
-                      >
-                        {order.orderType === 'DINE_IN'
-                          ? `🍽️ Bàn ${order.tableNumber ? String(order.tableNumber).padStart(2, '0') : '?'}`
-                          : `🛍️ Mang đi (Buzzer #${order.buzzerNumber || '?'})`}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {/* Prep Timer Badge */}
-                  <View style={[styles.timerBadge, { backgroundColor: elapsed.bgColor, borderColor: elapsed.borderColor }]}>
-                    <Text style={[styles.timerText, { color: elapsed.textColor }]}>
-                      ⏱️ {elapsed.text}
-                    </Text>
-                    <Text style={[styles.timerLabel, { color: elapsed.textColor }]}>
-                      {elapsed.label}
-                    </Text>
-                  </View>
-                </View>
-
-                {/* Card Items List */}
-                <View style={styles.cardBody}>
-                  {order.items.map((item, idx) => (
-                    <View key={item.id || idx} style={styles.itemRow}>
-                      <View style={[styles.quantityPill, { backgroundColor: theme.primary }]}>
-                        <Text style={styles.quantityText}>{item.quantity}x</Text>
-                      </View>
-                      <View style={styles.itemDetails}>
-                        <Text style={[styles.itemName, { color: theme.text }]}>
-                          {item.menuItemName}
-                        </Text>
-                        {item.selectedModifiersJson && item.selectedModifiersJson.length > 0 && (
-                          <View style={styles.modifiersList}>
-                            {item.selectedModifiersJson.map((mod: any, mIdx: number) => (
-                              <Text key={mIdx} style={[styles.modifierText, { color: theme.textMuted }]}>
-                                • {mod.groupName}: {mod.optionName}
-                              </Text>
-                            ))}
-                          </View>
-                        )}
-                        {item.notes ? (
-                          <Text style={styles.itemNoteText}>
-                            📝 Ghi chú: {item.notes}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-                  ))}
-
-                  {order.notes ? (
-                    <View style={[styles.orderNoteBox, { backgroundColor: isDark ? '#334155' : '#F1F5F9' }]}>
-                      <Text style={[styles.orderNoteText, { color: theme.text }]}>
-                        📌 Lời dặn: {order.notes}
-                      </Text>
-                    </View>
-                  ) : null}
-                </View>
-
-                {/* Card Action Button (Touch Target >= 56px) */}
-                <View style={[styles.cardFooter, { borderTopColor: theme.border }]}>
-                  {order.status === 'PENDING' && (
-                    <TouchableOpacity
-                      testID={`kds-action-btn-${order.code}`}
-                      style={[styles.actionBtn, { backgroundColor: '#EA580C' }]}
-                      onPress={() => handleTransition(order)}
-                      disabled={isUpdating}
-                    >
-                      {isUpdating ? (
-                        <ActivityIndicator color="#FFFFFF" />
-                      ) : (
-                        <Text style={styles.actionBtnText}>👨‍🍳 BẮT ĐẦU NẤU</Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
-
-                  {order.status === 'PREPARING' && (
-                    <TouchableOpacity
-                      testID={`kds-action-btn-${order.code}`}
-                      style={[styles.actionBtn, { backgroundColor: '#16A34A' }]}
-                      onPress={() => handleTransition(order)}
-                      disabled={isUpdating}
-                    >
-                      {isUpdating ? (
-                        <ActivityIndicator color="#FFFFFF" />
-                      ) : (
-                        <Text style={styles.actionBtnText}>✅ HOÀN THÀNH MÓN</Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
-
-                  {order.status === 'READY' && (
-                    <TouchableOpacity
-                      testID={`kds-action-btn-${order.code}`}
-                      style={[styles.actionBtn, { backgroundColor: '#0284C7' }]}
-                      onPress={() => handleTransition(order)}
-                      disabled={isUpdating}
-                    >
-                      {isUpdating ? (
-                        <ActivityIndicator color="#FFFFFF" />
-                      ) : (
-                        <Text style={styles.actionBtnText}>🛎️ ĐÃ GIAO KHÁCH</Text>
-                      )}
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
-            );
-          })}
+        <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={styles.tabletBoard}>
+          {statuses.map((status) => (
+            <StatusLane
+              key={status}
+              status={status}
+              orders={ordersByStatus[status]}
+              now={now}
+              updatingOrderId={updatingOrderId}
+              desktop={false}
+              onTransition={handleTransition}
+            />
+          ))}
         </ScrollView>
       )}
 
-      {/* 4. Sold-Out (86'd) Management Modal */}
-      <Modal visible={isSoldOutModalOpen} transparent animationType="slide">
+      <Modal visible={isSoldOutModalOpen} transparent animationType="slide" onRequestClose={() => setIsSoldOutModalOpen(false)}>
         <View style={[styles.modalBackdrop, { backgroundColor: theme.overlay }]}>
-          <SafeAreaView style={[styles.soldOutModalContainer, { backgroundColor: theme.card }]}>
-            <View style={[styles.soldOutModalHeader, { borderBottomColor: theme.border }]}>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.soldOutModalTitle, { color: theme.text }]}>
-                  📦 Báo Hết Món Bếp (86&apos;d Menu)
-                </Text>
-                <Text style={[styles.soldOutModalSubtitle, { color: theme.textMuted }]}>
-                  Bật/tắt trạng thái món ăn. Máy POS và Khách đặt QR sẽ cập nhật ngay sau khi máy chủ xác nhận.
-                </Text>
-              </View>
-              <TouchableOpacity
-                style={[styles.modalCloseBtn, { backgroundColor: isDark ? '#334155' : '#F1F5F9' }]}
-                onPress={() => setIsSoldOutModalOpen(false)}
-              >
-                <Text style={[styles.modalCloseText, { color: theme.text }]}>✕</Text>
-              </TouchableOpacity>
-            </View>
-
-            {soldOutError && (
-              <View style={styles.errorBanner}>
-                <Text style={styles.errorBannerText}>❌ {soldOutError}</Text>
-              </View>
-            )}
-
-            <ScrollView style={styles.soldOutList}>
-              {categories.map((cat) => (
-                <View key={cat.id} style={styles.categorySection}>
-                  <Text style={[styles.categoryTitle, { color: theme.primary }]}>
-                    📂 {cat.name}
-                  </Text>
-                  {cat.menuItems?.map((item) => {
-                    const isToggling = togglingItemId === item.id;
-                    return (
-                      <View
-                        key={item.id}
-                        style={[
-                          styles.soldOutItemRow,
-                          {
-                            borderBottomColor: theme.border,
-                            backgroundColor: !item.isAvailable
-                              ? isDark
-                                ? '#450A0A'
-                                : '#FEF2F2'
-                              : 'transparent'
-                          }
-                        ]}
-                      >
-                        <View style={{ flex: 1 }}>
-                          <Text
-                            style={[
-                              styles.soldOutItemName,
-                              {
-                                color: !item.isAvailable ? '#EF4444' : theme.text,
-                                textDecorationLine: !item.isAvailable ? 'line-through' : 'none'
-                              }
-                            ]}
-                          >
-                            {item.name}
-                          </Text>
-                          <Text
-                            style={[
-                              styles.soldOutItemStatus,
-                              { color: !item.isAvailable ? '#EF4444' : '#16A34A' }
-                            ]}
-                          >
-                            {!item.isAvailable ? "🔴 Đang hết món (86'd)" : '🟢 Đang phục vụ'}
-                          </Text>
-                        </View>
-
-                        <TouchableOpacity
-                          style={[
-                            styles.soldOutToggleBtn,
-                            {
-                              backgroundColor: !item.isAvailable ? '#16A34A' : '#EF4444'
-                            }
-                          ]}
-                          onPress={() => handleToggleSoldOut(item)}
-                          disabled={isToggling}
-                        >
-                          {isToggling ? (
-                            <ActivityIndicator size="small" color="#FFFFFF" />
-                          ) : (
-                            <Text style={styles.soldOutToggleText}>
-                              {!item.isAvailable ? 'Mở bán lại' : 'Báo hết món'}
-                            </Text>
-                          )}
-                        </TouchableOpacity>
-                      </View>
-                    );
-                  })}
+          <Surface level="raised" style={styles.soldOutModal}>
+            <SafeAreaView style={styles.modalSafeArea}>
+              <View style={[styles.modalHeader, { borderBottomColor: theme.borderSubtle }]}>
+                <View style={styles.modalTitleGroup}>
+                  <Text accessibilityRole="header" style={[styles.modalTitle, { color: theme.textPrimary }]}>Trạng thái phục vụ món</Text>
+                  <Text style={[styles.modalDescription, { color: theme.textSecondary }]}>Cập nhật món hết hàng cho quầy và khách đặt QR.</Text>
                 </View>
-              ))}
-            </ScrollView>
-          </SafeAreaView>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Đóng quản lý món"
+                  onPress={() => setIsSoldOutModalOpen(false)}
+                  style={({ pressed }) => [styles.modalClose, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}
+                >
+                  <AppIcon icon={X} color={theme.textPrimary} />
+                </Pressable>
+              </View>
+
+              {soldOutError ? (
+                <View style={styles.modalAlert}>
+                  <InlineAlert title="Chưa thể cập nhật" message={soldOutError} />
+                </View>
+              ) : null}
+
+              <ScrollView contentContainerStyle={styles.soldOutList} showsVerticalScrollIndicator={false}>
+                {categories.map((category) => (
+                  <View key={category.id} style={styles.categorySection}>
+                    <Text accessibilityRole="header" style={[styles.categoryTitle, { color: theme.textPrimary }]}>{category.name}</Text>
+                    <View style={[styles.categoryItems, { borderColor: theme.borderSubtle }]}>
+                      {(category.menuItems || []).map((item, index) => {
+                        const isToggling = togglingItemId === item.id;
+                        return (
+                          <View
+                            key={item.id}
+                            style={[styles.soldOutRow, index > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 }]}
+                          >
+                            <View style={styles.soldOutCopy}>
+                              <Text style={[styles.soldOutName, { color: theme.textPrimary }]}>{item.name}</Text>
+                              <StatusBadge tone={item.isAvailable ? 'success' : 'danger'} label={item.isAvailable ? 'Đang phục vụ' : 'Tạm hết món'} />
+                            </View>
+                            <Button
+                              variant={item.isAvailable ? 'danger' : 'secondary'}
+                              label={item.isAvailable ? 'Báo hết món' : 'Mở bán lại'}
+                              loading={isToggling}
+                              onPress={() => handleToggleSoldOut(item)}
+                            />
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            </SafeAreaView>
+          </Surface>
         </View>
       </Modal>
     </SafeAreaView>
@@ -500,325 +471,69 @@ export const KDSScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  header: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-    borderBottomWidth: 1
-  },
-  headerTitleGroup: {
-    minWidth: 200
-  },
-  title: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold
-  },
-  subtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: spacing.xs
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: spacing.xs
-  },
-  headerBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.2)'
-  },
-  headerBtnText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  tabsContainer: {
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    paddingHorizontal: spacing.md
-  },
-  tab: {
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderBottomWidth: 3,
-    borderBottomColor: 'transparent'
-  },
-  activeTab: {
-    // borderBottomColor set dynamically
-  },
-  tabText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.xl
-  },
-  loadingText: {
-    marginTop: spacing.md,
-    fontSize: typography.sizes.sm
-  },
-  errorTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    textAlign: 'center',
-    marginBottom: spacing.md
-  },
-  retryBtn: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-    borderRadius: 8
-  },
-  retryBtnText: {
-    color: '#FFFFFF',
-    fontWeight: typography.weights.bold
-  },
-  emptyIcon: {
-    fontSize: 56,
-    marginBottom: spacing.md
-  },
-  emptyTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold,
-    textAlign: 'center',
-    marginBottom: spacing.xs
-  },
-  emptySubtitle: {
-    fontSize: typography.sizes.sm,
-    textAlign: 'center'
-  },
-  cardsGrid: {
-    padding: spacing.md,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md
-  },
-  orderCard: {
-    width: 340,
-    borderRadius: 12,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
-    borderBottomWidth: 1
-  },
-  cardHeaderLeft: {
-    flex: 1
-  },
-  orderCode: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold,
-    marginBottom: spacing.xs
-  },
-  orderTypeBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: 6
-  },
-  orderTypeText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  timerBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center'
-  },
-  timerText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  },
-  timerLabel: {
-    fontSize: 10,
-    fontWeight: typography.weights.medium
-  },
-  cardBody: {
-    padding: spacing.md
-  },
-  itemRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: spacing.sm
-  },
-  quantityPill: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: spacing.sm
-  },
-  quantityText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  itemDetails: {
-    flex: 1
-  },
-  itemName: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    lineHeight: 20
-  },
-  modifiersList: {
-    marginTop: 2
-  },
-  modifierText: {
-    fontSize: typography.sizes.xs,
-    lineHeight: 16
-  },
-  itemNoteText: {
-    color: '#EA580C',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium,
-    marginTop: 2
-  },
-  orderNoteBox: {
-    marginTop: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: 6
-  },
-  orderNoteText: {
-    fontSize: typography.sizes.xs,
-    fontStyle: 'italic'
-  },
-  cardFooter: {
-    padding: spacing.sm,
-    borderTopWidth: 1
-  },
-  actionBtn: {
-    height: spacing.touchTargetKDS, // 56px
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 2
-  },
-  actionBtnText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    letterSpacing: 0.5
-  },
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.md
-  },
-  soldOutModalContainer: {
-    width: '100%',
-    maxWidth: 700,
-    maxHeight: '85%',
-    borderRadius: 16,
-    overflow: 'hidden'
-  },
-  soldOutModalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.md,
-    borderBottomWidth: 1
-  },
-  soldOutModalTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold
-  },
-  soldOutModalSubtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2
-  },
-  modalCloseBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  modalCloseText: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold
-  },
-  errorBanner: {
-    backgroundColor: '#FEE2E2',
-    padding: spacing.sm,
-    marginHorizontal: spacing.md,
-    marginTop: spacing.sm,
-    borderRadius: 8
-  },
-  errorBannerText: {
-    color: '#DC2626',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
-  },
-  soldOutList: {
-    padding: spacing.md
-  },
-  categorySection: {
-    marginBottom: spacing.lg
-  },
-  categoryTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    marginBottom: spacing.xs
-  },
-  soldOutItemRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xs,
-    borderBottomWidth: 1,
-    borderRadius: 6
-  },
-  soldOutItemName: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
-  },
-  soldOutItemStatus: {
-    fontSize: 11,
-    fontWeight: typography.weights.medium,
-    marginTop: 2
-  },
-  soldOutToggleBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
-    minHeight: 38,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  soldOutToggleText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  }
+  container: { flex: 1 },
+  header: { borderBottomWidth: 1, gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  headerUtility: { gap: spacing.md },
+  headerUtilityWide: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  connectionGroup: { alignItems: 'flex-start', gap: spacing.xs },
+  connectionLabel: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs },
+  headerActions: { gap: spacing.sm },
+  alertArea: { alignItems: 'stretch', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  centerState: { alignItems: 'center', flex: 1, gap: spacing.md, justifyContent: 'center', padding: spacing.xl },
+  stateText: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
+  desktopBoard: { flex: 1, flexDirection: 'row', gap: spacing.md, padding: spacing.md },
+  tabletBoard: { gap: spacing.md, padding: spacing.md },
+  lane: { overflow: 'hidden' },
+  laneDesktop: { flex: 1 },
+  laneTablet: { width: 360 },
+  laneHeader: { borderBottomWidth: 1, gap: spacing.xs, padding: spacing.md },
+  laneTitleRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
+  laneTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, lineHeight: typography.lineHeights.xl },
+  laneDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
+  laneCount: { alignItems: 'center', borderRadius: radii.pill, borderWidth: 1, justifyContent: 'center', minHeight: 28, minWidth: 28, paddingHorizontal: spacing.sm },
+  laneCountText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs, fontVariant: [...typography.numeric.fontVariant] },
+  laneTickets: { gap: spacing.md, padding: spacing.md },
+  ticket: { borderLeftWidth: 4, overflow: 'hidden' },
+  ticketHeader: { alignItems: 'flex-start', borderBottomWidth: 1, flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', padding: spacing.md },
+  ticketIdentity: { flex: 1, gap: spacing.xs },
+  orderCode: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg, fontVariant: [...typography.numeric.fontVariant] },
+  serviceRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs },
+  serviceText: { flexShrink: 1, fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs },
+  timerGroup: { alignItems: 'flex-end' },
+  timer: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg, fontVariant: [...typography.numeric.fontVariant] },
+  timerLabel: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs },
+  ticketStatus: { paddingHorizontal: spacing.md, paddingTop: spacing.md },
+  ticketBody: { gap: spacing.md, padding: spacing.md },
+  itemRow: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.sm },
+  quantity: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.md, fontVariant: [...typography.numeric.fontVariant], minWidth: 28 },
+  itemDetails: { flex: 1, gap: 2 },
+  itemName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
+  itemMeta: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
+  itemNote: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
+  orderNote: { borderRadius: radii.xs, borderWidth: 1, gap: spacing.xs, padding: spacing.sm },
+  orderNoteLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
+  orderNoteText: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
+  ticketFooter: { borderTopWidth: 1, padding: spacing.sm },
+  mobileBoard: { flex: 1 },
+  mobileSegments: { flexDirection: 'row', gap: spacing.xs, padding: spacing.sm },
+  segment: { alignItems: 'center', borderRadius: radii.sm, flex: 1, justifyContent: 'center', minHeight: 52, paddingHorizontal: spacing.xs, paddingVertical: spacing.sm },
+  segmentLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs, textAlign: 'center' },
+  segmentCount: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.sm, fontVariant: [...typography.numeric.fontVariant] },
+  mobileTickets: { gap: spacing.md, padding: spacing.md },
+  modalBackdrop: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.md },
+  soldOutModal: { maxHeight: '90%', maxWidth: 720, overflow: 'hidden', width: '100%' },
+  modalSafeArea: { flexShrink: 1 },
+  modalHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', gap: spacing.md, padding: spacing.lg },
+  modalTitleGroup: { flex: 1, gap: spacing.xs },
+  modalTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl },
+  modalDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
+  modalClose: { alignItems: 'center', borderRadius: radii.sm, height: 44, justifyContent: 'center', width: 44 },
+  modalAlert: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  soldOutList: { padding: spacing.lg },
+  categorySection: { gap: spacing.sm, marginBottom: spacing.lg },
+  categoryTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg },
+  categoryItems: { borderRadius: radii.md, borderWidth: 1, overflow: 'hidden' },
+  soldOutRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', minHeight: 68, padding: spacing.md },
+  soldOutCopy: { flex: 1, gap: spacing.xs },
+  soldOutName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm }
 });

@@ -77,6 +77,8 @@ test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
     await expect(receiptModal.getByRole('heading', { name: 'Hóa đơn bán hàng' })).toBeVisible();
     await expect(receiptModal.getByText('Thuế GTGT (VAT 8%)')).toBeVisible();
     await expect(receiptModal.getByText('Tổng thanh toán')).toBeVisible();
+    const createdOrderCode = (await receiptModal.getByText(/^CRISPY-\d{8}-\d{4}$/).textContent())?.trim();
+    expect(createdOrderCode).toBeTruthy();
 
     // Close receipt modal
     const closeReceiptBtn = page.getByTestId('btn-close-receipt');
@@ -103,16 +105,31 @@ test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
 
     // Verify KDS screen
     await expect(page.getByTestId('kds-screen-title')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('Kết nối thời gian thực', { exact: true })).toBeVisible();
+
+    if ((page.viewportSize()?.width ?? 1280) >= 768) {
+      await expect(page.getByRole('heading', { name: 'Chờ chế biến' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Đang chế biến' })).toBeVisible();
+      await expect(page.getByRole('heading', { name: 'Sẵn sàng' })).toBeVisible();
+    } else {
+      await expect(page.getByRole('button', { name: /Chờ chế biến/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: /Đang chế biến/ })).toBeVisible();
+      await expect(page.getByRole('button', { name: /Sẵn sàng/ })).toBeVisible();
+    }
+
+    const createdTicket = page.getByTestId(`kds-card-${createdOrderCode}`);
+    await expect(createdTicket).toBeVisible();
+    await expect(createdTicket).toContainText(createdOrderCode!);
 
     // Verify at least one order action button is visible and transition it
-    const kdsActionBtn = page.locator('[data-testid^="kds-action-btn-"]').first();
+    const kdsActionBtn = page.getByTestId(`kds-action-btn-${createdOrderCode}`);
     if (await kdsActionBtn.isVisible()) {
-      const initialText = await kdsActionBtn.textContent();
       await kdsActionBtn.click();
-      // Wait for state transition
-      await page.waitForTimeout(1000);
-      const updatedText = await kdsActionBtn.textContent();
-      expect(updatedText).not.toBe(initialText);
+      if ((page.viewportSize()?.width ?? 1280) < 768) {
+        await page.getByRole('button', { name: /Đang chế biến/ }).click();
+        await expect(createdTicket).toBeVisible();
+      }
+      await expect(kdsActionBtn).toContainText('Chuyển sang sẵn sàng');
     }
   });
 });
