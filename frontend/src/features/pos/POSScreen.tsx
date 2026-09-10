@@ -1,26 +1,154 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
-  SafeAreaView,
-  FlatList,
-  ActivityIndicator,
-  TouchableOpacity,
-  Modal,
-  ScrollView
+  useWindowDimensions
 } from 'react-native';
-import { typography, spacing } from '../../theme';
-import { useRestaurant } from '../../contexts/RestaurantContext';
+import {
+  CheckCircle2,
+  FileText,
+  Minus,
+  Plus,
+  ShoppingBag,
+  ShoppingCart,
+  Trash2,
+  Utensils,
+  X
+} from 'lucide-react-native';
+import { MenuItemDto, OrderDto, OrderType } from '../../api/contracts';
+import { CartItem, useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { elevation, radii, spacing, typography } from '../../theme';
+import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, Surface } from '../../ui';
 import { MenuCategoryPills } from './MenuCategoryPills';
 import { MenuItemCard } from './MenuItemCard';
 import { ModifierModal } from './ModifierModal';
 import { ReceiptModal } from './ReceiptModal';
-import { MenuItemDto, OrderType, OrderDto } from '../../api/contracts';
+
+const formatVND = (amount: number) =>
+  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+
+interface CartPanelProps {
+  cart: CartItem[];
+  cartItemCount: number;
+  cartSubtotal: number;
+  cartVat: number;
+  cartTotal: number;
+  onClear: () => void;
+  onCheckout: () => void;
+  onRemove: (index: number) => void;
+  onUpdateQuantity: (index: number, quantity: number) => void;
+}
+
+const CartPanel: React.FC<CartPanelProps> = ({
+  cart,
+  cartItemCount,
+  cartSubtotal,
+  cartVat,
+  cartTotal,
+  onClear,
+  onCheckout,
+  onRemove,
+  onUpdateQuantity
+}) => {
+  const { theme } = useTheme();
+
+  return (
+    <Surface level="base" style={[styles.cartPanel, { borderLeftColor: theme.borderSubtle }]}>
+      <View testID="pos-cart-summary" style={[styles.cartHeader, { borderBottomColor: theme.borderSubtle }]}>
+        <View style={styles.cartHeadingCopy}>
+          <View style={styles.cartHeadingRow}>
+            <AppIcon icon={ShoppingCart} color={theme.primary} size={20} />
+            <Text accessibilityRole="header" style={[styles.cartTitle, { color: theme.textPrimary }]}>Giỏ hàng</Text>
+          </View>
+          <Text style={[styles.cartCount, { color: theme.textSecondary }]}>{cartItemCount} món đã chọn</Text>
+        </View>
+        {cart.length > 0 && <Button variant="quiet" label="Xóa giỏ" onPress={onClear} />}
+      </View>
+
+      {cart.length === 0 ? (
+        <EmptyState title="Giỏ hàng trống" description="Chọn một món trong thực đơn để bắt đầu tạo đơn." />
+      ) : (
+        <ScrollView style={styles.cartItems} contentContainerStyle={styles.cartItemsContent}>
+          {cart.map((item, index) => (
+            <View key={`${item.menuItem.id}-${index}`} style={[styles.cartItem, { borderBottomColor: theme.borderSubtle }]}>
+              <View style={styles.cartItemTop}>
+                <View style={styles.cartItemCopy}>
+                  <Text style={[styles.cartItemName, { color: theme.textPrimary }]}>{item.menuItem.name}</Text>
+                  {item.selectedModifiers.map((modifier) => (
+                    <Text key={`${modifier.modifierGroupId}-${modifier.optionId}`} style={[styles.cartItemMeta, { color: theme.textSecondary }]}>
+                      {modifier.groupName}: {modifier.optionName}
+                    </Text>
+                  ))}
+                  {item.notes && <Text style={[styles.cartItemMeta, { color: theme.textSecondary }]}>Ghi chú: {item.notes}</Text>}
+                </View>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Xóa ${item.menuItem.name}`}
+                  onPress={() => onRemove(index)}
+                  style={({ pressed }) => [styles.iconAction, { backgroundColor: pressed ? theme.surfaceSunken : 'transparent' }]}
+                >
+                  <AppIcon icon={Trash2} color={theme.danger} size={18} />
+                </Pressable>
+              </View>
+              <View style={styles.cartItemBottom}>
+                <View style={styles.quantityControls}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Giảm số lượng ${item.menuItem.name}`}
+                    onPress={() => onUpdateQuantity(index, item.quantity - 1)}
+                    style={({ pressed }) => [styles.quantityButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet, borderColor: theme.borderSubtle }]}
+                  >
+                    <AppIcon icon={Minus} color={theme.textPrimary} size={16} />
+                  </Pressable>
+                  <Text style={[styles.quantityValue, { color: theme.textPrimary }]}>{item.quantity}</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Tăng số lượng ${item.menuItem.name}`}
+                    onPress={() => onUpdateQuantity(index, item.quantity + 1)}
+                    style={({ pressed }) => [styles.quantityButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet, borderColor: theme.borderSubtle }]}
+                  >
+                    <AppIcon icon={Plus} color={theme.textPrimary} size={16} />
+                  </Pressable>
+                </View>
+                <Text style={[styles.cartItemPrice, { color: theme.textPrimary }]}>{formatVND(item.subtotal)}</Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
+      )}
+
+      <View style={[styles.cartTotals, { borderTopColor: theme.borderSubtle }]}>
+        <View style={styles.totalRow}>
+          <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Cộng tiền món</Text>
+          <Text style={[styles.totalValue, { color: theme.textPrimary }]}>{formatVND(cartSubtotal)}</Text>
+        </View>
+        <View style={styles.totalRow}>
+          <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>VAT 8%</Text>
+          <Text style={[styles.totalValue, { color: theme.textPrimary }]}>{formatVND(cartVat)}</Text>
+        </View>
+        <View style={styles.grandTotalRow}>
+          <Text style={[styles.grandTotalLabel, { color: theme.textPrimary }]}>Tổng thanh toán</Text>
+          <Text testID="pos-cart-total" style={[styles.grandTotalValue, { color: theme.primary }]}>{formatVND(cartTotal)}</Text>
+        </View>
+        <Button testID="btn-open-checkout" variant="primary" label="Xác nhận đơn" disabled={cart.length === 0} onPress={onCheckout} />
+      </View>
+    </Surface>
+  );
+};
 
 export const POSScreen: React.FC = () => {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const isSplitLayout = width >= 900;
+  const menuColumns = width >= 1400 ? 3 : width >= 600 ? 2 : 1;
   const {
     categories,
     allMenuItems,
@@ -34,9 +162,14 @@ export const POSScreen: React.FC = () => {
     isModifierModalOpen,
     openModifierModal,
     closeModifierModal,
+    cart,
+    cartSubtotal,
+    cartVat,
     cartItemCount,
     cartTotal,
     addToCart,
+    updateCartQuantity,
+    removeFromCart,
     clearCart,
     tables,
     createOrder
@@ -51,9 +184,6 @@ export const POSScreen: React.FC = () => {
   const [createdOrder, setCreatedOrder] = useState<OrderDto | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
 
-  const formatVND = (amount: number) =>
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
-
   const handleCardPress = (item: MenuItemDto) => {
     if (item.modifierGroups && item.modifierGroups.length > 0) {
       openModifierModal(item);
@@ -62,12 +192,12 @@ export const POSScreen: React.FC = () => {
     }
   };
 
-  const selectableTables = tables.filter((t) => t.status !== 'NEED_CLEANING');
+  const selectableTables = tables.filter((table) => table.status !== 'NEED_CLEANING');
 
   const handleOpenConfirmModal = () => {
     setSubmitError(null);
     setSuccessOrderCode(null);
-    const firstAvailable = selectableTables.find((t) => t.status === 'AVAILABLE');
+    const firstAvailable = selectableTables.find((table) => table.status === 'AVAILABLE');
     setSelectedTableId(firstAvailable ? firstAvailable.id : selectableTables[0]?.id ?? null);
     setIsConfirmModalOpen(true);
   };
@@ -80,12 +210,10 @@ export const POSScreen: React.FC = () => {
 
     setIsSubmitting(true);
     setSubmitError(null);
-
     const result = await createOrder({
       orderType,
       tableId: orderType === 'DINE_IN' ? selectedTableId : undefined
     });
-
     setIsSubmitting(false);
 
     if (result.success && result.order) {
@@ -104,485 +232,245 @@ export const POSScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* 1. Category Filter Pills */}
-      <MenuCategoryPills
-        categories={categories}
-        selectedCategoryId={selectedCategoryId}
-        onSelectCategory={selectCategory}
-        totalItemCount={allMenuItems.length}
-      />
-
-      {/* 2. Main Menu Grid or Loading / Error States */}
-      {isLoadingMenu ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={[styles.loadingText, { color: theme.textMuted }]}>Đang tải danh mục món ăn...</Text>
-        </View>
-      ) : menuError ? (
-        <View style={styles.centerContainer}>
-          <Text style={[styles.errorText, { color: theme.danger }]}>⚠️ {menuError}</Text>
-          <TouchableOpacity style={[styles.retryButton, { backgroundColor: theme.primary }]} onPress={fetchMenu}>
-            <Text style={styles.retryButtonText}>Thử lại</Text>
-          </TouchableOpacity>
-        </View>
-      ) : filteredMenuItems.length === 0 ? (
-        <View style={styles.centerContainer}>
-          <Text style={[styles.emptyText, { color: theme.textMuted }]}>Không tìm thấy món ăn trong danh mục này</Text>
-        </View>
-      ) : (
-        <FlatList
-          data={filteredMenuItems}
-          keyExtractor={(item) => item.id.toString()}
-          numColumns={2}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => <MenuItemCard item={item} onPress={handleCardPress} />}
-        />
-      )}
-
-      {/* 3. Bottom Cart Quick Summary Bar (Touch Target >= 56px) */}
-      {cartItemCount > 0 && (
-        <View style={[styles.cartBar, { backgroundColor: isDark ? '#1E293B' : '#0F172A', borderTopColor: theme.border }]}>
-          <View style={styles.cartInfo}>
-            <View style={[styles.cartBadge, { backgroundColor: theme.primary }]}>
-              <Text style={styles.cartBadgeText}>{cartItemCount}</Text>
-            </View>
-            <View>
-              <Text style={styles.cartSummaryText}>Đã chọn {cartItemCount} món</Text>
-              <Text style={styles.cartTotalText}>{formatVND(cartTotal)} (Đã gồm 8% VAT)</Text>
-            </View>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
+      <View style={styles.workspace}>
+        <View style={styles.catalogPane}>
+          <View style={styles.catalogHeader}>
+            <ScreenHeader
+              title="Thực đơn"
+              description={`${allMenuItems.length} món sẵn sàng phục vụ`}
+              actions={!isSplitLayout ? (
+                <View style={[styles.mobileCartStatus, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+                  <Text style={[styles.mobileCartStatusTitle, { color: theme.textPrimary }]}>Giỏ hàng</Text>
+                  <Text style={[styles.mobileCartStatusCount, { color: theme.textSecondary }]}>{cartItemCount}</Text>
+                </View>
+              ) : undefined}
+            />
           </View>
 
-          <View style={styles.cartActions}>
-            <TouchableOpacity style={styles.clearCartBtn} onPress={clearCart}>
-              <Text style={styles.clearCartText}>Xóa</Text>
-            </TouchableOpacity>
+          <MenuCategoryPills categories={categories} selectedCategoryId={selectedCategoryId} onSelectCategory={selectCategory} totalItemCount={allMenuItems.length} />
 
-            <TouchableOpacity
-              testID="btn-open-checkout"
-              style={[styles.checkoutBtn, { backgroundColor: theme.primary }]}
-              onPress={handleOpenConfirmModal}
-            >
-              <Text style={styles.checkoutText}>XÁC NHẬN ĐƠN ➔</Text>
-            </TouchableOpacity>
-          </View>
+          {isLoadingMenu ? (
+            <View style={styles.centerContainer}>
+              <ActivityIndicator size="large" color={theme.primary} />
+              <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Đang tải thực đơn...</Text>
+            </View>
+          ) : menuError ? (
+            <View style={styles.centerContainer}>
+              <InlineAlert title="Không thể tải thực đơn" message={menuError} />
+              <Button variant="secondary" label="Thử lại" onPress={() => void fetchMenu()} />
+            </View>
+          ) : filteredMenuItems.length === 0 ? (
+            <EmptyState title="Không có món phù hợp" description="Chọn danh mục khác để xem các món đang phục vụ." />
+          ) : (
+            <FlatList
+              key={menuColumns}
+              data={filteredMenuItems}
+              keyExtractor={(item) => item.id.toString()}
+              numColumns={menuColumns}
+              contentContainerStyle={[styles.listContent, !isSplitLayout && cartItemCount > 0 && styles.listContentWithCart]}
+              columnWrapperStyle={menuColumns > 1 ? styles.menuRow : undefined}
+              renderItem={({ item }) => <MenuItemCard item={item} onPress={handleCardPress} />}
+            />
+          )}
         </View>
+
+        {isSplitLayout && (
+          <CartPanel
+            cart={cart}
+            cartItemCount={cartItemCount}
+            cartSubtotal={cartSubtotal}
+            cartVat={cartVat}
+            cartTotal={cartTotal}
+            onClear={clearCart}
+            onCheckout={handleOpenConfirmModal}
+            onRemove={removeFromCart}
+            onUpdateQuantity={updateCartQuantity}
+          />
+        )}
+      </View>
+
+      {!isSplitLayout && cartItemCount > 0 && (
+        <Surface level="raised" style={[styles.mobileCartSummary, elevation.floatingAction]}>
+          <View testID="pos-cart-summary" style={styles.mobileCartSummaryCopy}>
+            <Text style={[styles.mobileCartLabel, { color: theme.textPrimary }]}>Giỏ hàng · {cartItemCount} món</Text>
+            <Text testID="pos-cart-total" style={[styles.mobileCartTotal, { color: theme.primary }]}>{formatVND(cartTotal)}</Text>
+          </View>
+          <Button testID="btn-open-checkout" variant="primary" label="Xác nhận" onPress={handleOpenConfirmModal} />
+        </Surface>
       )}
 
-      {/* 4. POS Order Confirmation Modal */}
-      <Modal
-        visible={isConfirmModalOpen}
-        transparent
-        animationType="slide"
-        onRequestClose={handleCloseConfirmModal}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={[styles.checkoutModal, { backgroundColor: theme.card }]}>
-            <View style={styles.modalHeader}>
-              <View>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Xác Nhận Đơn POS</Text>
-                <Text style={[styles.modalSubtitle, { color: theme.textMuted }]}>
-                  {cartItemCount} món · Tổng thanh toán {formatVND(cartTotal)}
-                </Text>
+      <Modal visible={isConfirmModalOpen} transparent animationType="slide" onRequestClose={handleCloseConfirmModal}>
+        <View style={[styles.modalBackdrop, isSplitLayout && styles.modalBackdropCentered, { backgroundColor: theme.overlay }]}>
+          <Surface level="raised" style={[styles.checkoutModal, isSplitLayout && styles.checkoutModalWide]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.borderSubtle }]}>
+              <View style={styles.modalHeadingCopy}>
+                <Text accessibilityRole="header" style={[styles.modalTitle, { color: theme.textPrimary }]}>Xác nhận đơn</Text>
+                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>{cartItemCount} món · {formatVND(cartTotal)}</Text>
               </View>
-              <TouchableOpacity style={[styles.modalCloseBtn, { backgroundColor: isDark ? '#334155' : '#F1F5F9' }]} onPress={handleCloseConfirmModal}>
-                <Text style={[styles.modalCloseText, { color: theme.textMuted }]}>✕</Text>
-              </TouchableOpacity>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Đóng xác nhận đơn"
+                onPress={handleCloseConfirmModal}
+                style={({ pressed }) => [styles.modalClose, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}
+              >
+                <AppIcon icon={X} color={theme.textPrimary} size={20} />
+              </Pressable>
             </View>
 
             {successOrderCode ? (
               <View style={styles.successPanel}>
-                <Text style={styles.successIcon}>✓</Text>
-                <Text style={styles.successText}>Đã gửi đơn {successOrderCode} xuống bếp thành công!</Text>
+                <AppIcon icon={CheckCircle2} color={theme.success} size={40} />
+                <Text style={[styles.successTitle, { color: theme.textPrimary }]}>Đơn {successOrderCode} đã gửi xuống bếp</Text>
+                <Text style={[styles.successDescription, { color: theme.textSecondary }]}>Bạn có thể xem hóa đơn hoặc hoàn tất để tạo đơn mới.</Text>
                 <View style={styles.successActionsRow}>
-                  <TouchableOpacity
-                    testID="btn-view-receipt"
-                    style={[styles.receiptBtn, { backgroundColor: theme.primary }]}
-                    onPress={() => setIsReceiptModalOpen(true)}
-                  >
-                    <Text style={styles.receiptBtnText}>🧾 Xem Hóa Đơn</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    testID="btn-done-order"
-                    style={[styles.doneBtn, { backgroundColor: isDark ? '#334155' : '#1E293B' }]}
-                    onPress={handleCloseConfirmModal}
-                  >
-                    <Text style={styles.doneBtnText}>Hoàn tất</Text>
-                  </TouchableOpacity>
+                  <Button testID="btn-view-receipt" variant="primary" label="Xem hóa đơn" icon={FileText} onPress={() => setIsReceiptModalOpen(true)} />
+                  <Button testID="btn-done-order" variant="secondary" label="Hoàn tất" onPress={handleCloseConfirmModal} />
                 </View>
               </View>
             ) : (
-              <>
-                <Text style={[styles.fieldLabel, { color: theme.text }]}>Hình thức phục vụ:</Text>
-                <View style={styles.orderTypeRow}>
-                  <TouchableOpacity
-                    testID="btn-dinein"
-                    style={[
-                      styles.typeBtn,
-                      { borderColor: theme.border, backgroundColor: isDark ? '#0F172A' : '#FFFFFF' },
-                      orderType === 'DINE_IN' && [styles.typeBtnActive, { borderColor: theme.primary, backgroundColor: isDark ? '#451A03' : '#FEF2F2' }]
-                    ]}
-                    onPress={() => {
-                      setOrderType('DINE_IN');
-                      setSubmitError(null);
-                    }}
-                  >
-                    <Text style={[styles.typeBtnText, { color: theme.textMuted }, orderType === 'DINE_IN' && { color: theme.primary, fontWeight: typography.weights.bold }]}>
-                      🍽️ Tại bàn (Dine-in)
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    testID="btn-takeaway"
-                    style={[
-                      styles.typeBtn,
-                      { borderColor: theme.border, backgroundColor: isDark ? '#0F172A' : '#FFFFFF' },
-                      orderType === 'TAKE_AWAY' && [styles.typeBtnActive, { borderColor: theme.primary, backgroundColor: isDark ? '#451A03' : '#FEF2F2' }]
-                    ]}
-                    onPress={() => {
-                      setOrderType('TAKE_AWAY');
-                      setSubmitError(null);
-                    }}
-                  >
-                    <Text style={[styles.typeBtnText, { color: theme.textMuted }, orderType === 'TAKE_AWAY' && { color: theme.primary, fontWeight: typography.weights.bold }]}>
-                      🥡 Mang đi (Take-away)
-                    </Text>
-                  </TouchableOpacity>
+              <ScrollView contentContainerStyle={styles.checkoutBody}>
+                <View style={styles.checkoutSection}>
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Hình thức phục vụ</Text>
+                  <View style={styles.orderTypeRow}>
+                    <Pressable
+                      testID="btn-dinein"
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: orderType === 'DINE_IN' }}
+                      onPress={() => { setOrderType('DINE_IN'); setSubmitError(null); }}
+                      style={({ pressed }) => [
+                        styles.typeButton,
+                        { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase, borderColor: theme.borderSubtle },
+                        orderType === 'DINE_IN' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }
+                      ]}
+                    >
+                      <AppIcon icon={Utensils} color={orderType === 'DINE_IN' ? theme.primary : theme.textSecondary} />
+                      <Text style={[styles.typeButtonText, { color: orderType === 'DINE_IN' ? theme.primary : theme.textPrimary }]}>Tại bàn</Text>
+                    </Pressable>
+                    <Pressable
+                      testID="btn-takeaway"
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: orderType === 'TAKE_AWAY' }}
+                      onPress={() => { setOrderType('TAKE_AWAY'); setSubmitError(null); }}
+                      style={({ pressed }) => [
+                        styles.typeButton,
+                        { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase, borderColor: theme.borderSubtle },
+                        orderType === 'TAKE_AWAY' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }
+                      ]}
+                    >
+                      <AppIcon icon={ShoppingBag} color={orderType === 'TAKE_AWAY' ? theme.primary : theme.textSecondary} />
+                      <Text style={[styles.typeButtonText, { color: orderType === 'TAKE_AWAY' ? theme.primary : theme.textPrimary }]}>Mang đi</Text>
+                    </Pressable>
+                  </View>
                 </View>
 
                 {orderType === 'DINE_IN' && (
-                  <>
-                    <Text style={[styles.fieldLabel, { color: theme.text }]}>Chọn bàn ăn:</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.tableScroller}>
-                      {selectableTables.map((table) => (
-                        <TouchableOpacity
-                          testID={`pos-table-option-${table.tableNumber}`}
-                          key={table.id}
-                          style={[
-                            styles.tableBtn,
-                            { borderColor: theme.border, backgroundColor: isDark ? '#0F172A' : '#F8FAFC' },
-                            selectedTableId === table.id && [styles.tableBtnActive, { borderColor: theme.primary, backgroundColor: isDark ? '#451A03' : '#FEF2F2' }]
-                          ]}
-                          onPress={() => {
-                            setSelectedTableId(table.id);
-                            setSubmitError(null);
-                          }}
-                        >
-                          <Text style={[styles.tableBtnText, { color: theme.text }, selectedTableId === table.id && { color: theme.primary }]}>
-                            Bàn {table.tableNumber.toString().padStart(2, '0')}
-                          </Text>
-                          <Text style={[styles.tableStateText, { color: theme.textMuted }]}>
-                            {table.status === 'OCCUPIED' ? 'Đang phục vụ' : 'Bàn trống'}
-                          </Text>
-                        </TouchableOpacity>
-                      ))}
+                  <View style={styles.checkoutSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Chọn bàn</Text>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tableList}>
+                      {selectableTables.map((table) => {
+                        const isSelected = selectedTableId === table.id;
+                        return (
+                          <Pressable
+                            testID={`pos-table-option-${table.tableNumber}`}
+                            key={table.id}
+                            accessibilityRole="radio"
+                            accessibilityState={{ selected: isSelected }}
+                            onPress={() => { setSelectedTableId(table.id); setSubmitError(null); }}
+                            style={({ pressed }) => [
+                              styles.tableButton,
+                              { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase, borderColor: theme.borderSubtle },
+                              isSelected && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }
+                            ]}
+                          >
+                            <Text style={[styles.tableNumber, { color: isSelected ? theme.primary : theme.textPrimary }]}>Bàn {table.tableNumber.toString().padStart(2, '0')}</Text>
+                            <Text style={[styles.tableStatus, { color: theme.textSecondary }]}>{table.status === 'OCCUPIED' ? 'Đang phục vụ' : 'Sẵn sàng'}</Text>
+                          </Pressable>
+                        );
+                      })}
                     </ScrollView>
-                    {selectableTables.length === 0 && (
-                      <Text style={[styles.noTableText, { color: theme.danger }]}>Hiện không có bàn sẵn sàng nhận đơn.</Text>
-                    )}
-                  </>
+                    {selectableTables.length === 0 && <InlineAlert message="Hiện không có bàn sẵn sàng nhận đơn." tone="warning" />}
+                  </View>
                 )}
 
-                {submitError && <Text style={[styles.submitError, { color: theme.danger }]}>{submitError}</Text>}
-
-                <TouchableOpacity
-                  testID="btn-confirm-order"
-                  style={[styles.submitOrderBtn, { backgroundColor: theme.primary }, isSubmitting && styles.submitOrderBtnDisabled]}
-                  disabled={isSubmitting}
-                  onPress={handleConfirmOrder}
-                >
-                  {isSubmitting && <ActivityIndicator size="small" color="#FFFFFF" />}
-                  <Text style={styles.submitOrderText}>
-                    {isSubmitting ? 'Đang gửi đơn...' : 'Gửi đơn xuống bếp'}
-                  </Text>
-                </TouchableOpacity>
-              </>
+                {submitError && <InlineAlert title="Chưa thể gửi đơn" message={submitError} />}
+                <Button testID="btn-confirm-order" variant="primary" label="Gửi đơn xuống bếp" loading={isSubmitting} onPress={() => void handleConfirmOrder()} />
+              </ScrollView>
             )}
-          </View>
+          </Surface>
         </View>
       </Modal>
 
-      {/* 5. Modifier Configuration Modal */}
-      <ModifierModal
-        visible={isModifierModalOpen}
-        item={selectedMenuItemForModal}
-        onClose={closeModifierModal}
-        onAddToCart={addToCart}
-      />
-
-      {/* 6. Immutable Receipt Modal */}
-      <ReceiptModal
-        visible={isReceiptModalOpen}
-        order={createdOrder}
-        onClose={() => setIsReceiptModalOpen(false)}
-      />
+      <ModifierModal visible={isModifierModalOpen} item={selectedMenuItemForModal} onClose={closeModifierModal} onAddToCart={addToCart} />
+      <ReceiptModal visible={isReceiptModalOpen} order={createdOrder} onClose={() => setIsReceiptModalOpen(false)} />
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  listContent: {
-    padding: spacing.xs,
-    paddingBottom: 80
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.xl
-  },
-  loadingText: {
-    marginTop: spacing.md,
-    fontSize: typography.sizes.sm
-  },
-  errorText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    textAlign: 'center',
-    marginBottom: spacing.md
-  },
-  retryButton: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: 8
-  },
-  retryButtonText: {
-    color: '#FFFFFF',
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.xs
-  },
-  emptyText: {
-    fontSize: typography.sizes.sm
-  },
-  cartBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    borderTopWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
-    minHeight: spacing.touchTargetPOS
-  },
-  cartInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm
-  },
-  cartBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  cartBadgeText: {
-    color: '#FFFFFF',
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.xs
-  },
-  cartSummaryText: {
-    color: '#94A3B8',
-    fontSize: 11
-  },
-  cartTotalText: {
-    color: '#F8FAFC',
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  },
-  cartActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm
-  },
-  clearCartBtn: {
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    backgroundColor: '#334155',
-    borderRadius: 6
-  },
-  clearCartText: {
-    color: '#CBD5E1',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
-  },
-  checkoutBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: 8,
-    minHeight: 40,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  checkoutText: {
-    color: '#FFFFFF',
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.xs,
-    letterSpacing: 0.5
-  },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.68)',
-    justifyContent: 'flex-end'
-  },
-  checkoutModal: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: spacing.lg,
-    paddingBottom: spacing.xl
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.lg
-  },
-  modalTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.extraBold
-  },
-  modalSubtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2
-  },
-  modalCloseBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  modalCloseText: {
-    fontWeight: typography.weights.bold
-  },
-  fieldLabel: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    marginBottom: spacing.xs
-  },
-  orderTypeRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.md
-  },
-  typeBtn: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingVertical: spacing.sm,
-    alignItems: 'center'
-  },
-  typeBtnActive: {},
-  typeBtnText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.semibold
-  },
-  tableScroller: {
-    marginBottom: spacing.md
-  },
-  tableBtn: {
-    minWidth: 92,
-    padding: spacing.sm,
-    marginRight: spacing.xs,
-    borderWidth: 1,
-    borderRadius: 10
-  },
-  tableBtnActive: {},
-  tableBtnText: {
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.xs
-  },
-  tableStateText: {
-    fontSize: 10,
-    marginTop: 2
-  },
-  noTableText: {
-    fontSize: typography.sizes.xs,
-    marginBottom: spacing.md
-  },
-  submitError: {
-    fontSize: typography.sizes.xs,
-    marginBottom: spacing.sm
-  },
-  submitOrderBtn: {
-    minHeight: spacing.touchTargetPOS,
-    borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs
-  },
-  submitOrderBtnDisabled: {
-    opacity: 0.65
-  },
-  submitOrderText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  },
-  successPanel: {
-    alignItems: 'center',
-    paddingVertical: spacing.lg
-  },
-  successIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    backgroundColor: '#DCFCE7',
-    color: '#15803D',
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.extraBold,
-    marginBottom: spacing.sm
-  },
-  successText: {
-    color: '#15803D',
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    textAlign: 'center'
-  },
-  doneBtn: {
-    borderRadius: 8,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    minHeight: spacing.touchTargetMobile,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  doneBtnText: {
-    color: '#FFFFFF',
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.xs
-  },
-  successActionsRow: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    width: '100%',
-    marginTop: spacing.lg
-  },
-  receiptBtn: {
-    flex: 1,
-    borderRadius: 8,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    minHeight: spacing.touchTargetMobile,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  receiptBtnText: {
-    color: '#FFFFFF',
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.xs
-  }
+  container: { flex: 1 },
+  workspace: { flex: 1, flexDirection: 'row' },
+  catalogPane: { flex: 1, minWidth: 0 },
+  catalogHeader: { paddingBottom: spacing.sm, paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
+  mobileCartStatus: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 44, paddingHorizontal: spacing.md },
+  mobileCartStatusTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  mobileCartStatusCount: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg },
+  centerContainer: { alignItems: 'center', flex: 1, gap: spacing.md, justifyContent: 'center', padding: spacing.xl },
+  loadingText: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
+  listContent: { padding: spacing.md, paddingBottom: spacing.xl },
+  listContentWithCart: { paddingBottom: 112 },
+  menuRow: { gap: spacing.md },
+  cartPanel: { borderLeftWidth: 1, borderRadius: 0, width: 360 },
+  cartHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 76, padding: spacing.lg },
+  cartHeadingCopy: { gap: 2 },
+  cartHeadingRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  cartTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl },
+  cartCount: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  cartItems: { flex: 1 },
+  cartItemsContent: { paddingHorizontal: spacing.lg },
+  cartItem: { borderBottomWidth: 1, gap: spacing.sm, paddingVertical: spacing.lg },
+  cartItemTop: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.sm },
+  cartItemCopy: { flex: 1, gap: 2 },
+  cartItemName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  cartItemMeta: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
+  iconAction: { alignItems: 'center', borderRadius: radii.sm, height: 44, justifyContent: 'center', width: 44 },
+  cartItemBottom: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  quantityControls: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  quantityButton: { alignItems: 'center', borderRadius: radii.sm, borderWidth: 1, height: 44, justifyContent: 'center', width: 44 },
+  quantityValue: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md, minWidth: 24, textAlign: 'center' },
+  cartItemPrice: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm, fontVariant: [...typography.numeric.fontVariant] },
+  cartTotals: { borderTopWidth: 1, gap: spacing.sm, padding: spacing.lg },
+  totalRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  totalLabel: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
+  totalValue: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm, fontVariant: [...typography.numeric.fontVariant] },
+  grandTotalRow: { alignItems: 'baseline', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.xs },
+  grandTotalLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  grandTotalValue: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, fontVariant: [...typography.numeric.fontVariant] },
+  mobileCartSummary: { alignItems: 'center', bottom: spacing.md, flexDirection: 'row', gap: spacing.md, left: spacing.md, padding: spacing.sm, position: 'absolute', right: spacing.md },
+  mobileCartSummaryCopy: { flex: 1, paddingLeft: spacing.xs },
+  mobileCartLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  mobileCartTotal: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg, fontVariant: [...typography.numeric.fontVariant] },
+  modalBackdrop: { flex: 1, justifyContent: 'flex-end' },
+  modalBackdropCentered: { alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+  checkoutModal: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, maxHeight: '92%', overflow: 'hidden', width: '100%' },
+  checkoutModalWide: { borderBottomLeftRadius: radii.md, borderBottomRightRadius: radii.md, maxWidth: 620 },
+  modalHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: spacing.lg },
+  modalHeadingCopy: { flex: 1, gap: 2 },
+  modalTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl },
+  modalSubtitle: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
+  modalClose: { alignItems: 'center', borderRadius: radii.sm, height: 44, justifyContent: 'center', width: 44 },
+  checkoutBody: { gap: spacing.lg, padding: spacing.lg },
+  checkoutSection: { gap: spacing.sm },
+  sectionTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  orderTypeRow: { flexDirection: 'row', gap: spacing.sm },
+  typeButton: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.sm, minHeight: spacing.touchTargetPOS, paddingHorizontal: spacing.md },
+  typeButtonText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  tableList: { gap: spacing.sm, paddingBottom: spacing.xs },
+  tableButton: { borderRadius: radii.md, borderWidth: 1, minHeight: spacing.touchTargetPOS, minWidth: 104, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  tableNumber: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg },
+  tableStatus: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  successPanel: { alignItems: 'center', gap: spacing.sm, padding: spacing.xl },
+  successTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, textAlign: 'center' },
+  successDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm, maxWidth: 420, textAlign: 'center' },
+  successActionsRow: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', marginTop: spacing.md, width: '100%' }
 });

@@ -1,8 +1,8 @@
 import React from 'react';
-import { StyleSheet, Text, View, ScrollView, TouchableOpacity } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { CategoryDto } from '../../api/contracts';
 import { useTheme } from '../../contexts/ThemeContext';
-import { typography, spacing } from '../../theme';
+import { radii, spacing, typography } from '../../theme';
 
 interface Props {
   categories: CategoryDto[];
@@ -17,59 +17,62 @@ export const MenuCategoryPills: React.FC<Props> = ({
   onSelectCategory,
   totalItemCount
 }) => {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
+    <View style={[styles.container, { borderBottomColor: theme.borderSubtle }]}>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* All Items Pill */}
-        <TouchableOpacity
-          style={[
+        <Pressable
+          accessibilityRole="tab"
+          accessibilityState={{ selected: selectedCategoryId === null }}
+          style={({ pressed }) => [
             styles.pill,
-            { backgroundColor: isDark ? '#334155' : '#F1F5F9', borderColor: theme.border },
-            selectedCategoryId === null && { backgroundColor: theme.primary, borderColor: theme.primary }
+            { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase, borderColor: theme.borderSubtle },
+            selectedCategoryId === null && { backgroundColor: theme.interactivePrimary, borderColor: theme.interactivePrimary }
           ]}
           onPress={() => onSelectCategory(null)}
         >
           <Text
             style={[
               styles.pillText,
-              { color: selectedCategoryId === null ? '#FFFFFF' : theme.text },
+              { color: selectedCategoryId === null ? theme.textInverse : theme.textPrimary },
               selectedCategoryId === null && styles.pillTextActive
             ]}
           >
-            🍗 Tất cả ({totalItemCount})
+            Tất cả ({totalItemCount})
           </Text>
-        </TouchableOpacity>
+        </Pressable>
 
         {/* Categories Pills */}
         {categories.map((cat) => {
           const isActive = selectedCategoryId === cat.id;
           const count = cat.menuItems?.length || 0;
           return (
-            <TouchableOpacity
+            <Pressable
               key={cat.id}
-              style={[
+              accessibilityRole="tab"
+              accessibilityState={{ selected: isActive }}
+              style={({ pressed }) => [
                 styles.pill,
-                { backgroundColor: isDark ? '#334155' : '#F1F5F9', borderColor: theme.border },
-                isActive && { backgroundColor: theme.primary, borderColor: theme.primary }
+                { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase, borderColor: theme.borderSubtle },
+                isActive && { backgroundColor: theme.interactivePrimary, borderColor: theme.interactivePrimary }
               ]}
               onPress={() => onSelectCategory(cat.id)}
             >
               <Text
                 style={[
                   styles.pillText,
-                  { color: isActive ? '#FFFFFF' : theme.text },
+                  { color: isActive ? theme.textInverse : theme.textPrimary },
                   isActive && styles.pillTextActive
                 ]}
               >
                 {cat.name} ({count})
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           );
         })}
       </ScrollView>
@@ -79,27 +82,27 @@ export const MenuCategoryPills: React.FC<Props> = ({
 
 const styles = StyleSheet.create({
   container: {
-    borderBottomWidth: 1,
-    paddingVertical: spacing.sm
+    borderBottomWidth: 1
   },
   scrollContent: {
-    paddingHorizontal: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
     gap: spacing.sm
   },
   pill: {
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,
-    borderRadius: 24,
+    borderRadius: radii.pill,
     borderWidth: 1,
     justifyContent: 'center',
     alignItems: 'center',
     minHeight: spacing.touchTargetMobile
   },
   pillText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm
   },
   pillTextActive: {
-    fontWeight: typography.weights.bold
+    fontFamily: typography.families.bodyBold
   }
 });

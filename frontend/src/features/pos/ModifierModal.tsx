@@ -1,17 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  Modal,
-  TouchableOpacity,
-  ScrollView,
-  TextInput,
-  SafeAreaView
-} from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Check, Minus, Plus, X } from 'lucide-react-native';
 import { MenuItemDto, SelectedModifierDto } from '../../api/contracts';
 import { useTheme } from '../../contexts/ThemeContext';
-import { typography, spacing } from '../../theme';
+import { elevation, radii, spacing, typography } from '../../theme';
+import { AppIcon, Button, Field, InlineAlert, StatusBadge } from '../../ui';
 
 interface Props {
   visible: boolean;
@@ -25,27 +18,25 @@ interface Props {
   ) => void;
 }
 
-export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddToCart }) => {
-  const { theme, isDark } = useTheme();
-  const [quantity, setQuantity] = useState<number>(1);
-  const [selectedModifiers, setSelectedModifiers] = useState<Record<number, number[]>>({});
-  const [notes, setNotes] = useState<string>('');
+const formatVND = (amount: number) =>
+  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
-  // Reset state when opening modal for a new item
+export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddToCart }) => {
+  const { theme } = useTheme();
+  const [quantity, setQuantity] = useState(1);
+  const [selectedModifiers, setSelectedModifiers] = useState<Record<number, number[]>>({});
+  const [notes, setNotes] = useState('');
+
   useEffect(() => {
     if (visible && item) {
       setQuantity(1);
       setNotes('');
       const initialSelection: Record<number, number[]> = {};
-
       item.modifierGroups?.forEach((group) => {
-        if (group.isRequired && group.minSelect === 1 && group.maxSelect === 1 && group.options.length > 0) {
-          initialSelection[group.id] = [group.options[0].id];
-        } else {
-          initialSelection[group.id] = [];
-        }
+        initialSelection[group.id] = group.isRequired && group.minSelect === 1 && group.maxSelect === 1 && group.options.length > 0
+          ? [group.options[0].id]
+          : [];
       });
-
       setSelectedModifiers(initialSelection);
     }
   }, [visible, item]);
@@ -53,192 +44,122 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
   if (!item) return null;
 
   const handleSelectOption = (groupId: number, optionId: number, maxSelect: number) => {
-    setSelectedModifiers((prev) => {
-      const current = prev[groupId] || [];
-      if (maxSelect === 1) {
-        return { ...prev, [groupId]: [optionId] };
-      } else {
-        if (current.includes(optionId)) {
-          return { ...prev, [groupId]: current.filter((id) => id !== optionId) };
-        } else {
-          if (current.length >= maxSelect) {
-            return prev;
-          }
-          return { ...prev, [groupId]: [...current, optionId] };
-        }
-      }
+    setSelectedModifiers((previous) => {
+      const current = previous[groupId] || [];
+      if (maxSelect === 1) return { ...previous, [groupId]: [optionId] };
+      if (current.includes(optionId)) return { ...previous, [groupId]: current.filter((id) => id !== optionId) };
+      if (current.length >= maxSelect) return previous;
+      return { ...previous, [groupId]: [...current, optionId] };
     });
   };
 
-  // Validation
-  const validationErrors: string[] = [];
-  item.modifierGroups?.forEach((group) => {
+  const validationErrors = (item.modifierGroups || []).flatMap((group) => {
     const selectedCount = (selectedModifiers[group.id] || []).length;
-    if (group.isRequired && selectedCount < group.minSelect) {
-      validationErrors.push(`Vui lòng chọn mục "${group.name}" (Tối thiểu ${group.minSelect} lựa chọn)`);
-    }
+    return group.isRequired && selectedCount < group.minSelect
+      ? [`Chọn ít nhất ${group.minSelect} lựa chọn trong “${group.name}”.`]
+      : [];
   });
-
   const isValid = validationErrors.length === 0;
 
-  // Calculate live total price
-  const calculateTotal = () => {
-    let extra = 0;
-    item.modifierGroups?.forEach((group) => {
-      const selectedOptionIds = selectedModifiers[group.id] || [];
-      group.options.forEach((opt) => {
-        if (selectedOptionIds.includes(opt.id)) {
-          extra += opt.priceDelta;
-        }
-      });
+  let modifierTotal = 0;
+  item.modifierGroups?.forEach((group) => {
+    const selectedOptionIds = selectedModifiers[group.id] || [];
+    group.options.forEach((option) => {
+      if (selectedOptionIds.includes(option.id)) modifierTotal += option.priceDelta;
     });
-
-    const unitPrice = item.basePrice + extra;
-    return {
-      unitPrice,
-      totalPrice: unitPrice * quantity
-    };
-  };
-
-  const { unitPrice, totalPrice } = calculateTotal();
+  });
+  const unitPrice = item.basePrice + modifierTotal;
+  const totalPrice = unitPrice * quantity;
 
   const handleConfirm = () => {
     if (!isValid) return;
-
     const resultModifiers: SelectedModifierDto[] = [];
     item.modifierGroups?.forEach((group) => {
       const selectedOptionIds = selectedModifiers[group.id] || [];
-      group.options.forEach((opt) => {
-        if (selectedOptionIds.includes(opt.id)) {
+      group.options.forEach((option) => {
+        if (selectedOptionIds.includes(option.id)) {
           resultModifiers.push({
             modifierGroupId: group.id,
             groupName: group.name,
-            optionId: opt.id,
-            optionName: opt.name,
-            priceDelta: opt.priceDelta
+            optionId: option.id,
+            optionName: option.name,
+            priceDelta: option.priceDelta
           });
         }
       });
     });
-
     onAddToCart(item, quantity, resultModifiers, notes.trim() || undefined);
   };
 
-  const formatVND = (amount: number) =>
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
-
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
-      <View style={[styles.modalBackdrop, { backgroundColor: theme.overlay }]}>
-        <SafeAreaView style={[styles.modalContainer, { backgroundColor: theme.card }]}>
-          {/* Header */}
-          <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-            <View>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>{item.name}</Text>
-              <Text style={[styles.basePriceText, { color: theme.textMuted }]}>
-                Giá cơ bản: {formatVND(item.basePrice)}
-              </Text>
+      <View style={[styles.backdrop, { backgroundColor: theme.overlay }]}>
+        <SafeAreaView style={[styles.container, elevation.modal, { backgroundColor: theme.surfaceBase }]}>
+          <View style={[styles.header, { borderBottomColor: theme.borderSubtle }]}>
+            <View style={styles.headerCopy}>
+              <Text accessibilityRole="header" style={[styles.title, { color: theme.textPrimary }]}>{item.name}</Text>
+              <Text style={[styles.basePrice, { color: theme.textSecondary }]}>Giá cơ bản {formatVND(item.basePrice)}</Text>
             </View>
-            <TouchableOpacity
-              style={[styles.closeButton, { backgroundColor: isDark ? '#334155' : '#F1F5F9' }]}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Đóng tùy chọn món"
               onPress={onClose}
+              style={({ pressed }) => [styles.closeButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}
             >
-              <Text style={[styles.closeButtonText, { color: theme.text }]}>✕</Text>
-            </TouchableOpacity>
+              <AppIcon icon={X} color={theme.textPrimary} size={20} />
+            </Pressable>
           </View>
 
-          <ScrollView style={styles.modalBody}>
-            {/* Validation Errors Notice */}
-            {validationErrors.length > 0 && (
-              <View style={styles.warningBox}>
-                {validationErrors.map((err, idx) => (
-                  <Text key={idx} style={styles.warningText}>
-                    ⚠️ {err}
-                  </Text>
-                ))}
-              </View>
-            )}
+          <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+            {validationErrors.length > 0 && <InlineAlert tone="warning" title="Cần thêm lựa chọn" message={validationErrors.join(' ')} />}
 
-            {/* Modifier Groups */}
             {item.modifierGroups?.map((group) => {
               const currentSelected = selectedModifiers[group.id] || [];
+              const isSingleSelect = group.maxSelect === 1;
               return (
-                <View
-                  key={group.id}
-                  style={[
-                    styles.groupCard,
-                    {
-                      backgroundColor: isDark ? '#0F172A' : '#FAFAFA',
-                      borderColor: theme.border
-                    }
-                  ]}
-                >
+                <View key={group.id} style={[styles.group, { borderBottomColor: theme.borderSubtle }]}>
                   <View style={styles.groupHeader}>
-                    <Text style={[styles.groupName, { color: theme.text }]}>{group.name}</Text>
-                    <View
-                      style={[
-                        styles.badge,
-                        group.isRequired
-                          ? (isDark ? styles.badgeRequiredDark : styles.badgeRequiredLight)
-                          : (isDark ? styles.badgeOptionalDark : styles.badgeOptionalLight)
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.badgeText,
-                          group.isRequired
-                            ? { color: isDark ? '#FCA5A5' : '#DC2626' }
-                            : { color: isDark ? '#94A3B8' : '#64748B' }
-                        ]}
-                      >
-                        {group.isRequired ? 'BẮT BUỘC' : 'Tùy chọn'}
+                    <View style={styles.groupTitleCopy}>
+                      <Text style={[styles.groupName, { color: theme.textPrimary }]}>{group.name}</Text>
+                      <Text style={[styles.groupRule, { color: theme.textSecondary }]}>
+                        {isSingleSelect ? 'Chọn một' : `Chọn tối đa ${group.maxSelect}`}
                       </Text>
                     </View>
+                    <StatusBadge tone={group.isRequired ? 'warning' : 'neutral'} label={group.isRequired ? 'Bắt buộc' : 'Tùy chọn'} />
                   </View>
 
-                  {/* Options List */}
-                  <View style={styles.optionsList}>
-                    {group.options.map((opt) => {
-                      const isSelected = currentSelected.includes(opt.id);
+                  <View>
+                    {group.options.map((option, optionIndex) => {
+                      const isSelected = currentSelected.includes(option.id);
                       return (
-                        <TouchableOpacity
-                          testID={`modifier-option-${opt.id}`}
-                          key={opt.id}
-                          style={[
-                            styles.optionItem,
-                            {
-                              backgroundColor: isDark ? '#1E293B' : '#FFFFFF',
-                              borderColor: isSelected ? theme.primary : theme.border
-                            },
-                            isSelected && (isDark ? styles.optionItemSelectedDark : styles.optionItemSelectedLight)
+                        <Pressable
+                          testID={`modifier-option-${option.id}`}
+                          key={option.id}
+                          accessibilityRole={isSingleSelect ? 'radio' : 'checkbox'}
+                          accessibilityState={{ checked: isSelected }}
+                          onPress={() => handleSelectOption(group.id, option.id, group.maxSelect)}
+                          style={({ pressed }) => [
+                            styles.option,
+                            optionIndex > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 },
+                            pressed && { backgroundColor: theme.surfaceSunken }
                           ]}
-                          onPress={() => handleSelectOption(group.id, opt.id, group.maxSelect)}
                         >
-                          <View style={styles.optionLeft}>
-                            <View style={[styles.radio, { borderColor: isSelected ? theme.primary : theme.textMuted }]}>
-                              {isSelected && <View style={[styles.radioInner, { backgroundColor: theme.primary }]} />}
+                          <View style={styles.optionCopy}>
+                            <View style={[
+                              styles.control,
+                              isSingleSelect ? styles.radio : styles.checkbox,
+                              { borderColor: isSelected ? theme.primary : theme.borderStrong }
+                            ]}>
+                              {isSelected && (isSingleSelect
+                                ? <View style={[styles.radioDot, { backgroundColor: theme.primary }]} />
+                                : <AppIcon icon={Check} color={theme.primary} size={14} />)}
                             </View>
-                            <Text
-                              style={[
-                                styles.optionName,
-                                { color: isSelected ? theme.primary : theme.text },
-                                isSelected && styles.optionNameSelected
-                              ]}
-                            >
-                              {opt.name}
-                            </Text>
+                            <Text style={[styles.optionName, { color: isSelected ? theme.primary : theme.textPrimary }]}>{option.name}</Text>
                           </View>
-
-                          <Text
-                            style={[
-                              styles.optionPrice,
-                              { color: isSelected ? theme.primary : theme.textMuted },
-                              isSelected && styles.optionPriceSelected
-                            ]}
-                          >
-                            {opt.priceDelta > 0 ? `+${formatVND(opt.priceDelta)}` : 'Miễn phí'}
+                          <Text style={[styles.optionPrice, { color: isSelected ? theme.primary : theme.textSecondary }]}>
+                            {option.priceDelta > 0 ? `+${formatVND(option.priceDelta)}` : 'Không thêm phí'}
                           </Text>
-                        </TouchableOpacity>
+                        </Pressable>
                       );
                     })}
                   </View>
@@ -246,72 +167,56 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
               );
             })}
 
-            {/* Ghi chú */}
-            <View style={styles.notesGroup}>
-              <Text style={[styles.notesLabel, { color: theme.text }]}>Ghi chú cho bếp (không bắt buộc):</Text>
-              <TextInput
-                style={[
-                  styles.notesInput,
-                  {
-                    backgroundColor: isDark ? '#0F172A' : '#F8FAFC',
-                    borderColor: theme.border,
-                    color: theme.text
-                  }
-                ]}
-                placeholder="Ví dụ: Ít đá, không tương ớt, lấy thêm khăn giấy..."
-                placeholderTextColor={theme.textMuted}
-                value={notes}
-                onChangeText={setNotes}
-                maxLength={120}
-              />
-            </View>
+            <Field
+              label="Ghi chú cho bếp"
+              description="Không bắt buộc, tối đa 120 ký tự."
+              placeholder="Ví dụ: Ít đá, không tương ớt"
+              value={notes}
+              onChangeText={setNotes}
+              maxLength={120}
+              multiline
+              style={styles.notesInput}
+            />
 
-            {/* Quantity Selector */}
-            <View style={[styles.quantityRow, { borderTopColor: theme.border }]}>
-              <Text style={[styles.quantityLabel, { color: theme.text }]}>Số lượng:</Text>
+            <View style={[styles.quantityRow, { borderTopColor: theme.borderSubtle }]}>
+              <View>
+                <Text style={[styles.quantityLabel, { color: theme.textPrimary }]}>Số lượng</Text>
+                <Text style={[styles.quantityUnitPrice, { color: theme.textSecondary }]}>Đơn giá {formatVND(unitPrice)}</Text>
+              </View>
               <View style={styles.quantityControls}>
-                <TouchableOpacity
-                  style={[styles.qtyBtn, { backgroundColor: isDark ? '#334155' : '#F1F5F9', borderColor: theme.border }]}
-                  onPress={() => setQuantity((q) => Math.max(1, q - 1))}
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Giảm số lượng"
+                  onPress={() => setQuantity((current) => Math.max(1, current - 1))}
+                  style={({ pressed }) => [styles.quantityButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet, borderColor: theme.borderSubtle }]}
                 >
-                  <Text style={[styles.qtyBtnText, { color: theme.text }]}>-</Text>
-                </TouchableOpacity>
-                <Text style={[styles.qtyNumber, { color: theme.text }]}>{quantity}</Text>
-                <TouchableOpacity
-                  style={[styles.qtyBtn, { backgroundColor: isDark ? '#334155' : '#F1F5F9', borderColor: theme.border }]}
-                  onPress={() => setQuantity((q) => q + 1)}
+                  <AppIcon icon={Minus} color={theme.textPrimary} size={18} />
+                </Pressable>
+                <Text style={[styles.quantityValue, { color: theme.textPrimary }]}>{quantity}</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Tăng số lượng"
+                  onPress={() => setQuantity((current) => current + 1)}
+                  style={({ pressed }) => [styles.quantityButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet, borderColor: theme.borderSubtle }]}
                 >
-                  <Text style={[styles.qtyBtnText, { color: theme.text }]}>+</Text>
-                </TouchableOpacity>
+                  <AppIcon icon={Plus} color={theme.textPrimary} size={18} />
+                </Pressable>
               </View>
             </View>
           </ScrollView>
 
-          {/* Footer */}
-          <View style={[styles.modalFooter, { backgroundColor: theme.card, borderTopColor: theme.border }]}>
-            <View style={styles.footerPrice}>
-              <Text style={[styles.footerPriceLabel, { color: theme.textMuted }]}>
-                Đơn giá: {formatVND(unitPrice)}
-              </Text>
-              <Text style={[styles.footerPriceValue, { color: theme.primary }]}>
-                Tổng: {formatVND(totalPrice)}
-              </Text>
+          <View style={[styles.footer, { borderTopColor: theme.borderSubtle }]}>
+            <View style={styles.footerTotal}>
+              <Text style={[styles.footerLabel, { color: theme.textSecondary }]}>Thành tiền</Text>
+              <Text style={[styles.footerValue, { color: theme.primary }]}>{formatVND(totalPrice)}</Text>
             </View>
-
-            <TouchableOpacity
+            <Button
               testID="btn-modal-add-to-cart"
-              style={[
-                styles.confirmButton,
-                { backgroundColor: theme.primary },
-                !isValid && styles.confirmButtonDisabled
-              ]}
-              onPress={handleConfirm}
+              variant="primary"
+              label={isValid ? 'Thêm vào giỏ' : 'Chọn đủ mục bắt buộc'}
               disabled={!isValid}
-            >
-              <Text style={styles.confirmButtonText}>
-                {isValid ? `THÊM VÀO GIỎ • ${formatVND(totalPrice)}` : 'CHỌN ĐỦ MỤC BẮT BUỘC'}
-              </Text>
-            </TouchableOpacity>
+              onPress={handleConfirm}
+            />
           </View>
         </SafeAreaView>
       </View>
@@ -320,226 +225,36 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
 };
 
 const styles = StyleSheet.create({
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end'
-  },
-  modalContainer: {
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    maxHeight: '90%',
-    minHeight: '60%'
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: spacing.lg,
-    borderBottomWidth: 1
-  },
-  modalTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold
-  },
-  basePriceText: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  closeButtonText: {
-    fontSize: 16,
-    fontWeight: typography.weights.bold
-  },
-  modalBody: {
-    padding: spacing.lg
-  },
-  warningBox: {
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#FCA5A5',
-    borderRadius: 8,
-    padding: spacing.md,
-    marginBottom: spacing.md
-  },
-  warningText: {
-    color: '#DC2626',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    lineHeight: 18
-  },
-  groupCard: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: spacing.md,
-    marginBottom: spacing.md
-  },
-  groupHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm
-  },
-  groupName: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  },
-  badge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 4
-  },
-  badgeRequiredLight: {
-    backgroundColor: '#FEE2E2'
-  },
-  badgeRequiredDark: {
-    backgroundColor: '#7F1D1D'
-  },
-  badgeOptionalLight: {
-    backgroundColor: '#F1F5F9'
-  },
-  badgeOptionalDark: {
-    backgroundColor: '#334155'
-  },
-  badgeText: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold
-  },
-  optionsList: {
-    gap: spacing.xs
-  },
-  optionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-    minHeight: spacing.touchTargetMobile
-  },
-  optionItemSelectedLight: {
-    backgroundColor: '#FEF2F2'
-  },
-  optionItemSelectedDark: {
-    backgroundColor: '#3B1818'
-  },
-  optionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    flex: 1
-  },
-  radio: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  radioInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5
-  },
-  optionName: {
-    fontSize: typography.sizes.sm
-  },
-  optionNameSelected: {
-    fontWeight: typography.weights.bold
-  },
-  optionPrice: {
-    fontSize: typography.sizes.xs
-  },
-  optionPriceSelected: {
-    fontWeight: typography.weights.bold
-  },
-  notesGroup: {
-    marginBottom: spacing.lg
-  },
-  notesLabel: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold,
-    marginBottom: spacing.xs
-  },
-  notesInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    padding: spacing.sm,
-    fontSize: typography.sizes.xs
-  },
-  quantityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xl,
-    paddingTop: spacing.sm,
-    borderTopWidth: 1
-  },
-  quantityLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  },
-  quantityControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md
-  },
-  qtyBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1
-  },
-  qtyBtnText: {
-    fontSize: 18,
-    fontWeight: typography.weights.bold
-  },
-  qtyNumber: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    minWidth: 24,
-    textAlign: 'center'
-  },
-  modalFooter: {
-    padding: spacing.lg,
-    borderTopWidth: 1
-  },
-  footerPrice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm
-  },
-  footerPriceLabel: {
-    fontSize: typography.sizes.xs
-  },
-  footerPriceValue: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.extraBold
-  },
-  confirmButton: {
-    paddingVertical: spacing.md,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: spacing.touchTargetPOS
-  },
-  confirmButtonDisabled: {
-    backgroundColor: '#CBD5E1'
-  },
-  confirmButtonText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    letterSpacing: 1
-  }
+  backdrop: { flex: 1, justifyContent: 'flex-end' },
+  container: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, maxHeight: '92%', minHeight: '60%', overflow: 'hidden' },
+  header: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', padding: spacing.lg },
+  headerCopy: { flex: 1, gap: 2, paddingRight: spacing.md },
+  title: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, lineHeight: typography.lineHeights.xl },
+  basePrice: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, fontVariant: [...typography.numeric.fontVariant] },
+  closeButton: { alignItems: 'center', borderRadius: radii.sm, height: 44, justifyContent: 'center', width: 44 },
+  body: { padding: spacing.lg },
+  group: { borderBottomWidth: 1, gap: spacing.sm, paddingBottom: spacing.lg, paddingTop: spacing.sm },
+  groupHeader: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },
+  groupTitleCopy: { flex: 1, gap: 2 },
+  groupName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  groupRule: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  option: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: spacing.touchTargetPOS, paddingHorizontal: spacing.xs, paddingVertical: spacing.sm },
+  optionCopy: { alignItems: 'center', flex: 1, flexDirection: 'row', gap: spacing.md, paddingRight: spacing.sm },
+  control: { alignItems: 'center', borderWidth: 2, height: 22, justifyContent: 'center', width: 22 },
+  radio: { borderRadius: radii.pill },
+  checkbox: { borderRadius: radii.xs },
+  radioDot: { borderRadius: radii.pill, height: 10, width: 10 },
+  optionName: { flex: 1, fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
+  optionPrice: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs, fontVariant: [...typography.numeric.fontVariant] },
+  notesInput: { minHeight: 72, textAlignVertical: 'top' },
+  quantityRow: { alignItems: 'center', borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.lg, paddingTop: spacing.lg },
+  quantityLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  quantityUnitPrice: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, fontVariant: [...typography.numeric.fontVariant] },
+  quantityControls: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  quantityButton: { alignItems: 'center', borderRadius: radii.sm, borderWidth: 1, height: 44, justifyContent: 'center', width: 44 },
+  quantityValue: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, minWidth: 32, textAlign: 'center' },
+  footer: { alignItems: 'center', borderTopWidth: 1, flexDirection: 'row', gap: spacing.lg, justifyContent: 'space-between', padding: spacing.lg },
+  footerTotal: { gap: 2 },
+  footerLabel: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  footerValue: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, fontVariant: [...typography.numeric.fontVariant] }
 });

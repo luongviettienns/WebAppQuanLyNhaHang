@@ -18,6 +18,8 @@ test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
     const posTab = page.getByTestId('tab-pos');
     await expect(posTab).toBeVisible({ timeout: 10000 });
     await expect(page.getByText('Bán hàng')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Thực đơn' })).toBeVisible();
+    await expect(page.getByText('Giỏ hàng', { exact: true })).toBeVisible();
 
     // 2. Select first combo menu item (requires modifiers)
     const firstMenuItem = page.locator('[data-testid^="menu-item-"]').first();
@@ -37,6 +39,11 @@ test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
     // Confirm adding to cart
     await expect(addToCartBtn).toBeEnabled();
     await addToCartBtn.click();
+
+    const cartSummary = page.getByTestId('pos-cart-summary');
+    await expect(cartSummary).toBeVisible();
+    await expect(cartSummary).toContainText('1 món');
+    await expect(page.getByTestId('pos-cart-total')).toHaveText(/74\.520\s*₫/);
 
     // 4. Open Checkout
     const openCheckoutBtn = page.getByTestId('btn-open-checkout');
@@ -67,7 +74,9 @@ test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
     const receiptModal = page.getByTestId('receipt-modal');
     await expect(receiptModal).toBeVisible({ timeout: 5000 });
     await expect(page.getByText('CRISPY BITE QSR')).toBeVisible();
-    await expect(page.getByText('Thuế GTGT (VAT 8%)')).toBeVisible();
+    await expect(receiptModal.getByRole('heading', { name: 'Hóa đơn bán hàng' })).toBeVisible();
+    await expect(receiptModal.getByText('Thuế GTGT (VAT 8%)')).toBeVisible();
+    await expect(receiptModal.getByText('Tổng thanh toán')).toBeVisible();
 
     // Close receipt modal
     const closeReceiptBtn = page.getByTestId('btn-close-receipt');

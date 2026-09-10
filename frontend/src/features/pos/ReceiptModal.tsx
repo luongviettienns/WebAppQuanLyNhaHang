@@ -1,18 +1,11 @@
 import React from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  Modal,
-  TouchableOpacity,
-  ScrollView,
-  SafeAreaView,
-  Alert,
-  Platform
-} from 'react-native';
+import { Alert, Modal, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Printer, X } from 'lucide-react-native';
 import { OrderDto } from '../../api/contracts';
 import { useTheme } from '../../contexts/ThemeContext';
-import { typography, spacing } from '../../theme';
+import { elevation, radii, spacing, typography } from '../../theme';
+import { AppIcon, Button, StatusBadge } from '../../ui';
+import type { StatusTone } from '../../ui';
 
 interface Props {
   visible: boolean;
@@ -21,8 +14,7 @@ interface Props {
 }
 
 export const ReceiptModal: React.FC<Props> = ({ visible, order, onClose }) => {
-  const { theme, isDark } = useTheme();
-
+  const { theme } = useTheme();
   if (!order) return null;
 
   const handlePrintOrExport = () => {
@@ -30,221 +22,142 @@ export const ReceiptModal: React.FC<Props> = ({ visible, order, onClose }) => {
       window.print();
     } else {
       Alert.alert(
-        'Xuất Hóa Đơn Thành Công',
-        `Hóa đơn #${order.code} đã được xuất thành snapshot PDF bất biến. Tổng thanh toán: ${order.finalAmount.toLocaleString('vi-VN')} đ.`
+        'Đã xuất hóa đơn',
+        `Hóa đơn ${order.code} đã được xuất thành snapshot PDF. Tổng thanh toán: ${order.finalAmount.toLocaleString('vi-VN')} đ.`
       );
     }
   };
 
-  const getPaymentMethodLabel = () => {
-    switch (order.paymentMethod) {
-      case 'CASH':
-        return 'Tiền mặt (Cash)';
-      case 'BANK_TRANSFER':
-        return 'Chuyển khoản (Bank Transfer)';
-      case 'CREDIT_CARD':
-        return 'Thẻ tín dụng (Credit Card)';
-      default:
-        return 'Chưa thanh toán';
-    }
-  };
+  const paymentMethodLabel = order.paymentMethod
+    ? {
+      CASH: 'Tiền mặt',
+      BANK_TRANSFER: 'Chuyển khoản',
+      CREDIT_CARD: 'Thẻ tín dụng'
+    }[order.paymentMethod]
+    : 'Chưa thanh toán';
 
-  const getPaymentStatusBadge = () => {
-    switch (order.paymentStatus) {
-      case 'PAID':
-        return { label: 'ĐÃ THANH TOÁN', bg: '#D1FAE5', text: '#065F46' };
-      case 'VOIDED':
-        return { label: 'ĐÃ HỦY (VOIDED)', bg: '#FEE2E2', text: '#B91C1C' };
-      default:
-        return { label: 'CHƯA THANH TOÁN', bg: '#FEF3C7', text: '#B45309' };
-    }
-  };
+  const paymentStatus: { label: string; tone: StatusTone } = {
+    PAID: { label: 'Đã thanh toán', tone: 'success' as const },
+    VOIDED: { label: 'Đã hủy', tone: 'danger' as const },
+    UNPAID: { label: 'Chưa thanh toán', tone: 'warning' as const }
+  }[order.paymentStatus];
 
-  const statusBadge = getPaymentStatusBadge();
   const orderDate = new Date(order.paidAt || order.createdAt);
-  const formattedDate = !isNaN(orderDate.getTime())
-    ? orderDate.toLocaleString('vi-VN')
-    : order.createdAt;
+  const formattedDate = Number.isNaN(orderDate.getTime()) ? order.createdAt : orderDate.toLocaleString('vi-VN');
 
   return (
     <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <SafeAreaView style={styles.overlay}>
-        <View testID="receipt-modal" style={[styles.container, { backgroundColor: isDark ? '#1E293B' : '#FFFFFF', borderColor: theme.border }]}>
-          {/* Top Actions */}
-          <View style={[styles.topActions, { borderBottomColor: theme.border }]}>
-            <Text testID="receipt-modal-title" style={[styles.modalHeading, { color: theme.text }]}>Hóa Đơn Bán Hàng</Text>
-            <TouchableOpacity testID="btn-close-receipt" onPress={onClose} style={styles.closeBtn}>
-              <Text style={[styles.closeBtnText, { color: theme.textMuted }]}>✕</Text>
-            </TouchableOpacity>
+      <SafeAreaView style={[styles.overlay, { backgroundColor: theme.overlay }]}>
+        <View testID="receipt-modal" style={[styles.container, elevation.modal, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+          <View style={[styles.topActions, { borderBottomColor: theme.borderSubtle }]}>
+            <Text testID="receipt-modal-title" accessibilityRole="header" style={[styles.modalHeading, { color: theme.textPrimary }]}>Hóa đơn bán hàng</Text>
+            <Pressable
+              testID="btn-close-receipt"
+              accessibilityRole="button"
+              accessibilityLabel="Đóng hóa đơn"
+              onPress={onClose}
+              style={({ pressed }) => [styles.iconButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}
+            >
+              <AppIcon icon={X} color={theme.textPrimary} size={20} />
+            </Pressable>
           </View>
 
-          {/* Receipt Content ScrollView */}
           <ScrollView contentContainerStyle={styles.receiptScroll} showsVerticalScrollIndicator={false}>
-            {/* Paper Thermal Layout */}
-            <View style={[styles.receiptPaper, { backgroundColor: isDark ? '#0F172A' : '#FAFAF9', borderColor: theme.border }]}>
-              {/* Brand Header */}
+            <View style={[styles.receiptPaper, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
               <View style={styles.brandHeader}>
-                <Text style={[styles.brandTitle, { color: theme.primary }]}>CRISPY BITE QSR</Text>
-                <Text style={[styles.brandSub, { color: theme.textMuted }]}>
-                  Hệ Thống Nhà Hàng Thức Ăn Nhanh & Gà Rán
-                </Text>
-                <Text style={[styles.brandInfo, { color: theme.textMuted }]}>
-                  Đ/c: 123 Nguyễn Huệ, P. Bến Nghé, Quận 1, TP. HCM
-                </Text>
-                <Text style={[styles.brandInfo, { color: theme.textMuted }]}>Hotline CSKH: 1900 8888</Text>
+                <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>CRISPY BITE QSR</Text>
+                <Text style={[styles.brandInfo, { color: theme.textSecondary }]}>123 Nguyễn Huệ, Quận 1, TP. HCM</Text>
+                <Text style={[styles.brandInfo, { color: theme.textSecondary }]}>Hotline 1900 8888</Text>
               </View>
 
-              <View style={styles.dashedDivider} />
+              <View style={[styles.divider, { backgroundColor: theme.borderStrong }]} />
 
-              {/* Order Meta Info */}
               <View style={styles.metaSection}>
                 <View style={styles.metaRow}>
-                  <Text style={[styles.metaLabel, { color: theme.textMuted }]}>Mã hóa đơn:</Text>
-                  <Text style={[styles.metaValueBold, { color: theme.text }]}>{order.code}</Text>
+                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Mã hóa đơn</Text>
+                  <Text style={[styles.orderCode, { color: theme.textPrimary }]}>{order.code}</Text>
                 </View>
-
                 <View style={styles.metaRow}>
-                  <Text style={[styles.metaLabel, { color: theme.textMuted }]}>Thời gian:</Text>
-                  <Text style={[styles.metaValue, { color: theme.text }]}>{formattedDate}</Text>
+                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Thời gian</Text>
+                  <Text style={[styles.metaValue, { color: theme.textPrimary }]}>{formattedDate}</Text>
                 </View>
-
                 <View style={styles.metaRow}>
-                  <Text style={[styles.metaLabel, { color: theme.textMuted }]}>Hình thức:</Text>
-                  <Text style={[styles.metaValue, { color: theme.text }]}>
+                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Hình thức</Text>
+                  <Text style={[styles.metaValue, { color: theme.textPrimary }]}>
                     {order.orderType === 'DINE_IN'
-                      ? `🍽️ Ăn tại bàn (Bàn ${order.tableNumber ?? order.tableId ?? 'Chưa gán'})`
-                      : `🛍️ Mang về (Buzzer #${order.buzzerNumber ?? 'Chưa gán'})`}
+                      ? `Tại bàn ${order.tableNumber ?? order.tableId ?? 'Chưa gán'}`
+                      : `Mang đi · Số nhận món ${order.buzzerNumber ?? 'Chưa gán'}`}
                   </Text>
                 </View>
-
                 <View style={styles.metaRow}>
-                  <Text style={[styles.metaLabel, { color: theme.textMuted }]}>Trạng thái:</Text>
-                  <View style={[styles.statusTag, { backgroundColor: statusBadge.bg }]}>
-                    <Text style={[styles.statusTagText, { color: statusBadge.text }]}>
-                      {statusBadge.label}
-                    </Text>
-                  </View>
+                  <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Trạng thái</Text>
+                  <StatusBadge tone={paymentStatus.tone} label={paymentStatus.label} />
                 </View>
-
                 {order.voidReason && (
-                  <View style={styles.voidReasonBox}>
-                    <Text style={styles.voidReasonText}>Lý do hủy: {order.voidReason}</Text>
+                  <View style={[styles.voidReason, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                    <Text style={[styles.voidReasonText, { color: theme.danger }]}>Lý do hủy: {order.voidReason}</Text>
                   </View>
                 )}
               </View>
 
-              <View style={styles.dashedDivider} />
+              <View style={[styles.divider, { backgroundColor: theme.borderStrong }]} />
 
-              {/* Items Table */}
               <View style={styles.itemsSection}>
-                <View style={styles.tableHeader}>
-                  <Text style={[styles.thColItem, { color: theme.textMuted }]}>MÓN / CHI TIẾT</Text>
-                  <Text style={[styles.thColQty, { color: theme.textMuted }]}>SL</Text>
-                  <Text style={[styles.thColPrice, { color: theme.textMuted }]}>Đ.GIÁ</Text>
-                  <Text style={[styles.thColTotal, { color: theme.textMuted }]}>T.TIỀN</Text>
+                <View style={[styles.tableHeader, { borderBottomColor: theme.borderSubtle }]}>
+                  <Text style={[styles.itemColumn, styles.headerText, { color: theme.textSecondary }]}>Món</Text>
+                  <Text style={[styles.quantityColumn, styles.headerText, { color: theme.textSecondary }]}>SL</Text>
+                  <Text style={[styles.amountColumn, styles.headerText, { color: theme.textSecondary }]}>Thành tiền</Text>
                 </View>
-
-                {order.items.map((item, idx) => {
-                  const modifiers = item.selectedModifiersJson || [];
-
-                  return (
-                    <View key={item.id || idx} style={styles.itemRow}>
-                      <View style={styles.itemMainRow}>
-                        <Text style={[styles.tdItemName, { color: theme.text }]}>
-                          {item.menuItemName}
-                        </Text>
-                        <Text style={[styles.tdQty, { color: theme.text }]}>{item.quantity}</Text>
-                        <Text style={[styles.tdPrice, { color: theme.textMuted }]}>
-                          {item.unitPrice.toLocaleString('vi-VN')}
-                        </Text>
-                        <Text style={[styles.tdTotal, { color: theme.text }]}>
-                          {item.subtotal.toLocaleString('vi-VN')}
-                        </Text>
+                {order.items.map((item, index) => (
+                  <View key={item.id || index} style={[styles.itemRow, { borderBottomColor: theme.borderSubtle }]}>
+                    <View style={styles.itemMainRow}>
+                      <View style={styles.itemColumn}>
+                        <Text style={[styles.itemName, { color: theme.textPrimary }]}>{item.menuItemName}</Text>
+                        {(item.selectedModifiersJson || []).map((modifier, modifierIndex) => (
+                          <Text key={`${modifier.optionId}-${modifierIndex}`} style={[styles.itemMeta, { color: theme.textSecondary }]}>
+                            {modifier.groupName}: {modifier.optionName}{modifier.priceDelta > 0 ? ` (+${modifier.priceDelta.toLocaleString('vi-VN')} đ)` : ''}
+                          </Text>
+                        ))}
+                        {item.notes && <Text style={[styles.itemMeta, { color: theme.textSecondary }]}>Ghi chú: {item.notes}</Text>}
+                        <Text style={[styles.unitPrice, { color: theme.textSecondary }]}>{item.unitPrice.toLocaleString('vi-VN')} đ / món</Text>
                       </View>
-
-                      {/* Modifiers List */}
-                      {modifiers.length > 0 && (
-                        <View style={styles.modifierList}>
-                          {modifiers.map((mod, mIdx) => (
-                            <Text key={mIdx} style={[styles.modifierItemText, { color: theme.textMuted }]}>
-                              • {mod.groupName}: {mod.optionName}{' '}
-                              {mod.priceDelta > 0 ? `(+${mod.priceDelta.toLocaleString('vi-VN')}đ)` : ''}
-                            </Text>
-                          ))}
-                        </View>
-                      )}
-
-                      {item.notes && (
-                        <Text style={[styles.itemNotes, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                          * Ghi chú: {item.notes}
-                        </Text>
-                      )}
+                      <Text style={[styles.quantityColumn, styles.itemQuantity, { color: theme.textPrimary }]}>{item.quantity}</Text>
+                      <Text style={[styles.amountColumn, styles.itemAmount, { color: theme.textPrimary }]}>{item.subtotal.toLocaleString('vi-VN')} đ</Text>
                     </View>
-                  );
-                })}
+                  </View>
+                ))}
               </View>
 
-              <View style={styles.dashedDivider} />
-
-              {/* Total Calculation Summary */}
               <View style={styles.totalsSection}>
                 <View style={styles.totalRow}>
-                  <Text style={[styles.totalLabel, { color: theme.textMuted }]}>Cộng tiền món:</Text>
-                  <Text style={[styles.totalValue, { color: theme.text }]}>
-                    {order.totalAmount.toLocaleString('vi-VN')} đ
-                  </Text>
+                  <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Cộng tiền món</Text>
+                  <Text style={[styles.totalValue, { color: theme.textPrimary }]}>{order.totalAmount.toLocaleString('vi-VN')} đ</Text>
                 </View>
-
                 <View style={styles.totalRow}>
-                  <Text style={[styles.totalLabel, { color: theme.textMuted }]}>Thuế GTGT (VAT 8%):</Text>
-                  <Text style={[styles.totalValue, { color: theme.text }]}>
-                    {order.vatAmount.toLocaleString('vi-VN')} đ
-                  </Text>
+                  <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Thuế GTGT (VAT 8%)</Text>
+                  <Text style={[styles.totalValue, { color: theme.textPrimary }]}>{order.vatAmount.toLocaleString('vi-VN')} đ</Text>
                 </View>
-
-                <View style={styles.finalRow}>
-                  <Text style={[styles.finalLabel, { color: theme.primary }]}>TỔNG THANH TOÁN:</Text>
-                  <Text style={[styles.finalValue, { color: theme.primary }]}>
-                    {order.finalAmount.toLocaleString('vi-VN')} đ
-                  </Text>
+                <View style={[styles.finalRow, { borderTopColor: theme.borderStrong }]}>
+                  <Text style={[styles.finalLabel, { color: theme.textPrimary }]}>Tổng thanh toán</Text>
+                  <Text style={[styles.finalValue, { color: theme.primary }]}>{order.finalAmount.toLocaleString('vi-VN')} đ</Text>
                 </View>
-
-                <View style={styles.paymentMethodRow}>
-                  <Text style={[styles.paymentMethodLabel, { color: theme.textMuted }]}>
-                    Phương thức thanh toán:
-                  </Text>
-                  <Text style={[styles.paymentMethodValue, { color: theme.text }]}>
-                    {getPaymentMethodLabel()}
-                  </Text>
+                <View style={styles.totalRow}>
+                  <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Phương thức</Text>
+                  <Text style={[styles.paymentMethod, { color: theme.textPrimary }]}>{paymentMethodLabel}</Text>
                 </View>
               </View>
 
-              <View style={styles.dashedDivider} />
-
-              {/* Footer Notice */}
+              <View style={[styles.divider, { backgroundColor: theme.borderStrong }]} />
               <View style={styles.footerNotice}>
-                <Text style={[styles.footerThanks, { color: theme.text }]}>
-                  Cảm ơn Quý khách & Hẹn gặp lại!
-                </Text>
-                <Text style={[styles.footerSub, { color: theme.textMuted }]}>
-                  Hóa đơn điện tử snapshot lưu trữ vĩnh viễn không biến động theo giá menu
-                </Text>
+                <Text style={[styles.footerThanks, { color: theme.textPrimary }]}>Cảm ơn quý khách. Hẹn gặp lại.</Text>
+                <Text style={[styles.footerSub, { color: theme.textSecondary }]}>Hóa đơn lưu giá tại thời điểm tạo đơn.</Text>
               </View>
             </View>
           </ScrollView>
 
-          {/* Modal Action Buttons */}
-          <View style={[styles.modalActions, { borderTopColor: theme.border }]}>
-            <TouchableOpacity style={[styles.closeButton, { borderColor: theme.border }]} onPress={onClose}>
-              <Text style={[styles.closeButtonText, { color: theme.text }]}>Đóng</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.printButton, { backgroundColor: theme.primary }]}
-              onPress={handlePrintOrExport}
-            >
-              <Text style={styles.printButtonText}>🖨️ In / Xuất Hóa Đơn PDF</Text>
-            </TouchableOpacity>
+          <View style={[styles.modalActions, { borderTopColor: theme.borderSubtle }]}>
+            <Button variant="secondary" label="Đóng" onPress={onClose} />
+            <Button variant="primary" label="In hoặc xuất PDF" icon={Printer} onPress={handlePrintOrExport} />
           </View>
         </View>
       </SafeAreaView>
@@ -253,278 +166,47 @@ export const ReceiptModal: React.FC<Props> = ({ visible, order, onClose }) => {
 };
 
 const styles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.md
-  },
-  container: {
-    width: '100%',
-    maxWidth: 520,
-    maxHeight: '92%',
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 8
-  },
-  topActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1
-  },
-  modalHeading: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold
-  },
-  closeBtn: {
-    padding: spacing.xs
-  },
-  closeBtnText: {
-    fontSize: 20,
-    fontWeight: typography.weights.bold
-  },
-  receiptScroll: {
-    padding: spacing.md
-  },
-  receiptPaper: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: spacing.lg
-  },
-  brandHeader: {
-    alignItems: 'center',
-    marginBottom: spacing.sm
-  },
-  brandTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.extraBold,
-    letterSpacing: 1.5
-  },
-  brandSub: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-    fontWeight: typography.weights.medium
-  },
-  brandInfo: {
-    fontSize: 11,
-    marginTop: 2
-  },
-  dashedDivider: {
-    borderStyle: 'dashed',
-    borderBottomWidth: 1,
-    borderColor: '#94A3B8',
-    marginVertical: spacing.md
-  },
-  metaSection: {
-    gap: spacing.xs
-  },
-  metaRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  metaLabel: {
-    fontSize: typography.sizes.xs
-  },
-  metaValue: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium
-  },
-  metaValueBold: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  statusTag: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 2,
-    borderRadius: 6
-  },
-  statusTagText: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold
-  },
-  voidReasonBox: {
-    backgroundColor: '#FEE2E2',
-    padding: spacing.xs,
-    borderRadius: 4,
-    marginTop: spacing.xs
-  },
-  voidReasonText: {
-    color: '#B91C1C',
-    fontSize: 11,
-    fontWeight: typography.weights.bold
-  },
-  itemsSection: {
-    gap: spacing.sm
-  },
-  tableHeader: {
-    flexDirection: 'row',
-    paddingBottom: spacing.xs,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(148, 163, 184, 0.3)'
-  },
-  thColItem: {
-    flex: 3,
-    fontSize: 10,
-    fontWeight: typography.weights.bold
-  },
-  thColQty: {
-    width: 36,
-    textAlign: 'center',
-    fontSize: 10,
-    fontWeight: typography.weights.bold
-  },
-  thColPrice: {
-    width: 65,
-    textAlign: 'right',
-    fontSize: 10,
-    fontWeight: typography.weights.bold
-  },
-  thColTotal: {
-    width: 75,
-    textAlign: 'right',
-    fontSize: 10,
-    fontWeight: typography.weights.bold
-  },
-  itemRow: {
-    marginBottom: spacing.xs
-  },
-  itemMainRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start'
-  },
-  tdItemName: {
-    flex: 3,
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  tdQty: {
-    width: 36,
-    textAlign: 'center',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  tdPrice: {
-    width: 65,
-    textAlign: 'right',
-    fontSize: typography.sizes.xs
-  },
-  tdTotal: {
-    width: 75,
-    textAlign: 'right',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  modifierList: {
-    paddingLeft: spacing.sm,
-    marginTop: 2
-  },
-  modifierItemText: {
-    fontSize: 10
-  },
-  itemNotes: {
-    fontSize: 10,
-    fontStyle: 'italic',
-    paddingLeft: spacing.sm,
-    marginTop: 2
-  },
-  totalsSection: {
-    gap: spacing.xs
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between'
-  },
-  totalLabel: {
-    fontSize: typography.sizes.xs
-  },
-  totalValue: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium
-  },
-  finalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: spacing.xs,
-    paddingTop: spacing.xs,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(148, 163, 184, 0.4)'
-  },
-  finalLabel: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.extraBold
-  },
-  finalValue: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.extraBold
-  },
-  paymentMethodRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.xs
-  },
-  paymentMethodLabel: {
-    fontSize: 11
-  },
-  paymentMethodValue: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold
-  },
-  footerNotice: {
-    alignItems: 'center',
-    marginTop: spacing.xs
-  },
-  footerThanks: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  footerSub: {
-    fontSize: 10,
-    textAlign: 'center',
-    marginTop: 2
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderTopWidth: 1
-  },
-  closeButton: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    minHeight: spacing.touchTargetMobile,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  closeButtonText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium
-  },
-  printButton: {
-    borderRadius: 8,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-    minHeight: spacing.touchTargetMobile,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  printButtonText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  }
+  overlay: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.md },
+  container: { borderRadius: radii.md, borderWidth: 1, maxHeight: '94%', maxWidth: 560, overflow: 'hidden', width: '100%' },
+  topActions: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  modalHeading: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl },
+  iconButton: { alignItems: 'center', borderRadius: radii.sm, height: 44, justifyContent: 'center', width: 44 },
+  receiptScroll: { padding: spacing.md },
+  receiptPaper: { borderRadius: radii.md, borderWidth: 1, padding: spacing.lg },
+  brandHeader: { alignItems: 'center', gap: spacing.xs },
+  brandTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xxl },
+  brandInfo: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  divider: { height: 1, marginVertical: spacing.lg },
+  metaSection: { gap: spacing.sm },
+  metaRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },
+  metaLabel: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  metaValue: { flexShrink: 1, fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs, textAlign: 'right' },
+  orderCode: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg },
+  voidReason: { borderRadius: radii.xs, borderWidth: 1, marginTop: spacing.xs, padding: spacing.sm },
+  voidReasonText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
+  itemsSection: { gap: spacing.xs },
+  tableHeader: { borderBottomWidth: 1, flexDirection: 'row', paddingBottom: spacing.sm },
+  headerText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
+  itemColumn: { flex: 1 },
+  quantityColumn: { textAlign: 'center', width: 36 },
+  amountColumn: { textAlign: 'right', width: 96 },
+  itemRow: { borderBottomWidth: 1, paddingVertical: spacing.sm },
+  itemMainRow: { alignItems: 'flex-start', flexDirection: 'row' },
+  itemName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  itemMeta: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs, marginTop: 2 },
+  unitPrice: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, marginTop: spacing.xs },
+  itemQuantity: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  itemAmount: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm, fontVariant: [...typography.numeric.fontVariant] },
+  totalsSection: { gap: spacing.sm, paddingTop: spacing.lg },
+  totalRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  totalLabel: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
+  totalValue: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm, fontVariant: [...typography.numeric.fontVariant] },
+  finalRow: { alignItems: 'baseline', borderTopWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingTop: spacing.md },
+  finalLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  finalValue: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, fontVariant: [...typography.numeric.fontVariant] },
+  paymentMethod: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  footerNotice: { alignItems: 'center', gap: spacing.xs },
+  footerThanks: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  footerSub: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, textAlign: 'center' },
+  modalActions: { borderTopWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end', padding: spacing.md }
 });

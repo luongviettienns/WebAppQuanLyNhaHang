@@ -1,8 +1,10 @@
 import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { SlidersHorizontal, UtensilsCrossed } from 'lucide-react-native';
 import { MenuItemDto } from '../../api/contracts';
 import { useTheme } from '../../contexts/ThemeContext';
-import { typography, spacing } from '../../theme';
+import { radii, spacing, typography } from '../../theme';
+import { AppIcon, StatusBadge } from '../../ui';
 
 interface Props {
   item: MenuItemDto;
@@ -10,156 +12,65 @@ interface Props {
 }
 
 export const MenuItemCard: React.FC<Props> = ({ item, onPress }) => {
-  const { theme, isDark } = useTheme();
-
+  const { theme } = useTheme();
   const formattedPrice = new Intl.NumberFormat('vi-VN', {
     style: 'currency',
     currency: 'VND'
   }).format(item.basePrice);
-
-  const hasModifiers = item.modifierGroups && item.modifierGroups.length > 0;
-  const isAvailable = item.isAvailable;
-
-  const getItemEmoji = (name: string) => {
-    const lower = name.toLowerCase();
-    if (lower.includes('combo')) return '🎁';
-    if (lower.includes('gà') || lower.includes('canh') || lower.includes('dui')) return '🍗';
-    if (lower.includes('burger')) return '🍔';
-    if (lower.includes('khoai')) return '🍟';
-    if (lower.includes('cơm')) return '🍚';
-    if (lower.includes('mì')) return '🍝';
-    if (lower.includes('pepsi') || lower.includes('nước') || lower.includes('trà')) return '🥤';
-    if (lower.includes('kem') || lower.includes('bánh')) return '🍦';
-    return '🍽️';
-  };
+  const hasModifiers = Boolean(item.modifierGroups?.length);
 
   return (
-    <TouchableOpacity
+    <Pressable
       testID={`menu-item-${item.id}`}
-      style={[
+      accessibilityRole="button"
+      accessibilityLabel={`${item.name}, ${formattedPrice}${item.isAvailable ? '' : ', hết hàng'}`}
+      accessibilityState={{ disabled: !item.isAvailable }}
+      disabled={!item.isAvailable}
+      onPress={() => onPress(item)}
+      style={({ pressed }) => [
         styles.card,
-        { backgroundColor: theme.card, borderColor: theme.border },
-        !isAvailable && (isDark ? styles.cardDisabledDark : styles.cardDisabledLight)
+        {
+          backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase,
+          borderColor: item.isAvailable ? theme.borderSubtle : theme.borderStrong
+        },
+        !item.isAvailable && styles.disabled
       ]}
-      onPress={() => isAvailable && onPress(item)}
-      activeOpacity={isAvailable ? 0.7 : 1}
-      disabled={!isAvailable}
     >
-      {/* Icon / Image Placeholder */}
-      <View style={[styles.imageBox, { backgroundColor: isDark ? '#334155' : '#FFF7ED' }]}>
-        <Text style={styles.emoji}>{getItemEmoji(item.name)}</Text>
-        {!isAvailable && (
-          <View style={styles.soldOutOverlay}>
-            <Text style={styles.soldOutText}>HẾT HÀNG (86&apos;d)</Text>
-          </View>
+      <View style={[styles.media, { backgroundColor: theme.surfaceSunken }]}>
+        {item.imageUrl ? (
+          <Image source={{ uri: item.imageUrl }} style={{ height: '100%', width: '100%' }} resizeMode="cover" />
+        ) : (
+          <AppIcon icon={UtensilsCrossed} color={theme.textSecondary} size={28} />
         )}
       </View>
 
-      {/* Info */}
-      <View style={styles.info}>
-        <Text style={[styles.name, { color: theme.text }]} numberOfLines={2}>
-          {item.name}
-        </Text>
-
-        {item.description && (
-          <Text style={[styles.desc, { color: theme.textMuted }]} numberOfLines={2}>
-            {item.description}
-          </Text>
-        )}
+      <View style={styles.content}>
+        <View style={styles.copy}>
+          <Text style={[styles.name, { color: theme.textPrimary }]} numberOfLines={2}>{item.name}</Text>
+          {item.description && <Text style={[styles.description, { color: theme.textSecondary }]} numberOfLines={2}>{item.description}</Text>}
+        </View>
 
         <View style={styles.footer}>
           <Text style={[styles.price, { color: theme.primary }]}>{formattedPrice}</Text>
-
-          {hasModifiers && isAvailable && (
-            <View style={[styles.modifierBadge, { backgroundColor: isDark ? '#7C2D12' : '#FFEDD5' }]}>
-              <Text style={[styles.modifierBadgeText, { color: isDark ? '#FDBA74' : theme.secondary }]}>
-                Tùy chọn
-              </Text>
-            </View>
-          )}
+          {!item.isAvailable ? (
+            <StatusBadge tone="danger" label="Hết hàng" />
+          ) : hasModifiers ? (
+            <StatusBadge tone="neutral" label="Tùy chọn" icon={SlidersHorizontal} />
+          ) : null}
         </View>
       </View>
-    </TouchableOpacity>
+    </Pressable>
   );
 };
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 14,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-    flex: 1,
-    margin: spacing.xs,
-    minHeight: 180
-  },
-  cardDisabledLight: {
-    opacity: 0.55,
-    backgroundColor: '#F8FAFC'
-  },
-  cardDisabledDark: {
-    opacity: 0.45,
-    backgroundColor: '#0F172A'
-  },
-  imageBox: {
-    height: 90,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative'
-  },
-  emoji: {
-    fontSize: 42
-  },
-  soldOutOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(220, 38, 38, 0.85)',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  soldOutText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    letterSpacing: 1
-  },
-  info: {
-    padding: spacing.sm,
-    flex: 1,
-    justifyContent: 'space-between'
-  },
-  name: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  },
-  desc: {
-    fontSize: 11,
-    marginTop: 2
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: spacing.xs
-  },
-  price: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.extraBold
-  },
-  modifierBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4
-  },
-  modifierBadgeText: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold
-  }
+  card: { borderRadius: radii.md, borderWidth: 1, flex: 1, marginBottom: spacing.md, minHeight: 164, overflow: 'hidden' },
+  disabled: { opacity: 0.55 },
+  media: { alignItems: 'center', height: 64, justifyContent: 'center' },
+  content: { flex: 1, gap: spacing.md, justifyContent: 'space-between', padding: spacing.md },
+  copy: { gap: spacing.xs },
+  name: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md, lineHeight: typography.lineHeights.md },
+  description: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
+  footer: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
+  price: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg, fontVariant: [...typography.numeric.fontVariant] }
 });
