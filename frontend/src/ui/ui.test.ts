@@ -32,6 +32,13 @@ describe('UI primitives', () => {
     expect(contrastRatio(buttonTone.danger.dark.foreground, buttonTone.danger.dark.background)).toBeGreaterThanOrEqual(4.5);
   });
 
+  it('keeps dark operational pressed feedback distinct and accessible', () => {
+    expect(buttonTone.primary.dark.pressed).not.toBe(buttonTone.primary.dark.background);
+    expect(buttonTone.danger.dark.pressed).not.toBe(buttonTone.danger.dark.background);
+    expect(contrastRatio(buttonTone.primary.dark.foreground, buttonTone.primary.dark.pressed)).toBeGreaterThanOrEqual(4.5);
+    expect(contrastRatio(buttonTone.danger.dark.foreground, buttonTone.danger.dark.pressed)).toBeGreaterThanOrEqual(4.5);
+  });
+
   it('uses border hierarchy for raised surfaces and semantic colors for disabled fields', () => {
     expect(surfaceTreatment.raised).toEqual({ borderWidth: 1, elevation: 0 });
     expect(fieldState.disabled).toEqual({

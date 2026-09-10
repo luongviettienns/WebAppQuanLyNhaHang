@@ -81,3 +81,27 @@ Output: 2 existing tests passed; the 2 new contracts failed as expected because 
 - Pressed dark buttons use the existing deeper `#B42318` semantic pressed color, which also exceeds the contrast threshold with white text.
 - `Surface` no longer imports or applies elevation; its raised treatment is tokenized as a one-pixel border and zero elevation.
 - Disabled field styles take precedence over `inputStyle`, preserving the visible disabled state.
+
+## Fix round 2 — dark pressed-button feedback
+
+Addressed the Important review finding only: dark primary and danger button backgrounds are now `#B42318` normally and `#8F1C13` while pressed. Both states use white text and are covered by the contrast contract. This supersedes the pressed-state note in fix round 1.
+
+### RED
+
+Command: `npm run test --workspace=frontend -- src/ui/ui.test.ts`
+
+Output: 4 existing tests passed and the new pressed-feedback contract failed as expected because the dark `pressed` token was undefined (`Cannot read properties of undefined (reading 'slice')` while calculating contrast).
+
+### GREEN and verification
+
+| Command | Result |
+| --- | --- |
+| `npm run test --workspace=frontend -- src/ui/ui.test.ts` | PASS — 5 tests in 1 file |
+| `npm run test:frontend` | PASS — 13 tests in 5 files |
+| `npm run typecheck:frontend` | PASS — `tsc --noEmit` exit 0 |
+| `git diff --check` | PASS — no whitespace errors |
+
+### Fix-round self-review
+
+- The `Button` palette consumes the dark pressed token for both primary and danger variants; light-mode behavior is unchanged.
+- The regression fails if normal and pressed dark colors become equal, or if either white-text contrast ratio drops below 4.5:1.

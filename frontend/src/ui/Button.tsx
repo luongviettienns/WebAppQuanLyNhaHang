@@ -34,14 +34,14 @@ export const Button: React.FC<ButtonProps> = ({
   const palette = {
     primary: {
       background: theme.mode === 'dark' ? buttonTone.primary.dark.background : theme.interactivePrimary,
-      pressed: theme.interactivePrimaryPressed,
+      pressed: theme.mode === 'dark' ? buttonTone.primary.dark.pressed : theme.interactivePrimaryPressed,
       text: buttonTone.primary.dark.foreground
     },
     secondary: { background: theme.interactiveSecondary, pressed: theme.interactiveSecondaryPressed, text: theme.textPrimary },
     quiet: { background: theme.interactiveQuiet, pressed: theme.surfaceSunken, text: theme.textPrimary },
     danger: {
       background: theme.mode === 'dark' ? buttonTone.danger.dark.background : theme.interactiveDanger,
-      pressed: theme.interactiveDangerPressed,
+      pressed: theme.mode === 'dark' ? buttonTone.danger.dark.pressed : theme.interactiveDangerPressed,
       text: buttonTone.danger.dark.foreground
     }
   }[variant];

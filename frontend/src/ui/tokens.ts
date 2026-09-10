@@ -9,10 +9,10 @@ export const buttonMetrics = {
 
 export const buttonTone = {
   primary: {
-    dark: { background: '#B42318', foreground: '#FFFFFF' }
+    dark: { background: '#B42318', pressed: '#8F1C13', foreground: '#FFFFFF' }
   },
   danger: {
-    dark: { background: '#B42318', foreground: '#FFFFFF' }
+    dark: { background: '#B42318', pressed: '#8F1C13', foreground: '#FFFFFF' }
   }
 } as const;
 
