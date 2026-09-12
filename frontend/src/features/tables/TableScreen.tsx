@@ -1,49 +1,121 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
-  StyleSheet,
-  Text,
-  View,
+  ActivityIndicator,
+  Modal,
+  Pressable,
   SafeAreaView,
   ScrollView,
-  TouchableOpacity,
-  Modal,
-  ActivityIndicator,
-  TextInput
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+  useWindowDimensions
 } from 'react-native';
-import { typography, spacing } from '../../theme';
+import {
+  Banknote,
+  CircleAlert,
+  CircleCheck,
+  Clock3,
+  CreditCard,
+  Landmark,
+  RefreshCw,
+  Trash2,
+  Users,
+  X
+} from 'lucide-react-native';
+import type { LucideIcon } from 'lucide-react-native';
+import { DiningTableDto, OrderStatus, PaymentMethod, TableStatus } from '../../api/contracts';
+import { useAuth } from '../../contexts/AuthContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useAuth } from '../../contexts/AuthContext';
-import { DiningTableDto, PaymentMethod } from '../../api/contracts';
+import { elevation, radii, spacing, statusColors, typography } from '../../theme';
+import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
+import type { StatusTone } from '../../ui';
+
+type TableFilter = 'ALL' | 'AVAILABLE' | 'OCCUPIED' | 'CLEANING';
+
+const formatVND = (amount: number) =>
+  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+
+const formatTableNumber = (value: number) => value.toString().padStart(2, '0');
+
+const formatElapsed = (createdAt?: string) => {
+  if (!createdAt) return null;
+  const minutes = Math.max(0, Math.floor((Date.now() - new Date(createdAt).getTime()) / 60000));
+  if (minutes < 1) return 'Vừa tạo';
+  if (minutes < 60) return minutes + ' phút';
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? hours + ' giờ ' + remainder + ' phút' : hours + ' giờ';
+};
+
+const tableStatusConfig = (status: TableStatus): { label: string; tone: StatusTone } => {
+  if (status === 'AVAILABLE') return { label: 'Sẵn sàng', tone: 'success' };
+  if (status === 'OCCUPIED') return { label: 'Đang phục vụ', tone: 'danger' };
+  return { label: 'Chờ dọn', tone: 'warning' };
+};
+
+const orderStatusLabels: Record<OrderStatus, string> = {
+  PENDING: 'Chờ chế biến',
+  PREPARING: 'Đang chế biến',
+  READY: 'Sẵn sàng phục vụ',
+  COMPLETED: 'Đã hoàn tất',
+  CANCELLED: 'Đã hủy'
+};
+
+const orderStatusTones: Record<OrderStatus, StatusTone> = {
+  PENDING: 'warning',
+  PREPARING: 'info',
+  READY: 'success',
+  COMPLETED: 'neutral',
+  CANCELLED: 'danger'
+};
+
+const paymentOptions: Array<{ value: PaymentMethod; label: string; icon: LucideIcon }> = [
+  { value: 'CASH', label: 'Tiền mặt', icon: Banknote },
+  { value: 'BANK_TRANSFER', label: 'Chuyển khoản', icon: Landmark },
+  { value: 'CREDIT_CARD', label: 'Thẻ', icon: CreditCard }
+];
 
 export const TableScreen: React.FC = () => {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
   const { user } = useAuth();
-  const {
-    tables,
-    isLoadingTables,
-    fetchTables,
-    payOrder,
-    updateTableStatus,
-    voidOrder
-  } = useRestaurant();
+  const { width } = useWindowDimensions();
+  const { tables, isLoadingTables, fetchTables, payOrder, updateTableStatus, voidOrder } = useRestaurant();
 
+  const [filter, setFilter] = useState<TableFilter>('ALL');
   const [selectedTable, setSelectedTable] = useState<DiningTableDto | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
   const [isProcessingPay, setIsProcessingPay] = useState(false);
   const [paySuccessMsg, setPaySuccessMsg] = useState<string | null>(null);
-
-  // Audited Void & Cleaning States
   const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
   const [voidReason, setVoidReason] = useState('');
   const [isProcessingVoid, setIsProcessingVoid] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
   const [isProcessingClean, setIsProcessingClean] = useState(false);
 
-  const formatVND = (amount: number) =>
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+  const counts = useMemo(() => ({
+    all: tables.length,
+    available: tables.filter((table) => table.status === 'AVAILABLE').length,
+    occupied: tables.filter((table) => table.status === 'OCCUPIED').length,
+    cleaning: tables.filter((table) => table.status === 'DIRTY' || table.status === 'NEED_CLEANING').length
+  }), [tables]);
+
+  const filteredTables = useMemo(() => tables.filter((table) => {
+    if (filter === 'ALL') return true;
+    if (filter === 'CLEANING') return table.status === 'DIRTY' || table.status === 'NEED_CLEANING';
+    return table.status === filter;
+  }), [filter, tables]);
+
+  const activeOrder =
+    selectedTable?.orders?.find((order) => order.id === selectedOrderId) ||
+    selectedTable?.orders?.[0];
+  const isSelectedTableDirty =
+    selectedTable?.status === 'DIRTY' || selectedTable?.status === 'NEED_CLEANING';
+  const isNarrow = width < 768;
+  const cardWidth = width >= 1200 ? '23.5%' : width >= 768 ? '31.8%' : '48%';
 
   const handleTablePress = (table: DiningTableDto) => {
     setSelectedTable(table);
@@ -52,38 +124,39 @@ export const TableScreen: React.FC = () => {
     setPaySuccessMsg(null);
   };
 
-  const handlePay = async () => {
-    if (!selectedTable?.orders || selectedTable.orders.length === 0) return;
-    const activeOrder =
-      selectedTable.orders.find((order) => order.id === selectedOrderId) || selectedTable.orders[0];
+  const closeDetailModal = () => {
+    setIsDetailModalOpen(false);
+    setPaySuccessMsg(null);
+  };
 
+  const handlePay = async () => {
+    if (!selectedTable?.orders || !activeOrder) return;
     setIsProcessingPay(true);
     const result = await payOrder(activeOrder.id, paymentMethod);
     setIsProcessingPay(false);
 
-    if (result.success) {
-      const remainingOrders = selectedTable.orders.filter((order) => order.id !== activeOrder.id);
-      const nextOrder = remainingOrders[0];
-      setSelectedTable({
-        ...selectedTable,
-        orders: remainingOrders,
-        status: nextOrder ? 'OCCUPIED' : 'AVAILABLE',
-        currentOrderId: nextOrder?.id ?? null
-      });
-      setSelectedOrderId(nextOrder?.id ?? null);
-      setPaySuccessMsg(
-        nextOrder
-          ? `✅ Đã thanh toán đơn ${activeOrder.code}. Bàn số ${selectedTable.tableNumber} còn ${remainingOrders.length} đơn chưa thanh toán.`
-          : `✅ Đã thanh toán đơn ${activeOrder.code}. Bàn số ${selectedTable.tableNumber} đã được giải phóng.`
-      );
-      if (!nextOrder) {
-        setTimeout(() => {
-          setIsDetailModalOpen(false);
-          setSelectedTable(null);
-        }, 1500);
-      }
-    } else {
+    if (!result.success) {
       alert(result.error || 'Thanh toán thất bại');
+      return;
+    }
+
+    const remainingOrders = selectedTable.orders.filter((order) => order.id !== activeOrder.id);
+    const nextOrder = remainingOrders[0];
+    setSelectedTable({
+      ...selectedTable,
+      orders: remainingOrders,
+      status: nextOrder ? 'OCCUPIED' : 'AVAILABLE',
+      currentOrderId: nextOrder?.id ?? null
+    });
+    setSelectedOrderId(nextOrder?.id ?? null);
+    setPaySuccessMsg(nextOrder
+      ? 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' còn ' + remainingOrders.length + ' đơn chưa thanh toán.'
+      : 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' đã sẵn sàng.');
+    if (!nextOrder) {
+      setTimeout(() => {
+        setIsDetailModalOpen(false);
+        setSelectedTable(null);
+      }, 1500);
     }
   };
 
@@ -93,8 +166,8 @@ export const TableScreen: React.FC = () => {
     setIsProcessingClean(false);
     if (result.success) {
       if (selectedTable?.id === tableId) {
-        setSelectedTable((prev) => (prev ? { ...prev, status: 'AVAILABLE' } : null));
-        setPaySuccessMsg('✅ Bàn đã được dọn sạch và sẵn sàng đón khách mới.');
+        setSelectedTable((previous) => previous ? { ...previous, status: 'AVAILABLE' } : null);
+        setPaySuccessMsg('Đã dọn bàn. Bàn sẵn sàng đón khách mới.');
       }
     } else {
       alert(result.error || 'Không thể cập nhật trạng thái bàn');
@@ -107,8 +180,8 @@ export const TableScreen: React.FC = () => {
     setIsProcessingClean(false);
     if (result.success) {
       if (selectedTable?.id === tableId) {
-        setSelectedTable((prev) => (prev ? { ...prev, status: 'DIRTY' } : null));
-        setPaySuccessMsg('🟡 Bàn đã được đánh dấu chờ dọn dẹp.');
+        setSelectedTable((previous) => previous ? { ...previous, status: 'DIRTY' } : null);
+        setPaySuccessMsg('Đã chuyển bàn sang trạng thái chờ dọn.');
       }
     } else {
       alert(result.error || 'Không thể cập nhật trạng thái bàn');
@@ -132,547 +205,475 @@ export const TableScreen: React.FC = () => {
     setVoidError(null);
     const result = await voidOrder(activeOrder.id, voidReason.trim());
     setIsProcessingVoid(false);
-
-    if (result.success) {
-      setIsVoidModalOpen(false);
-      const remainingOrders = selectedTable?.orders?.filter((order) => order.id !== activeOrder.id) || [];
-      const nextOrder = remainingOrders[0];
-      setSelectedTable((prev) =>
-        prev
-          ? {
-              ...prev,
-              orders: remainingOrders,
-              status: nextOrder ? 'OCCUPIED' : 'AVAILABLE',
-              currentOrderId: nextOrder?.id ?? null
-            }
-          : null
-      );
-      setSelectedOrderId(nextOrder?.id ?? null);
-      setPaySuccessMsg(
-        nextOrder
-          ? `⚠️ Đã hủy đơn ${activeOrder.code}. Bàn số ${selectedTable?.tableNumber} còn ${remainingOrders.length} đơn chưa thanh toán.`
-          : `⚠️ Đã hủy đơn ${activeOrder.code}. Bàn số ${selectedTable?.tableNumber} đã được giải phóng.`
-      );
-      if (!nextOrder) {
-        setTimeout(() => {
-          setIsDetailModalOpen(false);
-          setSelectedTable(null);
-        }, 1800);
-      }
-    } else {
+    if (!result.success) {
       setVoidError(result.error || 'Hủy đơn hàng thất bại');
+      return;
+    }
+
+    const remainingOrders = selectedTable?.orders?.filter((order) => order.id !== activeOrder.id) || [];
+    const nextOrder = remainingOrders[0];
+    setIsVoidModalOpen(false);
+    setSelectedTable((previous) => previous ? {
+      ...previous,
+      orders: remainingOrders,
+      status: nextOrder ? 'OCCUPIED' : 'AVAILABLE',
+      currentOrderId: nextOrder?.id ?? null
+    } : null);
+    setSelectedOrderId(nextOrder?.id ?? null);
+    setPaySuccessMsg(nextOrder
+      ? 'Đã hủy đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable?.tableNumber || 0) + ' còn ' + remainingOrders.length + ' đơn chưa thanh toán.'
+      : 'Đã hủy đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable?.tableNumber || 0) + ' đã sẵn sàng.');
+    if (!nextOrder) {
+      setTimeout(() => {
+        setIsDetailModalOpen(false);
+        setSelectedTable(null);
+      }, 1800);
     }
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'AVAILABLE':
-        return {
-          bg: isDark ? '#064E3B' : '#DCFCE7',
-          border: '#22C55E',
-          text: isDark ? '#86EFAC' : '#15803D',
-          label: '🟢 Trống'
-        };
-      case 'OCCUPIED':
-        return {
-          bg: isDark ? '#7F1D1D' : '#FEE2E2',
-          border: '#EF4444',
-          text: isDark ? '#FCA5A5' : '#B91C1C',
-          label: '🔴 Đang có khách'
-        };
-      case 'DIRTY':
-      case 'NEED_CLEANING':
-      default:
-        return {
-          bg: isDark ? '#78350F' : '#FEF3C7',
-          border: '#F59E0B',
-          text: isDark ? '#FDE68A' : '#B45309',
-          label: '🟡 Chờ dọn bàn'
-        };
-    }
-  };
-
-  const activeOrder =
-    selectedTable?.orders?.find((order) => order.id === selectedOrderId) ||
-    selectedTable?.orders?.[0];
+  const filters: Array<{ key: TableFilter; label: string }> = [
+    { key: 'ALL', label: 'Tất cả (' + counts.all + ')' },
+    { key: 'AVAILABLE', label: 'Bàn trống (' + counts.available + ')' },
+    { key: 'OCCUPIED', label: 'Đang phục vụ (' + counts.occupied + ')' },
+    { key: 'CLEANING', label: 'Chờ dọn (' + counts.cleaning + ')' }
+  ];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Header */}
-      <View style={[styles.header, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
-        <View>
-          <Text style={[styles.title, { color: theme.text }]}>Sơ Đồ 12 Bàn Ăn (Floor Map)</Text>
-          <Text style={[styles.subtitle, { color: theme.textMuted }]}>
-            Chạm vào bàn để xem chi tiết hóa đơn, dọn dẹp hoặc thanh toán
-          </Text>
-        </View>
-        <TouchableOpacity
-          style={[styles.refreshBtn, { backgroundColor: theme.primary }]}
-          onPress={fetchTables}
-        >
-          <Text style={styles.refreshText}>🔄 Làm mới</Text>
-        </TouchableOpacity>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
+      <View style={[styles.header, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
+        <ScreenHeader
+          title="Sơ đồ bàn"
+          description="Theo dõi bàn trống, đơn đang phục vụ và bàn cần dọn."
+          actions={<Button variant="quiet" label="Làm mới" icon={RefreshCw} onPress={() => void fetchTables()} />}
+        />
       </View>
 
-      {/* Legend Bar */}
-      <View style={[styles.legendBar, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#22C55E' }]} />
-          <Text style={[styles.legendText, { color: theme.text }]}>
-            Bàn trống ({tables.filter((t) => t.status === 'AVAILABLE').length})
-          </Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#EF4444' }]} />
-          <Text style={[styles.legendText, { color: theme.text }]}>
-            Đang ăn ({tables.filter((t) => t.status === 'OCCUPIED').length})
-          </Text>
-        </View>
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: '#F59E0B' }]} />
-          <Text style={[styles.legendText, { color: theme.text }]}>
-            Chờ dọn ({tables.filter((t) => t.status === 'DIRTY' || t.status === 'NEED_CLEANING').length})
-          </Text>
-        </View>
+      <View style={[styles.filterToolbar, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterContent}>
+          {filters.map((item) => {
+            const selected = filter === item.key;
+            return (
+              <Pressable
+                key={item.key}
+                accessibilityRole="button"
+                accessibilityLabel={item.label}
+                accessibilityState={{ selected }}
+                onPress={() => setFilter(item.key)}
+                style={({ pressed }) => [
+                  styles.filterButton,
+                  {
+                    backgroundColor: selected
+                      ? theme.interactivePrimary
+                      : pressed ? theme.surfaceSunken : theme.surfaceBase,
+                    borderColor: selected ? theme.interactivePrimary : theme.borderSubtle
+                  }
+                ]}
+              >
+                <Text style={[styles.filterLabel, { color: selected ? theme.textInverse : theme.textPrimary }]}>
+                  {item.label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </View>
 
-      {/* Tables Grid */}
       {isLoadingTables ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={[styles.loadingText, { color: theme.textMuted }]}>Đang tải sơ đồ bàn...</Text>
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Đang tải sơ đồ bàn...</Text>
         </View>
       ) : (
         <ScrollView contentContainerStyle={styles.gridContainer}>
-          {tables.map((table) => {
-            const statusConfig = getStatusColor(table.status);
+          {filteredTables.length === 0 ? (
+            <View style={styles.emptyFilter}>
+              <EmptyState title="Không có bàn phù hợp" description="Chọn trạng thái khác để xem các bàn đang vận hành." />
+            </View>
+          ) : filteredTables.map((table) => {
+            const status = tableStatusConfig(table.status);
+            const palette = statusColors.table[table.status];
             const unpaidOrders = table.orders || [];
             const unpaidTotal = unpaidOrders.reduce((sum, order) => sum + order.finalAmount, 0);
-            const isTableDirty = table.status === 'DIRTY' || table.status === 'NEED_CLEANING';
+            const oldestOrder = [...unpaidOrders].sort(
+              (left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime()
+            )[0];
+            const elapsed = formatElapsed(oldestOrder?.createdAt);
+            const isDirty = table.status === 'DIRTY' || table.status === 'NEED_CLEANING';
 
             return (
-              <TouchableOpacity
-                testID={`table-card-${table.tableNumber}`}
+              <Pressable
+                testID={'table-card-' + table.tableNumber}
                 key={table.id}
-                style={[
-                  styles.tableCard,
-                  { backgroundColor: statusConfig.bg, borderColor: statusConfig.border }
-                ]}
+                accessibilityRole="button"
+                accessibilityLabel={'Bàn ' + formatTableNumber(table.tableNumber) + ', ' + status.label}
                 onPress={() => handleTablePress(table)}
-                activeOpacity={0.8}
+                style={({ pressed }) => [
+                  styles.tableCard,
+                  {
+                    backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase,
+                    borderColor: theme.borderSubtle,
+                    borderLeftColor: palette.border,
+                    width: cardWidth
+                  }
+                ]}
               >
-                <View style={styles.tableTop}>
-                  <Text style={[styles.tableNumberText, { color: theme.textLight }]}>
-                    BÀN {table.tableNumber < 10 ? `0${table.tableNumber}` : table.tableNumber}
-                  </Text>
-                  <Text style={[styles.tableStatusText, { color: statusConfig.text }]}>
-                    {statusConfig.label}
-                  </Text>
+                <View style={styles.tableCardHeader}>
+                  <View>
+                    <Text style={[styles.tableLabel, { color: theme.textSecondary }]}>Bàn</Text>
+                    <Text style={[styles.tableNumber, { color: theme.textPrimary }]}>
+                      {formatTableNumber(table.tableNumber)}
+                    </Text>
+                  </View>
+                  <StatusBadge tone={status.tone} label={status.label} />
                 </View>
 
-                <View style={styles.tableBody}>
-                  <Text style={[styles.tableCapacity, { color: isDark ? '#E2E8F0' : '#475569' }]}>
-                    👥 Sức chứa: {table.capacity} khách
-                  </Text>
+                <View style={styles.capacityRow}>
+                  <AppIcon icon={Users} color={theme.textSecondary} size={17} />
+                  <Text style={[styles.metaText, { color: theme.textSecondary }]}>{table.capacity} chỗ</Text>
+                </View>
 
-                  {unpaidOrders.length > 0 ? (
-                    <View
-                      style={[
-                        styles.tableOrderBadge,
-                        { backgroundColor: isDark ? 'rgba(0,0,0,0.4)' : 'rgba(255,255,255,0.7)' }
+                <View style={[styles.tableDivider, { backgroundColor: theme.borderSubtle }]} />
+
+                {unpaidOrders.length > 0 ? (
+                  <View style={styles.orderSummary}>
+                    <Text style={[styles.orderCount, { color: theme.textSecondary }]}>
+                      {unpaidOrders.length} đơn chưa thanh toán
+                    </Text>
+                    <Text style={[styles.orderTotal, { color: theme.textPrimary }]}>{formatVND(unpaidTotal)}</Text>
+                    {elapsed && (
+                      <View style={styles.elapsedRow}>
+                        <AppIcon icon={Clock3} color={theme.textSecondary} size={15} />
+                        <Text style={[styles.elapsedText, { color: theme.textSecondary }]}>{elapsed}</Text>
+                      </View>
+                    )}
+                  </View>
+                ) : isDirty ? (
+                  <View style={styles.cleaningSummary}>
+                    <Text style={[styles.guidanceText, { color: theme.textSecondary }]}>Cần xác nhận sau khi dọn xong.</Text>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={'Đánh dấu đã dọn bàn ' + formatTableNumber(table.tableNumber)}
+                      onPress={(event) => {
+                        event.stopPropagation();
+                        void handleCleanTable(table.id);
+                      }}
+                      style={({ pressed }) => [
+                        styles.inlineAction,
+                        { backgroundColor: pressed ? theme.interactiveSecondaryPressed : theme.interactiveSecondary }
                       ]}
                     >
-                      <Text style={[styles.orderCodeText, { color: theme.primary }]}>
-                        {unpaidOrders.length} đơn chưa thanh toán
-                      </Text>
-                      <Text style={[styles.orderTotalText, { color: isDark ? '#FFFFFF' : '#1E293B' }]}>
-                        {formatVND(unpaidTotal)}
-                      </Text>
-                    </View>
-                  ) : isTableDirty ? (
-                    <View style={styles.dirtyCardBody}>
-                      <Text style={[styles.dirtyNoticeText, { color: isDark ? '#FDE68A' : '#B45309' }]}>
-                        🧹 Chờ nhân viên dọn bàn
-                      </Text>
-                      <TouchableOpacity
-                        style={[styles.quickCleanBtn, { backgroundColor: isDark ? '#D97706' : '#F59E0B' }]}
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          handleCleanTable(table.id);
-                        }}
-                      >
-                        <Text style={styles.quickCleanText}>Dọn xong</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : (
-                    <Text style={[styles.noOrderText, { color: isDark ? '#94A3B8' : '#64748B' }]}>
-                      Sẵn sàng đón khách
-                    </Text>
-                  )}
-                </View>
-              </TouchableOpacity>
+                      <CircleCheck color={theme.textPrimary} size={16} />
+                      <Text style={[styles.inlineActionText, { color: theme.textPrimary }]}>Đã dọn</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Text style={[styles.guidanceText, { color: theme.textSecondary }]}>Sẵn sàng đón khách.</Text>
+                )}
+              </Pressable>
             );
           })}
         </ScrollView>
       )}
 
-      {/* Table Detail & Checkout Modal */}
-      <Modal visible={isDetailModalOpen} transparent animationType="slide">
-        <View style={[styles.modalBackdrop, { backgroundColor: theme.overlay }]}>
-          <SafeAreaView testID="table-detail-modal" style={[styles.modalContainer, { backgroundColor: theme.card }]}>
-            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-              <Text testID="table-detail-title" style={[styles.modalTitle, { color: theme.text }]}>
-                🍽️ Chi Tiết Bàn {selectedTable?.tableNumber} -{' '}
-                {selectedTable ? getStatusColor(selectedTable.status).label : ''}
-              </Text>
-              <TouchableOpacity
-                style={[styles.closeBtn, { backgroundColor: isDark ? '#334155' : '#F1F5F9' }]}
-                onPress={() => setIsDetailModalOpen(false)}
+      <Modal visible={isDetailModalOpen} transparent animationType="slide" onRequestClose={closeDetailModal}>
+        <View style={[styles.modalBackdrop, isNarrow && styles.modalBackdropNarrow, { backgroundColor: theme.overlay }]}>
+          <SafeAreaView
+            testID="table-detail-modal"
+            style={[
+              styles.modalContainer,
+              isNarrow && styles.modalContainerNarrow,
+              { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }
+            ]}
+          >
+            <View style={[styles.modalHeader, { borderBottomColor: theme.borderSubtle }]}>
+              <View style={styles.modalHeading}>
+                <Text testID="table-detail-title" style={[styles.modalTitle, { color: theme.textPrimary }]}>
+                  Bàn {formatTableNumber(selectedTable?.tableNumber || 0)}
+                </Text>
+                {selectedTable && (
+                  <StatusBadge
+                    tone={tableStatusConfig(selectedTable.status).tone}
+                    label={tableStatusConfig(selectedTable.status).label}
+                  />
+                )}
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Đóng chi tiết bàn"
+                onPress={closeDetailModal}
+                style={({ pressed }) => [
+                  styles.iconButton,
+                  {
+                    backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet,
+                    borderColor: theme.borderSubtle
+                  }
+                ]}
               >
-                <Text style={[styles.closeBtnText, { color: theme.text }]}>✕</Text>
-              </TouchableOpacity>
+                <AppIcon icon={X} color={theme.textPrimary} size={20} />
+              </Pressable>
             </View>
 
-            <ScrollView style={styles.modalBody}>
-              {paySuccessMsg && (
-                <View style={styles.successBox}>
-                  <Text style={styles.successText}>{paySuccessMsg}</Text>
-                </View>
-              )}
+            <ScrollView style={styles.modalBody} contentContainerStyle={styles.modalBodyContent}>
+              {paySuccessMsg && <InlineAlert tone="success" title="Đã cập nhật" message={paySuccessMsg} />}
 
               {activeOrder ? (
-                <View>
+                <View style={styles.detailSections}>
                   {(selectedTable?.orders?.length || 0) > 1 && (
-                    <View style={styles.orderSelector}>
-                      <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                        Chọn đơn cần thanh toán:
-                      </Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                        {selectedTable?.orders?.map((order) => (
-                          <TouchableOpacity
-                            key={order.id}
-                            style={[
-                              styles.orderSelectorBtn,
-                              { borderColor: theme.border, backgroundColor: isDark ? '#0F172A' : '#F8FAFC' },
-                              activeOrder.id === order.id && [
-                                styles.orderSelectorBtnActive,
-                                { borderColor: theme.primary, backgroundColor: isDark ? '#451A03' : '#FEF2F2' }
-                              ]
-                            ]}
-                            onPress={() => {
-                              setSelectedOrderId(order.id);
-                              setPaySuccessMsg(null);
-                            }}
-                          >
-                            <Text
-                              style={[
-                                styles.orderSelectorText,
-                                { color: theme.textMuted },
-                                activeOrder.id === order.id && {
-                                  color: theme.primary,
-                                  fontWeight: typography.weights.bold
+                    <View style={styles.detailSection}>
+                      <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Đơn tại bàn</Text>
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.orderSelectorContent}>
+                        {selectedTable?.orders?.map((order) => {
+                          const selected = activeOrder.id === order.id;
+                          return (
+                            <Pressable
+                              key={order.id}
+                              accessibilityRole="button"
+                              accessibilityState={{ selected }}
+                              onPress={() => {
+                                setSelectedOrderId(order.id);
+                                setPaySuccessMsg(null);
+                              }}
+                              style={({ pressed }) => [
+                                styles.orderSelectorButton,
+                                {
+                                  backgroundColor: selected
+                                    ? theme.interactiveSecondary
+                                    : pressed ? theme.surfaceSunken : theme.surfaceBase,
+                                  borderColor: selected ? theme.primary : theme.borderSubtle
                                 }
                               ]}
                             >
-                              {order.code} · {formatVND(order.finalAmount)}
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
+                              <Text style={[styles.orderSelectorText, { color: selected ? theme.primary : theme.textPrimary }]}>
+                                {order.code} · {formatVND(order.finalAmount)}
+                              </Text>
+                            </Pressable>
+                          );
+                        })}
                       </ScrollView>
                     </View>
                   )}
 
-                  <View
-                    style={[
-                      styles.billHeader,
-                      { backgroundColor: isDark ? '#0F172A' : '#FEF3C7', borderColor: theme.border }
-                    ]}
-                  >
-                    <Text style={[styles.billCode, { color: theme.text }]}>Mã đơn: {activeOrder.code}</Text>
-                    <Text style={[styles.billStatus, { color: theme.primary }]}>
-                      Trạng thái: {activeOrder.status}
-                    </Text>
-                  </View>
-
-                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Danh sách món ăn:</Text>
-                  <View style={styles.itemsList}>
-                    {activeOrder.items?.map((it: any, idx: number) => (
-                      <View key={idx} style={[styles.itemRow, { borderBottomColor: theme.border }]}>
-                        <View style={{ flex: 1 }}>
-                          <Text style={[styles.itemName, { color: theme.text }]}>
-                            {it.quantity}x Món #{it.menuItemId}
-                          </Text>
-                          {it.notes && (
-                            <Text style={[styles.itemNotes, { color: theme.textMuted }]}>
-                              Ghi chú: {it.notes}
-                            </Text>
-                          )}
-                        </View>
-                        <Text style={[styles.itemSubtotal, { color: theme.primary }]}>
-                          {formatVND(it.subtotal)}
+                  <Surface level="sunken" style={styles.orderIdentity}>
+                    <View style={styles.orderIdentityCopy}>
+                      <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Mã đơn</Text>
+                      <Text style={[styles.orderCode, { color: theme.textPrimary }]}>{activeOrder.code}</Text>
+                    </View>
+                    <View style={styles.orderIdentityStatus}>
+                      <StatusBadge tone={orderStatusTones[activeOrder.status]} label={orderStatusLabels[activeOrder.status]} />
+                      <View style={styles.elapsedRow}>
+                        <Clock3 color={theme.textSecondary} size={15} />
+                        <Text style={[styles.elapsedText, { color: theme.textSecondary }]}>
+                          {formatElapsed(activeOrder.createdAt)}
                         </Text>
                       </View>
-                    ))}
-                  </View>
+                    </View>
+                  </Surface>
 
-                  {/* Summary */}
-                  <View
-                    style={[
-                      styles.summaryCard,
-                      { backgroundColor: isDark ? '#0F172A' : '#F8FAFC', borderColor: theme.border }
-                    ]}
-                  >
-                    <View style={styles.summaryRow}>
-                      <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>Tạm tính:</Text>
-                      <Text style={[styles.summaryValue, { color: theme.text }]}>
-                        {formatVND(activeOrder.totalAmount)}
-                      </Text>
-                    </View>
-                    <View style={styles.summaryRow}>
-                      <Text style={[styles.summaryLabel, { color: theme.textMuted }]}>Thuế VAT (8%):</Text>
-                      <Text style={[styles.summaryValue, { color: theme.text }]}>
-                        {formatVND(activeOrder.vatAmount)}
-                      </Text>
-                    </View>
-                    <View style={[styles.summaryRow, styles.summaryTotalRow, { borderTopColor: theme.border }]}>
-                      <Text style={[styles.summaryTotalLabel, { color: theme.text }]}>TỔNG THANH TOÁN:</Text>
-                      <Text style={[styles.summaryTotalValue, { color: theme.primary }]}>
-                        {formatVND(activeOrder.finalAmount)}
-                      </Text>
+                  <View style={styles.detailSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Món đã gọi</Text>
+                    <View style={[styles.sectionPanel, { borderColor: theme.borderSubtle }]}>
+                      {activeOrder.items?.map((item, index) => (
+                        <View
+                          key={item.id || String(item.menuItemId) + '-' + index}
+                          style={[styles.itemRow, index > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 }]}
+                        >
+                          <View style={styles.itemCopy}>
+                            <Text style={[styles.itemName, { color: theme.textPrimary }]}>
+                              {item.quantity} × {item.menuItemName || 'Món #' + item.menuItemId}
+                            </Text>
+                            {item.notes && (
+                              <Text style={[styles.itemNote, { color: theme.textSecondary }]}>Ghi chú: {item.notes}</Text>
+                            )}
+                          </View>
+                          <Text style={[styles.itemAmount, { color: theme.textPrimary }]}>{formatVND(item.subtotal)}</Text>
+                        </View>
+                      ))}
                     </View>
                   </View>
 
-                  {/* Payment Method Selector */}
-                  <Text style={[styles.sectionTitle, { color: theme.text }]}>Phương thức thanh toán:</Text>
-                  <View style={styles.paymentMethods}>
-                    <TouchableOpacity
-                      style={[
-                        styles.payMethodBtn,
-                        { backgroundColor: isDark ? '#334155' : '#F8FAFC', borderColor: theme.border },
-                        paymentMethod === 'CASH' && {
-                          borderColor: theme.primary,
-                          backgroundColor: isDark ? '#7F1D1D' : '#FEF2F2'
-                        }
-                      ]}
-                      onPress={() => setPaymentMethod('CASH')}
-                    >
-                      <Text
-                        style={[
-                          styles.payMethodText,
-                          { color: paymentMethod === 'CASH' ? theme.primary : theme.textMuted },
-                          paymentMethod === 'CASH' && styles.payMethodTextActive
-                        ]}
-                      >
-                        💵 Tiền Mặt
-                      </Text>
-                    </TouchableOpacity>
+                  <View style={styles.detailSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Thanh toán</Text>
+                    <View style={[styles.sectionPanel, { borderColor: theme.borderSubtle }]}>
+                      <View style={styles.summaryRow}>
+                        <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Tạm tính</Text>
+                        <Text style={[styles.summaryValue, { color: theme.textPrimary }]}>{formatVND(activeOrder.totalAmount)}</Text>
+                      </View>
+                      <View style={styles.summaryRow}>
+                        <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>VAT (8%)</Text>
+                        <Text style={[styles.summaryValue, { color: theme.textPrimary }]}>{formatVND(activeOrder.vatAmount)}</Text>
+                      </View>
+                      <View style={[styles.totalRow, { borderTopColor: theme.borderSubtle }]}>
+                        <Text style={[styles.totalLabel, { color: theme.textPrimary }]}>Tổng thanh toán</Text>
+                        <Text style={[styles.totalAmount, { color: theme.primary }]}>{formatVND(activeOrder.finalAmount)}</Text>
+                      </View>
+                    </View>
 
-                    <TouchableOpacity
-                      style={[
-                        styles.payMethodBtn,
-                        { backgroundColor: isDark ? '#334155' : '#F8FAFC', borderColor: theme.border },
-                        paymentMethod === 'BANK_TRANSFER' && {
-                          borderColor: theme.primary,
-                          backgroundColor: isDark ? '#7F1D1D' : '#FEF2F2'
-                        }
-                      ]}
-                      onPress={() => setPaymentMethod('BANK_TRANSFER')}
-                    >
-                      <Text
-                        style={[
-                          styles.payMethodText,
-                          { color: paymentMethod === 'BANK_TRANSFER' ? theme.primary : theme.textMuted },
-                          paymentMethod === 'BANK_TRANSFER' && styles.payMethodTextActive
-                        ]}
-                      >
-                        📱 VietQR Động
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[
-                        styles.payMethodBtn,
-                        { backgroundColor: isDark ? '#334155' : '#F8FAFC', borderColor: theme.border },
-                        paymentMethod === 'CREDIT_CARD' && {
-                          borderColor: theme.primary,
-                          backgroundColor: isDark ? '#7F1D1D' : '#FEF2F2'
-                        }
-                      ]}
-                      onPress={() => setPaymentMethod('CREDIT_CARD')}
-                    >
-                      <Text
-                        style={[
-                          styles.payMethodText,
-                          { color: paymentMethod === 'CREDIT_CARD' ? theme.primary : theme.textMuted },
-                          paymentMethod === 'CREDIT_CARD' && styles.payMethodTextActive
-                        ]}
-                      >
-                        💳 Thẻ POS
-                      </Text>
-                    </TouchableOpacity>
+                    <View style={styles.paymentMethods}>
+                      {paymentOptions.map((option) => {
+                        const selected = paymentMethod === option.value;
+                        return (
+                          <Pressable
+                            key={option.value}
+                            accessibilityRole="radio"
+                            accessibilityLabel={option.label}
+                            accessibilityState={{ checked: selected }}
+                            onPress={() => setPaymentMethod(option.value)}
+                            style={({ pressed }) => [
+                              styles.paymentMethod,
+                              {
+                                backgroundColor: selected
+                                  ? theme.interactiveSecondary
+                                  : pressed ? theme.surfaceSunken : theme.surfaceBase,
+                                borderColor: selected ? theme.primary : theme.borderSubtle
+                              }
+                            ]}
+                          >
+                            <AppIcon icon={option.icon} color={selected ? theme.primary : theme.textSecondary} size={19} />
+                            <Text style={[styles.paymentMethodLabel, { color: selected ? theme.primary : theme.textPrimary }]}>
+                              {option.label}
+                            </Text>
+                          </Pressable>
+                        );
+                      })}
+                    </View>
                   </View>
-
-                  {/* Pay Action Button */}
-                  <TouchableOpacity
-                    testID="btn-confirm-pay"
-                    style={[
-                      styles.payConfirmBtn,
-                      { backgroundColor: theme.primary },
-                      isProcessingPay && styles.btnDisabled
-                    ]}
-                    onPress={handlePay}
-                    disabled={isProcessingPay || isProcessingVoid}
-                  >
-                    {isProcessingPay ? (
-                      <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.payConfirmText}>
-                        XÁC NHẬN THU TIỀN & TRẢ BÀN ({formatVND(activeOrder.finalAmount)})
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-
-                  {/* Admin Audited Void Action */}
-                  {user?.role === 'ADMIN' && (
-                    <TouchableOpacity
-                      testID="btn-open-void-modal"
-                      style={[styles.adminVoidBtn, { borderColor: '#EF4444' }]}
-                      onPress={handleOpenVoidModal}
-                      disabled={isProcessingPay || isProcessingVoid}
-                    >
-                      <Text style={styles.adminVoidText}>🗑️ HỦY ĐƠN KIỂM TOÁN (ADMIN VOID)</Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
-              ) : selectedTable?.status === 'DIRTY' || selectedTable?.status === 'NEED_CLEANING' ? (
-                <View style={styles.emptyTableBox}>
-                  <Text style={styles.emptyTableEmoji}>🧹</Text>
-                  <Text style={[styles.emptyTableTitle, { color: theme.text }]}>Bàn đang chờ dọn dẹp</Text>
-                  <Text style={[styles.emptyTableDesc, { color: theme.textMuted }]}>
-                    Bàn ăn vừa dùng xong và chưa được lau dọn. Sau khi dọn sạch bàn ghế, vui lòng xác nhận bên dưới.
-                  </Text>
-                  <TouchableOpacity
-                    testID="btn-confirm-clean-table"
-                    style={[styles.cleanConfirmBtn, { backgroundColor: '#F59E0B' }]}
-                    onPress={() => handleCleanTable(selectedTable.id)}
-                    disabled={isProcessingClean}
-                  >
-                    {isProcessingClean ? (
-                      <ActivityIndicator color="#FFFFFF" />
-                    ) : (
-                      <Text style={styles.cleanConfirmText}>✨ ĐÃ DỌN BÀN XONG (CHUYỂN SANG TRỐNG)</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
+              ) : isSelectedTableDirty ? (
+                <EmptyState
+                  title="Bàn đang chờ dọn"
+                  description="Dọn sạch bàn ghế, sau đó xác nhận để bàn sẵn sàng đón khách mới."
+                />
               ) : (
-                <View style={styles.emptyTableBox}>
-                  <Text style={styles.emptyTableEmoji}>🍽️</Text>
-                  <Text style={[styles.emptyTableTitle, { color: theme.text }]}>Bàn hiện đang trống</Text>
-                  <Text style={[styles.emptyTableDesc, { color: theme.textMuted }]}>
-                    Khách có thể quét mã QR tại bàn để tự gọi món hoặc thu ngân tạo đơn mới từ tab POS.
-                  </Text>
-                  {selectedTable && (
-                    <TouchableOpacity
-                      style={[
-                        styles.markDirtyBtn,
-                        { borderColor: theme.border, backgroundColor: isDark ? '#1E293B' : '#F1F5F9' }
-                      ]}
-                      onPress={() => handleMarkTableDirty(selectedTable.id)}
-                      disabled={isProcessingClean}
-                    >
-                      <Text style={[styles.markDirtyText, { color: theme.textMuted }]}>
-                        🟡 Đánh dấu cần dọn bàn
-                      </Text>
-                    </TouchableOpacity>
-                  )}
-                </View>
+                <EmptyState
+                  title="Bàn đang trống"
+                  description="Khách có thể quét mã QR tại bàn hoặc thu ngân có thể tạo đơn mới."
+                />
               )}
             </ScrollView>
+
+            <View style={[styles.actionFooter, { backgroundColor: theme.surfaceBase, borderTopColor: theme.borderSubtle }]}>
+              {activeOrder ? (
+                <View style={[styles.footerActions, isNarrow && styles.footerActionsNarrow]}>
+                  {user?.role === 'ADMIN' && (
+                    <View style={styles.footerButton}>
+                      <Button
+                        testID="btn-open-void-modal"
+                        variant="danger"
+                        label="Hủy đơn"
+                        icon={Trash2}
+                        disabled={isProcessingPay || isProcessingVoid}
+                        onPress={handleOpenVoidModal}
+                      />
+                    </View>
+                  )}
+                  <View style={styles.footerButtonPrimary}>
+                    <Button
+                      testID="btn-confirm-pay"
+                      variant="primary"
+                      label={'Thu ' + formatVND(activeOrder.finalAmount)}
+                      icon={CircleCheck}
+                      loading={isProcessingPay}
+                      disabled={isProcessingVoid}
+                      onPress={() => void handlePay()}
+                    />
+                  </View>
+                </View>
+              ) : isSelectedTableDirty && selectedTable ? (
+                <Button
+                  testID="btn-confirm-clean-table"
+                  variant="primary"
+                  label="Đánh dấu đã dọn"
+                  icon={CircleCheck}
+                  loading={isProcessingClean}
+                  onPress={() => void handleCleanTable(selectedTable.id)}
+                />
+              ) : selectedTable ? (
+                <Button
+                  variant="secondary"
+                  label="Chuyển sang chờ dọn"
+                  icon={CircleAlert}
+                  loading={isProcessingClean}
+                  onPress={() => void handleMarkTableDirty(selectedTable.id)}
+                />
+              ) : null}
+            </View>
           </SafeAreaView>
         </View>
       </Modal>
 
-      {/* Admin Audited Void Confirmation Modal */}
-      <Modal visible={isVoidModalOpen} transparent animationType="fade">
+      <Modal visible={isVoidModalOpen} transparent animationType="fade" onRequestClose={() => setIsVoidModalOpen(false)}>
         <View style={[styles.modalBackdrop, { backgroundColor: theme.overlay }]}>
-          <View
-            style={[
-              styles.voidModalContainer,
-              { backgroundColor: theme.card, borderColor: theme.border }
-            ]}
-          >
-            <View style={styles.voidModalHeader}>
-              <Text style={styles.voidModalTitle}>⚠️ Xác Nhận Hủy Đơn Kiểm Toán</Text>
-              <Text style={[styles.voidModalSubtitle, { color: theme.textMuted }]}>
-                Chức năng dành riêng cho Quản trị viên (Admin). Thao tác này sẽ ghi nhận vào nhật ký kiểm toán và giải phóng bàn ăn nếu không còn đơn khác.
-              </Text>
+          <View style={[styles.voidModal, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+            <View style={styles.voidHeader}>
+              <View style={[styles.dangerIcon, { backgroundColor: statusColors.danger.background }]}>
+                <AppIcon icon={Trash2} color={statusColors.danger.text} size={22} />
+              </View>
+              <View style={styles.voidHeadingCopy}>
+                <Text style={[styles.voidTitle, { color: theme.textPrimary }]}>Xác nhận hủy đơn</Text>
+                <Text style={[styles.voidDescription, { color: theme.textSecondary }]}>
+                  Thao tác được lưu vào nhật ký kiểm toán và không thể hoàn tác.
+                </Text>
+              </View>
             </View>
 
-            <View
-              style={[
-                styles.voidOrderSummary,
-                { backgroundColor: isDark ? '#0F172A' : '#FEF2F2', borderColor: '#FCA5A5' }
-              ]}
-            >
-              <Text style={[styles.voidOrderCode, { color: theme.text }]}>
-                Mã đơn: <Text style={{ fontWeight: typography.weights.bold }}>{activeOrder?.code}</Text>
-              </Text>
-              <Text style={styles.voidOrderAmount}>
+            <Surface level="sunken" style={styles.voidOrderSummary}>
+              <View>
+                <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Đơn cần hủy</Text>
+                <Text style={[styles.voidOrderCode, { color: theme.textPrimary }]}>{activeOrder?.code}</Text>
+              </View>
+              <Text style={[styles.voidOrderAmount, { color: theme.danger }]}>
                 {activeOrder ? formatVND(activeOrder.finalAmount) : ''}
               </Text>
+            </Surface>
+
+            <View style={styles.voidField}>
+              <Text style={[styles.voidLabel, { color: theme.textPrimary }]}>Lý do hủy đơn</Text>
+              <TextInput
+                testID="input-void-reason"
+                accessibilityLabel="Lý do hủy đơn"
+                style={[
+                  styles.voidInput,
+                  {
+                    backgroundColor: theme.surfaceSunken,
+                    borderColor: voidError ? theme.danger : theme.borderStrong,
+                    color: theme.textPrimary
+                  }
+                ]}
+                placeholder="Ví dụ: Khách đổi ý hoặc nhập nhầm món"
+                placeholderTextColor={theme.textSecondary}
+                value={voidReason}
+                onChangeText={(text) => {
+                  setVoidReason(text);
+                  if (voidError) setVoidError(null);
+                }}
+                multiline
+                numberOfLines={3}
+              />
+              <Text style={[styles.fieldHint, { color: theme.textSecondary }]}>Tối thiểu 3 ký tự.</Text>
             </View>
 
-            <Text style={[styles.voidLabel, { color: theme.text }]}>
-              Lý do hủy đơn (Bắt buộc, tối thiểu 3 ký tự):
-            </Text>
-            <TextInput
-              testID="input-void-reason"
-              style={[
-                styles.voidInput,
-                {
-                  backgroundColor: isDark ? '#1E293B' : '#F8FAFC',
-                  borderColor: voidError ? '#EF4444' : theme.border,
-                  color: theme.text
-                }
-              ]}
-              placeholder="Nhập lý do hủy (ví dụ: Khách đổi ý ra về, nhập sai món...)"
-              placeholderTextColor={theme.textMuted}
-              value={voidReason}
-              onChangeText={(text) => {
-                setVoidReason(text);
-                if (voidError) setVoidError(null);
-              }}
-              multiline
-              numberOfLines={3}
-            />
+            {voidError && <InlineAlert message={voidError} />}
 
-            {voidError && <Text style={styles.voidErrorText}>❌ {voidError}</Text>}
-
-            <View style={styles.voidActionsRow}>
-              <TouchableOpacity
-                style={[styles.voidCancelBtn, { backgroundColor: isDark ? '#334155' : '#E2E8F0' }]}
-                onPress={() => setIsVoidModalOpen(false)}
-                disabled={isProcessingVoid}
-              >
-                <Text style={[styles.voidCancelText, { color: theme.text }]}>Đóng</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                testID="btn-confirm-void"
-                style={[
-                  styles.voidConfirmBtn,
-                  { backgroundColor: '#EF4444' },
-                  (isProcessingVoid || voidReason.trim().length < 3) && styles.btnDisabled
-                ]}
-                onPress={handleConfirmVoid}
-                disabled={isProcessingVoid || voidReason.trim().length < 3}
-              >
-                {isProcessingVoid ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.voidConfirmText}>Xác Nhận Hủy Đơn</Text>
-                )}
-              </TouchableOpacity>
+            <View style={[styles.voidActions, isNarrow && styles.voidActionsNarrow]}>
+              <View style={styles.footerButton}>
+                <Button
+                  variant="quiet"
+                  label="Giữ đơn"
+                  disabled={isProcessingVoid}
+                  onPress={() => setIsVoidModalOpen(false)}
+                />
+              </View>
+              <View style={styles.footerButtonPrimary}>
+                <Button
+                  testID="btn-confirm-void"
+                  variant="danger"
+                  label="Xác nhận hủy đơn"
+                  icon={Trash2}
+                  loading={isProcessingVoid}
+                  disabled={voidReason.trim().length < 3}
+                  onPress={() => void handleConfirmVoid()}
+                />
+              </View>
             </View>
           </View>
         </View>
@@ -682,473 +683,260 @@ export const TableScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  header: {
-    flexDirection: 'row',
+  container: { flex: 1 },
+  header: { borderBottomWidth: 1, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  filterToolbar: { borderBottomWidth: 1 },
+  filterContent: { gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  filterButton: {
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1
-  },
-  title: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold
-  },
-  subtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2
-  },
-  refreshBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 8
-  },
-  refreshText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  legendBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1
-  },
-  legendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6
-  },
-  legendDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5
-  },
-  legendText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
+    borderRadius: radii.pill,
+    borderWidth: 1,
     justifyContent: 'center',
-    padding: spacing.xl
+    minHeight: spacing.touchTargetMobile,
+    paddingHorizontal: spacing.lg
   },
-  loadingText: {
-    marginTop: spacing.md,
-    fontSize: typography.sizes.sm
-  },
-  gridContainer: {
-    padding: spacing.md,
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    gap: spacing.md
-  },
+  filterLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  centerContainer: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.xl },
+  loadingText: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, marginTop: spacing.md },
+  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, padding: spacing.lg },
+  emptyFilter: { width: '100%' },
   tableCard: {
-    width: '48%',
-    borderRadius: 12,
-    borderWidth: 1.5,
-    padding: spacing.md,
-    minHeight: 140,
-    justifyContent: 'space-between',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
-    shadowRadius: 4,
-    elevation: 2
-  },
-  tableTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs
-  },
-  tableNumberText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.extraBold
-  },
-  tableStatusText: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold
-  },
-  tableBody: {
-    flex: 1,
-    justifyContent: 'center',
-    gap: 4
-  },
-  tableCapacity: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium
-  },
-  tableOrderBadge: {
-    padding: spacing.xs,
-    borderRadius: 6,
-    marginTop: 4
-  },
-  orderCodeText: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold
-  },
-  orderTotalText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.extraBold,
-    marginTop: 2
-  },
-  dirtyCardBody: {
-    marginTop: 4,
-    gap: 6
-  },
-  dirtyNoticeText: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold
-  },
-  quickCleanBtn: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 6
-  },
-  quickCleanText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: typography.weights.bold
-  },
-  noOrderText: {
-    fontSize: typography.sizes.xs,
-    fontStyle: 'italic',
-    marginTop: 4
-  },
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    borderLeftWidth: 4,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    minHeight: 184,
     padding: spacing.md
   },
+  tableCardHeader: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
+  tableLabel: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs },
+  tableNumber: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xxl,
+    fontVariant: [...typography.numeric.fontVariant],
+    lineHeight: typography.lineHeights.xxl
+  },
+  capacityRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs },
+  metaText: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
+  tableDivider: { height: 1 },
+  orderSummary: { gap: spacing.xs },
+  orderCount: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  orderTotal: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.lg,
+    fontVariant: [...typography.numeric.fontVariant]
+  },
+  elapsedRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs },
+  elapsedText: {
+    fontFamily: typography.families.bodyMedium,
+    fontSize: typography.sizes.xs,
+    fontVariant: [...typography.numeric.fontVariant]
+  },
+  cleaningSummary: { alignItems: 'flex-start', gap: spacing.sm },
+  guidanceText: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs,
+    lineHeight: typography.lineHeights.xs
+  },
+  inlineAction: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: spacing.touchTargetMobile,
+    paddingHorizontal: spacing.md
+  },
+  inlineActionText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  modalBackdrop: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.md },
+  modalBackdropNarrow: { justifyContent: 'flex-end', padding: 0 },
   modalContainer: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    maxHeight: '92%',
+    maxWidth: 680,
+    overflow: 'hidden',
     width: '100%',
-    maxWidth: 600,
-    maxHeight: '90%',
-    borderRadius: 16,
-    overflow: 'hidden'
+    ...elevation.modal
   },
+  modalContainerNarrow: { borderBottomLeftRadius: 0, borderBottomRightRadius: 0, maxHeight: '96%' },
   modalHeader: {
+    alignItems: 'center',
+    borderBottomWidth: 1,
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    padding: spacing.md,
-    borderBottomWidth: 1
+    padding: spacing.lg
   },
+  modalHeading: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   modalTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xl,
+    fontVariant: [...typography.numeric.fontVariant],
+    lineHeight: typography.lineHeights.xl
   },
-  closeBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  iconButton: {
     alignItems: 'center',
-    justifyContent: 'center'
-  },
-  closeBtnText: {
-    fontSize: 14,
-    fontWeight: typography.weights.bold
-  },
-  modalBody: {
-    padding: spacing.md
-  },
-  successBox: {
-    backgroundColor: '#DCFCE7',
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderColor: '#86EFAC',
-    padding: spacing.sm,
-    borderRadius: 8,
-    marginBottom: spacing.md
+    height: spacing.touchTargetMobile,
+    justifyContent: 'center',
+    width: spacing.touchTargetMobile
   },
-  successText: {
-    color: '#15803D',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
+  modalBody: { flexShrink: 1 },
+  modalBodyContent: { padding: spacing.lg },
+  detailSections: { gap: spacing.lg },
+  detailSection: { gap: spacing.sm },
+  sectionTitle: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.md,
+    lineHeight: typography.lineHeights.md
   },
-  orderSelector: {
-    marginBottom: spacing.md
-  },
-  orderSelectorBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
+  orderSelectorContent: { gap: spacing.sm },
+  orderSelectorButton: {
+    borderRadius: radii.pill,
     borderWidth: 1,
-    marginRight: spacing.sm
-  },
-  orderSelectorBtnActive: {
-    borderWidth: 1.5
+    justifyContent: 'center',
+    minHeight: spacing.touchTargetMobile,
+    paddingHorizontal: spacing.md
   },
   orderSelectorText: {
-    fontSize: typography.sizes.xs
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm,
+    fontVariant: [...typography.numeric.fontVariant]
   },
-  billHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    padding: spacing.sm,
-    borderRadius: 8,
+  orderIdentity: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', padding: spacing.md },
+  orderIdentityCopy: { gap: spacing.xs },
+  orderIdentityStatus: { alignItems: 'flex-end', gap: spacing.xs },
+  metaLabel: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs },
+  orderCode: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xl,
+    lineHeight: typography.lineHeights.xl
+  },
+  sectionPanel: {
+    borderRadius: radii.md,
     borderWidth: 1,
-    marginBottom: spacing.md
-  },
-  billCode: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  billStatus: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  sectionTitle: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    marginBottom: spacing.xs
-  },
-  itemsList: {
-    marginBottom: spacing.md
+    overflow: 'hidden',
+    paddingHorizontal: spacing.md
   },
   itemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.xs,
-    borderBottomWidth: 1
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md
   },
-  itemName: {
+  itemCopy: { flex: 1, gap: spacing.xs },
+  itemName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  itemNote: {
+    fontFamily: typography.families.body,
     fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
+    lineHeight: typography.lineHeights.xs
   },
-  itemNotes: {
-    fontSize: 10,
-    fontStyle: 'italic'
-  },
-  itemSubtotal: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  summaryCard: {
-    padding: spacing.md,
-    borderRadius: 8,
-    marginVertical: spacing.md,
-    borderWidth: 1
+  itemAmount: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm,
+    fontVariant: [...typography.numeric.fontVariant]
   },
   summaryRow: {
+    alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 4
+    paddingTop: spacing.md
   },
-  summaryLabel: {
-    fontSize: typography.sizes.xs
-  },
+  summaryLabel: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
   summaryValue: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
-  },
-  summaryTotalRow: {
-    borderTopWidth: 1,
-    paddingTop: spacing.xs,
-    marginTop: spacing.xs
-  },
-  summaryTotalLabel: {
+    fontFamily: typography.families.bodyMedium,
     fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
+    fontVariant: [...typography.numeric.fontVariant]
   },
-  summaryTotalValue: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.extraBold
-  },
-  paymentMethods: {
+  totalRow: {
+    alignItems: 'center',
+    borderTopWidth: 1,
     flexDirection: 'row',
-    gap: spacing.sm,
-    marginBottom: spacing.lg
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+    paddingVertical: spacing.md
   },
-  payMethodBtn: {
+  totalLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  totalAmount: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xl,
+    fontVariant: [...typography.numeric.fontVariant]
+  },
+  paymentMethods: { flexDirection: 'row', gap: spacing.sm },
+  paymentMethod: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1,
     flex: 1,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center'
-  },
-  payMethodText: {
-    fontSize: 11,
-    fontWeight: typography.weights.medium
-  },
-  payMethodTextActive: {
-    fontWeight: typography.weights.bold
-  },
-  payConfirmBtn: {
-    paddingVertical: spacing.md,
-    borderRadius: 10,
-    alignItems: 'center',
+    gap: spacing.xs,
     justifyContent: 'center',
-    minHeight: spacing.touchTargetPOS,
-    marginBottom: spacing.md
+    minHeight: 64,
+    paddingHorizontal: spacing.xs
   },
-  adminVoidBtn: {
-    paddingVertical: spacing.md,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: spacing.touchTargetPOS,
-    borderWidth: 1.5,
-    marginBottom: spacing.xl
-  },
-  adminVoidText: {
-    color: '#EF4444',
+  paymentMethodLabel: {
+    fontFamily: typography.families.bodySemibold,
     fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    letterSpacing: 0.5
+    textAlign: 'center'
   },
-  cleanConfirmBtn: {
-    paddingVertical: spacing.md,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: spacing.touchTargetPOS,
-    width: '100%',
-    marginTop: spacing.md
-  },
-  cleanConfirmText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    letterSpacing: 0.5
-  },
-  markDirtyBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: 8,
+  actionFooter: { borderTopWidth: 1, padding: spacing.md },
+  footerActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  footerActionsNarrow: { alignItems: 'stretch', flexDirection: 'column-reverse' },
+  footerButton: { flex: 1 },
+  footerButtonPrimary: { flex: 2 },
+  voidModal: {
+    borderRadius: radii.md,
     borderWidth: 1,
-    marginTop: spacing.md
-  },
-  markDirtyText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
-  },
-  btnDisabled: {
-    opacity: 0.6
-  },
-  payConfirmText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    letterSpacing: 0.5
-  },
-  emptyTableBox: {
-    alignItems: 'center',
-    padding: spacing.xl
-  },
-  emptyTableEmoji: {
-    fontSize: 48,
-    marginBottom: spacing.xs
-  },
-  emptyTableTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold
-  },
-  emptyTableDesc: {
-    fontSize: typography.sizes.xs,
-    textAlign: 'center',
-    marginTop: spacing.xs
-  },
-  // Void Modal Styles
-  voidModalContainer: {
-    width: '100%',
-    maxWidth: 480,
-    borderRadius: 16,
-    borderWidth: 1,
+    gap: spacing.lg,
+    maxWidth: 520,
     padding: spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5
+    width: '100%',
+    ...elevation.modal
   },
-  voidModalHeader: {
-    marginBottom: spacing.md
+  voidHeader: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md },
+  dangerIcon: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    height: spacing.touchTargetMobile,
+    justifyContent: 'center',
+    width: spacing.touchTargetMobile
   },
-  voidModalTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.extraBold,
-    color: '#EF4444'
+  voidHeadingCopy: { flex: 1, gap: spacing.xs },
+  voidTitle: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xl,
+    lineHeight: typography.lineHeights.xl
   },
-  voidModalSubtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 4,
-    lineHeight: 18
+  voidDescription: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.sm,
+    lineHeight: typography.lineHeights.sm
   },
   voidOrderSummary: {
+    alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: spacing.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginBottom: spacing.md
+    padding: spacing.md
   },
-  voidOrderCode: {
-    fontSize: typography.sizes.xs
-  },
+  voidOrderCode: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg },
   voidOrderAmount: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.extraBold,
-    color: '#EF4444'
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.lg,
+    fontVariant: [...typography.numeric.fontVariant]
   },
-  voidLabel: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    marginBottom: 6
-  },
+  voidField: { gap: spacing.xs },
+  voidLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
   voidInput: {
+    borderRadius: radii.md,
     borderWidth: 1,
-    borderRadius: 8,
-    padding: spacing.sm,
-    fontSize: typography.sizes.xs,
-    minHeight: 70,
-    textAlignVertical: 'top',
-    marginBottom: spacing.xs
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.sm,
+    lineHeight: typography.lineHeights.sm,
+    minHeight: 88,
+    padding: spacing.md,
+    textAlignVertical: 'top'
   },
-  voidErrorText: {
-    color: '#EF4444',
-    fontSize: 11,
-    fontWeight: typography.weights.semibold,
-    marginBottom: spacing.sm
-  },
-  voidActionsRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.sm,
-    marginTop: spacing.md
-  },
-  voidCancelBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: 44
-  },
-  voidCancelText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
-  },
-  voidConfirmBtn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    minHeight: 44
-  },
-  voidConfirmText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  }
+  fieldHint: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  voidActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  voidActionsNarrow: { alignItems: 'stretch', flexDirection: 'column-reverse' }
 });

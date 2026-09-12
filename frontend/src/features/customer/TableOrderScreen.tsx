@@ -1,29 +1,51 @@
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  FlatList,
+  Modal,
+  Pressable,
+  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
-  View,
-  SafeAreaView,
-  FlatList,
-  TouchableOpacity,
-  ActivityIndicator,
-  ScrollView,
-  Modal
+  View
 } from 'react-native';
-import { typography, spacing } from '../../theme';
+import { Check, ChefHat, CreditCard, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
+import { MenuItemDto, OrderDto, OrderStatus } from '../../api/contracts';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { elevation, radii, spacing, typography } from '../../theme';
+import { AppIcon, Button, InlineAlert, StatusBadge, Surface } from '../../ui';
+import type { StatusTone } from '../../ui';
 import { MenuCategoryPills } from '../pos/MenuCategoryPills';
 import { MenuItemCard } from '../pos/MenuItemCard';
 import { ModifierModal } from '../pos/ModifierModal';
-import { MenuItemDto, OrderDto } from '../../api/contracts';
 
 interface Props {
   tableNumber?: number;
 }
 
+const formatVND = (amount: number) =>
+  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+
+const formatTableNumber = (value: number) => value.toString().padStart(2, '0');
+
+const orderStatusConfig = (status: OrderStatus): { label: string; tone: StatusTone } => {
+  if (status === 'PREPARING') return { label: 'Đang chuẩn bị', tone: 'info' };
+  if (status === 'READY') return { label: 'Sẵn sàng phục vụ', tone: 'success' };
+  if (status === 'COMPLETED') return { label: 'Đã phục vụ', tone: 'neutral' };
+  if (status === 'CANCELLED') return { label: 'Đã hủy', tone: 'danger' };
+  return { label: 'Đã nhận đơn', tone: 'warning' };
+};
+
+const orderSteps = [
+  { title: 'Đã nhận đơn', description: 'Nhà hàng đã nhận được yêu cầu của bạn.', icon: Check },
+  { title: 'Đang chuẩn bị', description: 'Bếp đang chuẩn bị các món trong đơn.', icon: ChefHat },
+  { title: 'Sẵn sàng phục vụ', description: 'Nhân viên sẽ mang món đến bàn ngay.', icon: UtensilsCrossed }
+] as const;
+
 export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
   const {
     categories,
     allMenuItems,
@@ -49,14 +71,8 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
   const [orderError, setOrderError] = useState<string | null>(null);
   const [isVietQRModalOpen, setIsVietQRModalOpen] = useState(false);
 
-  const formatVND = (amount: number) =>
-    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
-
-  // Tim tableId tu danh sach tables theo tableNumber
   const table = tables.find((t) => t.tableNumber === tableNumber) || tables[0];
   const tableId = table?.id || 1;
-
-  // Lay order dang active cua ban neu co tu context
   const liveOrder = currentOrder || activeTableOrder || table?.orders?.[0] || null;
 
   const handleCardPress = (item: MenuItemDto) => {
@@ -82,7 +98,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
     }
   };
 
-  const getStepProgress = (status?: string) => {
+  const getStepProgress = (status?: OrderStatus) => {
     switch (status) {
       case 'PENDING':
         return 1;
@@ -92,131 +108,123 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
       case 'COMPLETED':
         return 3;
       default:
-        return 1;
+        return 0;
     }
   };
 
   const currentStep = getStepProgress(liveOrder?.status);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Brand & Table Welcome Header */}
-      <View style={[styles.welcomeHeader, { backgroundColor: theme.headerBg, borderBottomColor: theme.border }]}>
-        <View style={styles.welcomeLeft}>
-          <Text style={styles.brandEmoji}>🍔</Text>
-          <View>
-            <Text style={[styles.welcomeTitle, { color: theme.primary }]}>CRISPY BITE</Text>
-            <Text style={[styles.tableBadge, { backgroundColor: isDark ? '#7C2D12' : '#FFEDD5', color: isDark ? '#FDBA74' : theme.secondary }]}>
-              🍽️ BÀN SỐ {tableNumber < 10 ? `0${tableNumber}` : tableNumber}
-            </Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
+      <View style={[styles.customerHeader, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
+        <View style={styles.tableIdentity}>
+          <View style={[styles.brandMark, { backgroundColor: theme.interactivePrimary }]}>
+            <Text style={[styles.brandMarkText, { color: theme.textInverse }]}>CB</Text>
+          </View>
+          <View style={styles.tableIdentityCopy}>
+            <Text style={[styles.headerHint, { color: theme.textSecondary }]}>Đặt món tại bàn</Text>
+            <Text style={[styles.tableIdentityNumber, { color: theme.textPrimary }]}>Bàn {formatTableNumber(tableNumber)}</Text>
           </View>
         </View>
 
         {liveOrder && (
-          <TouchableOpacity
-            style={[styles.payHeaderBtn, { backgroundColor: theme.primary }]}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={'Thanh toán ' + formatVND(liveOrder.finalAmount)}
             onPress={() => setIsVietQRModalOpen(true)}
+            style={({ pressed }) => [
+              styles.headerPayment,
+              { backgroundColor: pressed ? theme.interactiveSecondaryPressed : theme.interactiveSecondary }
+            ]}
           >
-            <Text style={styles.payHeaderBtnText}>💳 Thanh toán ({formatVND(liveOrder.finalAmount)})</Text>
-          </TouchableOpacity>
+            <AppIcon icon={CreditCard} color={theme.primary} size={18} />
+            <Text style={[styles.headerPaymentText, { color: theme.primary }]}>Thanh toán</Text>
+          </Pressable>
         )}
       </View>
 
-      {/* If there is an active order and cart is empty -> Show Live Order Tracker */}
       {liveOrder && cart.length === 0 ? (
-        <ScrollView style={styles.trackerContainer}>
-          <View style={[styles.trackerCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.trackerTitle, { color: theme.text }]}>TIẾN ĐỘ MÓN ĂN - BÀN {tableNumber}</Text>
-            <Text style={[styles.trackerOrderCode, { color: theme.textMuted }]}>Mã đơn: {liveOrder.code}</Text>
-
-            {/* Stepper Timeline */}
-            <View style={styles.timeline}>
-              {/* Step 1 */}
-              <View style={styles.timelineStep}>
-                <View style={[styles.stepCircle, currentStep >= 1 && styles.stepCircleActive]}>
-                  <Text style={styles.stepNumber}>1</Text>
-                </View>
-                <View style={styles.stepContent}>
-                  <Text style={[styles.stepTitle, { color: theme.text }, currentStep >= 1 && styles.stepTitleActive]}>
-                    ⏳ Bếp Đã Tiếp Nhận Đơn
-                  </Text>
-                  <Text style={[styles.stepDesc, { color: theme.textMuted }]}>
-                    Đơn hàng đã được chuyển tới màn hình đầu bếp
-                  </Text>
-                </View>
-              </View>
-
-              <View style={[styles.stepLine, currentStep >= 2 && styles.stepLineActive]} />
-
-              {/* Step 2 */}
-              <View style={styles.timelineStep}>
-                <View style={[styles.stepCircle, currentStep >= 2 && styles.stepCircleActive]}>
-                  <Text style={styles.stepNumber}>2</Text>
-                </View>
-                <View style={styles.stepContent}>
-                  <Text style={[styles.stepTitle, { color: theme.text }, currentStep >= 2 && styles.stepTitleActive]}>
-                    🍳 Đầu Bếp Đang Chế Biến
-                  </Text>
-                  <Text style={[styles.stepDesc, { color: theme.textMuted }]}>
-                    Món ăn đang được nấu nóng giòn tươi ngon
-                  </Text>
-                </View>
-              </View>
-
-              <View style={[styles.stepLine, currentStep >= 3 && styles.stepLineActive]} />
-
-              {/* Step 3 */}
-              <View style={styles.timelineStep}>
-                <View style={[styles.stepCircle, currentStep >= 3 && styles.stepCircleReady]}>
-                  <Text style={styles.stepNumber}>3</Text>
-                </View>
-                <View style={styles.stepContent}>
-                  <Text style={[styles.stepTitle, { color: theme.text }, currentStep >= 3 && styles.stepTitleReady]}>
-                    🎉 Món Đã Xong - Đang Bưng Ra Bàn!
-                  </Text>
-                  <Text style={[styles.stepDesc, { color: theme.textMuted }]}>
-                    Nhân viên tiếp thực đang mang đồ ăn đến Bàn {tableNumber}
-                  </Text>
-                </View>
-              </View>
+        <ScrollView contentContainerStyle={styles.progressContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.progressHeading}>
+            <View style={styles.progressHeadingCopy}>
+              <Text accessibilityRole="header" style={[styles.screenTitle, { color: theme.textPrimary }]}>Đơn của bạn</Text>
+              <Text style={[styles.orderCode, { color: theme.textSecondary }]}>Mã đơn {liveOrder.code}</Text>
             </View>
+            <StatusBadge {...orderStatusConfig(liveOrder.status)} />
+          </View>
 
-            {/* Order Items Summary */}
-            <View style={[styles.orderedItemsBox, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC', borderColor: theme.border }]}>
-              <Text style={[styles.orderedItemsTitle, { color: theme.text }]}>Chi tiết các món đã gọi:</Text>
-              {liveOrder.items?.map((it: any, idx: number) => (
-                <View key={idx} style={[styles.orderedItemRow, { borderBottomColor: theme.border }]}>
-                  <Text style={[styles.orderedItemName, { color: theme.text }]}>{it.quantity}x Món #{it.menuItemId}</Text>
-                  <Text style={[styles.orderedItemPrice, { color: theme.primary }]}>{formatVND(it.subtotal)}</Text>
+          <View style={styles.timeline}>
+            {orderSteps.map((step, index) => {
+              const stepNumber = index + 1;
+              const completed = currentStep >= stepNumber;
+              const current = currentStep === stepNumber;
+              return (
+                <View key={step.title} style={styles.timelineRow}>
+                  <View style={styles.timelineRail}>
+                    <View
+                      style={[
+                        styles.timelineMarker,
+                        {
+                          backgroundColor: completed ? theme.interactivePrimary : theme.surfaceBase,
+                          borderColor: completed ? theme.interactivePrimary : theme.borderStrong
+                        }
+                      ]}
+                    >
+                      <AppIcon icon={step.icon} color={completed ? theme.textInverse : theme.textSecondary} size={17} />
+                    </View>
+                    {index < orderSteps.length - 1 && (
+                      <View style={[styles.timelineLine, { backgroundColor: currentStep > stepNumber ? theme.interactivePrimary : theme.borderSubtle }]} />
+                    )}
+                  </View>
+                  <View style={[styles.timelineCopy, { borderBottomColor: theme.borderSubtle }]}>
+                    <Text style={[styles.timelineTitle, { color: completed ? theme.textPrimary : theme.textSecondary }]}>
+                      {step.title}{current ? ' · Hiện tại' : ''}
+                    </Text>
+                    <Text style={[styles.timelineDescription, { color: theme.textSecondary }]}>{step.description}</Text>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          <View style={styles.orderSection}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Món đã gọi</Text>
+            <View style={[styles.orderItems, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+              {liveOrder.items?.map((item, index) => (
+                <View
+                  key={item.id || String(item.menuItemId) + '-' + index}
+                  style={[styles.orderItem, index > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 }]}
+                >
+                  <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
+                    {item.quantity} × {item.menuItemName || 'Món đã chọn'}
+                  </Text>
+                  <Text style={[styles.orderItemPrice, { color: theme.textPrimary }]}>{formatVND(item.subtotal)}</Text>
                 </View>
               ))}
-              <View style={[styles.orderedTotalRow, { borderTopColor: theme.border }]}>
-                <Text style={[styles.orderedTotalLabel, { color: theme.text }]}>Tổng hóa đơn (đã gồm 8% VAT):</Text>
-                <Text style={[styles.orderedTotalValue, { color: theme.primary }]}>{formatVND(liveOrder.finalAmount)}</Text>
+              <View style={[styles.orderTotal, { borderTopColor: theme.borderSubtle }]}>
+                <View>
+                  <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Tổng thanh toán</Text>
+                  <Text style={[styles.vatNote, { color: theme.textSecondary }]}>Đã gồm VAT 8%</Text>
+                </View>
+                <Text style={[styles.totalValue, { color: theme.primary }]}>{formatVND(liveOrder.finalAmount)}</Text>
               </View>
             </View>
+          </View>
 
-            {/* Action Buttons */}
-            <View style={styles.trackerActions}>
-              <TouchableOpacity
-                style={[styles.addMoreBtn, { backgroundColor: isDark ? '#7C2D12' : '#FFEDD5', borderColor: theme.secondary }]}
-                onPress={() => setCurrentOrder(null)}
-              >
-                <Text style={[styles.addMoreText, { color: isDark ? '#FDBA74' : theme.secondary }]}>+ GỌI THÊM MÓN ĂN</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.checkoutNowBtn, { backgroundColor: theme.primary }]}
-                onPress={() => setIsVietQRModalOpen(true)}
-              >
-                <Text style={styles.checkoutNowText}>THANH TOÁN RA VỀ ➔</Text>
-              </TouchableOpacity>
-            </View>
+          <View style={styles.progressActions}>
+            <Button variant="secondary" label="Gọi thêm món" onPress={() => setCurrentOrder(null)} />
+            <Button variant="primary" label="Thanh toán" icon={CreditCard} onPress={() => setIsVietQRModalOpen(true)} />
           </View>
         </ScrollView>
       ) : (
-        /* Regular Menu Order Flow */
-        <View style={{ flex: 1 }}>
+        <View style={styles.menuArea}>
+          <View style={styles.menuHeading}>
+            <View>
+              <Text accessibilityRole="header" style={[styles.screenTitle, { color: theme.textPrimary }]}>Thực đơn</Text>
+              <Text style={[styles.menuDescription, { color: theme.textSecondary }]}>Chọn món bạn muốn gọi tại bàn.</Text>
+            </View>
+          </View>
+
           <MenuCategoryPills
             categories={categories}
             selectedCategoryId={selectedCategoryId}
@@ -227,7 +235,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
           {isLoadingMenu ? (
             <View style={styles.centerContainer}>
               <ActivityIndicator size="large" color={theme.primary} />
-              <Text style={[styles.loadingText, { color: theme.textMuted }]}>Đang tải thực đơn...</Text>
+              <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Đang tải thực đơn...</Text>
             </View>
           ) : (
             <FlatList
@@ -235,42 +243,48 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
               keyExtractor={(item) => item.id.toString()}
               numColumns={2}
               contentContainerStyle={styles.listContent}
-              renderItem={({ item }) => <MenuItemCard item={item} onPress={handleCardPress} />}
+              columnWrapperStyle={styles.menuRow}
+              showsVerticalScrollIndicator={false}
+              renderItem={({ item }) => (
+                <View style={styles.menuColumn}>
+                  <MenuItemCard item={item} onPress={handleCardPress} />
+                </View>
+              )}
             />
           )}
 
-          {/* Customer Bottom Cart Bar */}
           {cartItemCount > 0 && (
-            <View style={[styles.customerCartBar, { backgroundColor: isDark ? '#1E293B' : '#0F172A', borderTopColor: theme.border }]}>
-              <View>
-                <Text style={styles.cartCountText}>Đã chọn {cartItemCount} món</Text>
-                <Text style={styles.cartPriceText}>{formatVND(cartTotal)}</Text>
+            <View
+              testID="customer-cart-summary"
+              style={[styles.customerCartBar, elevation.floatingAction, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderSubtle }]}
+            >
+              <View style={styles.cartSummaryCopy}>
+                <View style={styles.cartHeadingRow}>
+                  <AppIcon icon={ShoppingBag} color={theme.primary} size={18} />
+                  <Text style={[styles.cartTitle, { color: theme.textPrimary }]}>Giỏ hàng</Text>
+                </View>
+                <Text style={[styles.cartMeta, { color: theme.textSecondary }]}>{cartItemCount} món</Text>
+                <Text style={[styles.cartPrice, { color: theme.textPrimary }]}>{formatVND(cartTotal)}</Text>
               </View>
-
-              <TouchableOpacity
-                style={[styles.sendKitchenBtn, { backgroundColor: theme.primary }, isSubmitting && styles.btnDisabled]}
-                onPress={handleSendToKitchen}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.sendKitchenText}>GỬI ĐƠN XUỐNG BẾP ➔</Text>
-                )}
-              </TouchableOpacity>
+              <View style={styles.cartAction}>
+                <Button
+                  variant="primary"
+                  label="Gửi món"
+                  loading={isSubmitting}
+                  onPress={() => void handleSendToKitchen()}
+                />
+              </View>
             </View>
           )}
 
-          {/* Error message */}
           {orderError && (
-            <View style={styles.orderErrorBox}>
-              <Text style={styles.orderErrorText}>⚠️ {orderError}</Text>
+            <View style={[styles.orderError, { bottom: cartItemCount > 0 ? 132 : spacing.lg }]}>
+              <InlineAlert title="Chưa gửi được món" message={orderError} />
             </View>
           )}
         </View>
       )}
 
-      {/* Modifier Config Modal */}
       <ModifierModal
         visible={isModifierModalOpen}
         item={selectedMenuItemForModal}
@@ -278,38 +292,58 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
         onAddToCart={addToCart}
       />
 
-      {/* VietQR Dynamic Payment Modal */}
-      <Modal visible={isVietQRModalOpen} transparent animationType="fade">
+      <Modal
+        visible={isVietQRModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsVietQRModalOpen(false)}
+      >
         <View style={[styles.modalBackdrop, { backgroundColor: theme.overlay }]}>
-          <View style={[styles.qrModalContainer, { backgroundColor: theme.card }]}>
-            <View style={[styles.qrHeader, { borderBottomColor: theme.border }]}>
-              <Text style={[styles.qrTitle, { color: theme.text }]}>📱 Thanh Toán VietQR Tự Động</Text>
-              <TouchableOpacity onPress={() => setIsVietQRModalOpen(false)}>
-                <Text style={styles.closeBtnText}>✕</Text>
-              </TouchableOpacity>
+          <SafeAreaView style={[styles.qrModal, elevation.modal, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+            <View style={[styles.qrHeader, { borderBottomColor: theme.borderSubtle }]}>
+              <View style={styles.qrHeaderCopy}>
+                <Text accessibilityRole="header" style={[styles.qrTitle, { color: theme.textPrimary }]}>Thanh toán chuyển khoản</Text>
+                <Text style={[styles.qrSubtitle, { color: theme.textSecondary }]}>Bàn {formatTableNumber(tableNumber)}</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Đóng thanh toán"
+                onPress={() => setIsVietQRModalOpen(false)}
+                style={({ pressed }) => [styles.closeButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}
+              >
+                <AppIcon icon={X} color={theme.textPrimary} size={20} />
+              </Pressable>
             </View>
 
             <View style={styles.qrBody}>
-              <View style={[styles.qrBox, { backgroundColor: isDark ? '#0F172A' : '#F8FAFC', borderColor: theme.primary }]}>
-                <Text style={styles.qrEmoji}>🔳</Text>
-                <Text style={[styles.qrBankName, { color: theme.textMuted }]}>NGÂN HÀNG QUÂN ĐỘI (MB BANK)</Text>
-                <Text style={[styles.qrAccount, { color: theme.text }]}>STK: 0369888999 • CRISPY BITE QSR</Text>
-                <Text style={[styles.qrAmount, { color: theme.primary }]}>{liveOrder ? formatVND(liveOrder.finalAmount) : '0đ'}</Text>
-                <Text style={[styles.qrContentText, { color: theme.textMuted }]}>Nội dung: BAN{tableNumber} {liveOrder?.code || ''}</Text>
+              <Surface level="sunken" style={styles.qrCodePanel}>
+                <View style={[styles.qrPlaceholder, { backgroundColor: theme.surfaceBase, borderColor: theme.borderStrong }]}>
+                  <AppIcon icon={QrCode} color={theme.textPrimary} size={88} />
+                </View>
+                <Text style={[styles.qrBankName, { color: theme.textPrimary }]}>MB Bank</Text>
+                <Text style={[styles.qrAccount, { color: theme.textSecondary }]}>0369888999 · Crispy Bite</Text>
+              </Surface>
+
+              <View style={styles.paymentDetails}>
+                <View>
+                  <Text style={[styles.paymentLabel, { color: theme.textSecondary }]}>Số tiền</Text>
+                  <Text style={[styles.qrAmount, { color: theme.primary }]}>{liveOrder ? formatVND(liveOrder.finalAmount) : '0 ₫'}</Text>
+                </View>
+                <View>
+                  <Text style={[styles.paymentLabel, { color: theme.textSecondary }]}>Nội dung chuyển khoản</Text>
+                  <Text style={[styles.transferContent, { color: theme.textPrimary }]}>BAN{tableNumber} {liveOrder?.code || ''}</Text>
+                </View>
               </View>
 
-              <Text style={[styles.qrNotice, { color: theme.textMuted }]}>
-                Quét mã QR qua bất kỳ App Ngân Hàng hoặc Ví điện tử (MoMo, ZaloPay). Sau khi chuyển khoản thành công, bàn sẽ được tự động giải phóng.
-              </Text>
+              <InlineAlert
+                tone="info"
+                title="Cách thanh toán"
+                message="Quét mã bằng ứng dụng ngân hàng hoặc ví điện tử. Bàn sẽ được cập nhật sau khi giao dịch được xác nhận."
+              />
 
-              <TouchableOpacity
-                style={[styles.closeQrBtn, { backgroundColor: isDark ? '#334155' : '#1E293B' }]}
-                onPress={() => setIsVietQRModalOpen(false)}
-              >
-                <Text style={styles.closeQrText}>Đóng Cửa Sổ</Text>
-              </TouchableOpacity>
+              <Button variant="quiet" label="Đóng" onPress={() => setIsVietQRModalOpen(false)} />
             </View>
-          </View>
+          </SafeAreaView>
         </View>
       </Modal>
     </SafeAreaView>
@@ -317,334 +351,182 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  welcomeHeader: {
-    flexDirection: 'row',
+  container: { flex: 1 },
+  customerHeader: {
     alignItems: 'center',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
     justifyContent: 'space-between',
+    minHeight: 72,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1
+    paddingVertical: spacing.sm
   },
-  welcomeLeft: {
-    flexDirection: 'row',
+  tableIdentity: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  brandMark: {
     alignItems: 'center',
-    gap: spacing.sm
-  },
-  brandEmoji: {
-    fontSize: 28
-  },
-  welcomeTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.extraBold,
-    letterSpacing: 1
-  },
-  tableBadge: {
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 4,
-    fontSize: 10,
-    fontWeight: typography.weights.bold,
-    marginTop: 2
-  },
-  payHeaderBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 8
-  },
-  payHeaderBtnText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  listContent: {
-    padding: spacing.xs,
-    paddingBottom: 80
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
+    borderRadius: radii.sm,
+    height: 36,
     justifyContent: 'center',
-    padding: spacing.xl
+    width: 36
   },
+  brandMarkText: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.md },
+  tableIdentityCopy: { gap: 1 },
+  headerHint: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  tableIdentityNumber: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xl,
+    fontVariant: [...typography.numeric.fontVariant],
+    lineHeight: typography.lineHeights.xl
+  },
+  headerPayment: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    minHeight: spacing.touchTargetMobile,
+    paddingHorizontal: spacing.md
+  },
+  headerPaymentText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  menuArea: { flex: 1 },
+  menuHeading: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
+  screenTitle: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xl,
+    lineHeight: typography.lineHeights.xl
+  },
+  menuDescription: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.sm,
+    lineHeight: typography.lineHeights.sm,
+    marginTop: spacing.xs
+  },
+  listContent: { paddingBottom: 148, paddingHorizontal: spacing.lg, paddingTop: spacing.md },
+  menuRow: { gap: spacing.md },
+  menuColumn: { flex: 1, minWidth: 0 },
+  centerContainer: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.xl },
   loadingText: {
-    marginTop: spacing.md,
-    fontSize: typography.sizes.sm
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.sm,
+    marginTop: spacing.md
   },
   customerCartBar: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    flexDirection: 'row',
     alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    bottom: spacing.md,
+    flexDirection: 'row',
+    gap: spacing.md,
     justifyContent: 'space-between',
-    borderTopWidth: 1,
-    minHeight: spacing.touchTargetPOS
-  },
-  cartCountText: {
-    color: '#94A3B8',
-    fontSize: 11
-  },
-  cartPriceText: {
-    color: '#F8FAFC',
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.extraBold
-  },
-  sendKitchenBtn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: 10,
-    minHeight: 44,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  btnDisabled: {
-    opacity: 0.6
-  },
-  sendKitchenText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    letterSpacing: 0.5
-  },
-  orderErrorBox: {
-    position: 'absolute',
-    bottom: 70,
-    left: 16,
-    right: 16,
-    backgroundColor: '#FEF2F2',
-    borderWidth: 1,
-    borderColor: '#EF4444',
-    padding: spacing.sm,
-    borderRadius: 8
-  },
-  orderErrorText: {
-    color: '#DC2626',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    textAlign: 'center'
-  },
-  trackerContainer: {
-    padding: spacing.lg
-  },
-  trackerCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3
-  },
-  trackerTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    textAlign: 'center'
-  },
-  trackerOrderCode: {
-    fontSize: typography.sizes.xs,
-    textAlign: 'center',
-    marginTop: 2,
-    marginBottom: spacing.lg
-  },
-  timeline: {
-    paddingHorizontal: spacing.sm,
-    marginBottom: spacing.lg
-  },
-  timelineStep: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md
-  },
-  stepCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#E2E8F0',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  stepCircleActive: {
-    backgroundColor: '#EA580C'
-  },
-  stepCircleReady: {
-    backgroundColor: '#16A34A'
-  },
-  stepNumber: {
-    color: '#FFFFFF',
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.xs
-  },
-  stepContent: {
-    flex: 1
-  },
-  stepTitle: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
-  },
-  stepTitleActive: {
-    color: '#EA580C',
-    fontWeight: typography.weights.bold
-  },
-  stepTitleReady: {
-    color: '#16A34A',
-    fontWeight: typography.weights.bold
-  },
-  stepDesc: {
-    fontSize: 10,
-    marginTop: 1
-  },
-  stepLine: {
-    width: 2,
-    height: 24,
-    backgroundColor: '#E2E8F0',
-    marginLeft: 15,
-    marginVertical: 4
-  },
-  stepLineActive: {
-    backgroundColor: '#EA580C'
-  },
-  orderedItemsBox: {
-    borderRadius: 10,
+    left: spacing.md,
+    minHeight: 104,
     padding: spacing.md,
-    borderWidth: 1,
-    marginBottom: spacing.lg
+    position: 'absolute',
+    right: spacing.md
   },
-  orderedItemsTitle: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    marginBottom: spacing.xs
+  cartSummaryCopy: { flex: 1, gap: 2 },
+  cartHeadingRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs },
+  cartTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  cartMeta: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  cartPrice: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.lg,
+    fontVariant: [...typography.numeric.fontVariant]
   },
-  orderedItemRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 4,
-    borderBottomWidth: 1
-  },
-  orderedItemName: {
-    fontSize: typography.sizes.xs
-  },
-  orderedItemPrice: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.semibold
-  },
-  orderedTotalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.xs,
-    paddingTop: spacing.xs,
-    borderTopWidth: 1
-  },
-  orderedTotalLabel: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  orderedTotalValue: {
+  cartAction: { minWidth: 128 },
+  orderError: { left: spacing.md, position: 'absolute', right: spacing.md },
+  progressContent: { gap: spacing.xl, padding: spacing.lg, paddingBottom: spacing.xxl },
+  progressHeading: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },
+  progressHeadingCopy: { flex: 1, gap: spacing.xs },
+  orderCode: {
+    fontFamily: typography.families.bodyMedium,
     fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.extraBold
+    fontVariant: [...typography.numeric.fontVariant]
   },
-  trackerActions: {
-    gap: spacing.sm
-  },
-  addMoreBtn: {
-    paddingVertical: spacing.md,
-    borderWidth: 1,
-    borderRadius: 8,
-    alignItems: 'center'
-  },
-  addMoreText: {
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.xs
-  },
-  checkoutNowBtn: {
-    paddingVertical: spacing.md,
-    borderRadius: 8,
-    alignItems: 'center'
-  },
-  checkoutNowText: {
-    color: '#FFFFFF',
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.xs,
-    letterSpacing: 0.5
-  },
-  modalBackdrop: {
-    flex: 1,
+  timeline: { paddingTop: spacing.xs },
+  timelineRow: { alignItems: 'stretch', flexDirection: 'row', gap: spacing.md },
+  timelineRail: { alignItems: 'center', width: 36 },
+  timelineMarker: {
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    borderWidth: 2,
+    height: 36,
     justifyContent: 'center',
-    padding: spacing.lg
+    width: 36
   },
-  qrModalContainer: {
-    borderRadius: 16,
-    maxHeight: '80%'
+  timelineLine: { flex: 1, minHeight: 40, width: 2 },
+  timelineCopy: { borderBottomWidth: 1, flex: 1, gap: spacing.xs, minHeight: 76, paddingBottom: spacing.lg },
+  timelineTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  timelineDescription: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.sm,
+    lineHeight: typography.lineHeights.sm
+  },
+  orderSection: { gap: spacing.sm },
+  sectionTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  orderItems: { borderRadius: radii.md, borderWidth: 1, overflow: 'hidden', paddingHorizontal: spacing.md },
+  orderItem: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
+  orderItemName: { flex: 1, fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
+  orderItemPrice: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm,
+    fontVariant: [...typography.numeric.fontVariant]
+  },
+  orderTotal: {
+    alignItems: 'center',
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.md
+  },
+  totalLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  vatNote: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, marginTop: 2 },
+  totalValue: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xl,
+    fontVariant: [...typography.numeric.fontVariant]
+  },
+  progressActions: { gap: spacing.sm },
+  modalBackdrop: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.md },
+  qrModal: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    maxHeight: '94%',
+    maxWidth: 480,
+    overflow: 'hidden',
+    width: '100%'
   },
   qrHeader: {
+    alignItems: 'center',
+    borderBottomWidth: 1,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: spacing.md,
-    borderBottomWidth: 1
+    padding: spacing.lg
   },
+  qrHeaderCopy: { flex: 1, gap: 2 },
   qrTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xl,
+    lineHeight: typography.lineHeights.xl
   },
-  closeBtnText: {
-    fontSize: 16,
-    fontWeight: typography.weights.bold
-  },
-  qrBody: {
-    padding: spacing.lg,
-    alignItems: 'center'
-  },
-  qrBox: {
-    borderWidth: 2,
-    borderRadius: 12,
-    padding: spacing.lg,
-    alignItems: 'center',
-    width: '100%',
-    marginBottom: spacing.md
-  },
-  qrEmoji: {
-    fontSize: 64,
-    marginBottom: spacing.xs
-  },
-  qrBankName: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold
-  },
-  qrAccount: {
-    fontSize: 12,
-    fontWeight: typography.weights.bold,
-    marginTop: 2
-  },
+  qrSubtitle: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
+  closeButton: { alignItems: 'center', borderRadius: radii.md, height: 44, justifyContent: 'center', width: 44 },
+  qrBody: { gap: spacing.lg, padding: spacing.lg },
+  qrCodePanel: { alignItems: 'center', gap: spacing.sm, padding: spacing.lg },
+  qrPlaceholder: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, height: 132, justifyContent: 'center', width: 132 },
+  qrBankName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  qrAccount: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
+  paymentDetails: { gap: spacing.md },
+  paymentLabel: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
   qrAmount: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.extraBold,
-    marginVertical: spacing.xs
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xl,
+    fontVariant: [...typography.numeric.fontVariant],
+    marginTop: spacing.xs
   },
-  qrContentText: {
-    fontSize: 11,
-    fontStyle: 'italic'
-  },
-  qrNotice: {
-    fontSize: 11,
-    textAlign: 'center',
-    lineHeight: 16,
-    marginBottom: spacing.lg
-  },
-  closeQrBtn: {
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.xl,
-    borderRadius: 8
-  },
-  closeQrText: {
-    color: '#FFFFFF',
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.xs
+  transferContent: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.md,
+    fontVariant: [...typography.numeric.fontVariant],
+    marginTop: spacing.xs
   }
 });
