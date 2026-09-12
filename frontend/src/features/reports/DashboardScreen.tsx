@@ -1,18 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Eye, Gauge, ReceiptText, RefreshCw, TrendingUp } from 'lucide-react-native';
 import {
   StyleSheet,
   Text,
   View,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
-  ActivityIndicator,
   RefreshControl,
-  SafeAreaView
+  SafeAreaView,
+  useWindowDimensions
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { DailyReportDto, OrderDto } from '../../api/contracts';
-import { typography, spacing } from '../../theme';
+import { brandColors, radii, spacing, statusColors, typography } from '../../theme';
+import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import { ReceiptModal } from '../pos/ReceiptModal';
 
 function formatVietnamDate(dateObj: Date): string {
@@ -34,7 +36,8 @@ function formatDisplayDateVN(dateStr: string): string {
 }
 
 export const DashboardScreen: React.FC = () => {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
+  const { width } = useWindowDimensions();
   const { fetchDailyReport, kdsOrders } = useRestaurant();
 
   const [currentDateStr, setCurrentDateStr] = useState<string>(() => formatVietnamDate(new Date()));
@@ -45,6 +48,7 @@ export const DashboardScreen: React.FC = () => {
   // Receipt Modal State
   const [receiptOrder, setReceiptOrder] = useState<OrderDto | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState<boolean>(false);
+  const isMobile = width < 768;
 
   const loadReport = useCallback(
     async (date: string) => {
@@ -85,17 +89,26 @@ export const DashboardScreen: React.FC = () => {
   const prepMinutes = report ? Math.floor(report.averagePrepTimeSec / 60) : 0;
   const prepSeconds = report ? report.averagePrepTimeSec % 60 : 0;
 
-  const getSOSTag = (sec: number) => {
-    if (sec === 0) return { label: 'Chưa có dữ liệu', bg: '#E2E8F0', text: '#475569' };
-    if (sec <= 180) return { label: '⚡ Siêu Nhanh (< 3p)', bg: '#D1FAE5', text: '#065F46' };
-    if (sec <= 300) return { label: '⏱️ Chuẩn (3 - 5p)', bg: '#FEF3C7', text: '#B45309' };
-    return { label: '⚠️ Chậm trễ (> 5p)', bg: '#FEE2E2', text: '#B91C1C' };
+  const getSOSTag = (sec: number): { label: string; tone: 'neutral' | 'success' | 'warning' | 'danger' } => {
+    if (sec === 0) return { label: 'Chưa có dữ liệu', tone: 'neutral' };
+    if (sec <= 180) return { label: 'Dưới 3 phút', tone: 'success' };
+    if (sec <= 300) return { label: 'Trong 3–5 phút', tone: 'warning' };
+    return { label: 'Trên 5 phút', tone: 'danger' };
   };
 
   const sosTag = getSOSTag(report?.averagePrepTimeSec || 0);
 
   // Completed sample orders from KDS store to preview receipt
   const completedOrders = kdsOrders.filter((o) => o.status === 'COMPLETED');
+  const completedCount = report?.completedOrders || 0;
+  const cancelledCount = report?.cancelledOrders || 0;
+  const pendingCount = Math.max(0, (report?.totalOrders || 0) - completedCount - cancelledCount);
+  const maxTopSellerQuantity = Math.max(1, ...(report?.topSellers || []).map((item) => item.quantitySold));
+  const reportPalette = {
+    primary: brandColors.primary,
+    secondary: brandColors.secondary,
+    neutral: statusColors.neutral.border
+  };
 
   const openReceipt = (order: OrderDto) => {
     setReceiptOrder(order);
@@ -103,233 +116,160 @@ export const DashboardScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Date Navigation Bar */}
-      <View style={[styles.dateBar, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-        <View style={styles.dateSelector}>
-          <TouchableOpacity
-            style={[styles.dateNavBtn, { backgroundColor: isDark ? '#334155' : '#F1F5F9' }]}
-            onPress={handlePrevDay}
-            accessibilityLabel="Xem ngày hôm trước"
-          >
-            <Text style={[styles.dateNavBtnText, { color: theme.text }]}>◀ Trước</Text>
-          </TouchableOpacity>
-
-          <View style={styles.dateCenterInfo}>
-            <Text style={[styles.dateMainText, { color: theme.text }]}>
-              {formatDisplayDateVN(currentDateStr)}
-            </Text>
-            <Text style={[styles.dateSubText, { color: theme.textMuted }]}>
-              {currentDateStr === formatVietnamDate(new Date()) ? '• Hôm nay (Asia/Ho_Chi_Minh)' : '• Lịch sử'}
-            </Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
+      <View style={[styles.reportHeader, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
+        <ScreenHeader title="Hiệu quả bán hàng" description="Số liệu theo ngày, tính trên các đơn đã hoàn tất." leading={<AppIcon icon={TrendingUp} color={theme.primary} size={22} />} />
+        <View style={[styles.dateToolbar, isMobile && styles.dateToolbarMobile]}>
+          <View style={styles.dateSelector}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Ngày trước" onPress={handlePrevDay} style={({ pressed }) => [styles.dateButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}>
+              <AppIcon icon={ChevronLeft} color={theme.textPrimary} size={18} />
+            </Pressable>
+            <View style={styles.dateCopy}>
+              <View style={styles.dateLabelRow}>
+                <AppIcon icon={CalendarDays} color={theme.textSecondary} size={17} />
+                <Text style={[styles.dateMainText, { color: theme.textPrimary }]}>{formatDisplayDateVN(currentDateStr)}</Text>
+              </View>
+              <Text style={[styles.dateSubText, { color: theme.textSecondary }]}>{currentDateStr === formatVietnamDate(new Date()) ? 'Hôm nay · Asia/Ho_Chi_Minh' : 'Dữ liệu lịch sử'}</Text>
+            </View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Ngày sau" onPress={handleNextDay} style={({ pressed }) => [styles.dateButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}>
+              <AppIcon icon={ChevronRight} color={theme.textPrimary} size={18} />
+            </Pressable>
           </View>
-
-          <TouchableOpacity
-            style={[styles.dateNavBtn, { backgroundColor: isDark ? '#334155' : '#F1F5F9' }]}
-            onPress={handleNextDay}
-            accessibilityLabel="Xem ngày hôm sau"
-          >
-            <Text style={[styles.dateNavBtnText, { color: theme.text }]}>Sau ▶</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.dateRightActions}>
-          <TouchableOpacity
-            style={[styles.todayBtn, { borderColor: theme.border }]}
-            onPress={handleToday}
-          >
-            <Text style={[styles.todayBtnText, { color: theme.primary }]}>Hôm Nay</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[styles.refreshBtn, { backgroundColor: theme.primary }]}
-            onPress={() => loadReport(currentDateStr)}
-            disabled={isLoading}
-          >
-            {isLoading ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
-            ) : (
-              <Text style={styles.refreshBtnText}>🔄 Tải Lại</Text>
-            )}
-          </TouchableOpacity>
+          <View style={styles.dateActions}>
+            <Button variant="quiet" label="Hôm nay" onPress={handleToday} />
+            <Button variant="secondary" label="Tải lại" icon={RefreshCw} loading={isLoading} onPress={() => void loadReport(currentDateStr)} />
+          </View>
         </View>
       </View>
 
-      {/* Main Report Content */}
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => loadReport(currentDateStr)} />}
-      >
+      <ScrollView contentContainerStyle={[styles.scrollContent, isMobile && styles.scrollContentMobile]} refreshControl={<RefreshControl refreshing={isLoading} onRefresh={() => loadReport(currentDateStr)} />}>
         {errorMessage && (
-          <View style={styles.errorBox}>
-            <Text style={styles.errorText}>⚠️ {errorMessage}</Text>
+          <View style={styles.feedbackStack}>
+            <InlineAlert title="Không thể tải báo cáo" message={`${errorMessage}. Kiểm tra kết nối rồi thử lại.`} />
+            <View style={styles.retryButton}><Button variant="secondary" label="Thử lại" icon={RefreshCw} onPress={() => void loadReport(currentDateStr)} /></View>
           </View>
         )}
 
-        {/* 4 Primary KPI Cards */}
-        <View style={styles.kpiGrid}>
-          {/* KPI 1: Doanh Thu */}
-          <View testID="kpi-revenue" style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={styles.kpiHeader}>
-              <Text style={[styles.kpiTitle, { color: theme.textMuted }]}>TỔNG DOANH THU</Text>
-              <Text style={styles.kpiIcon}>💵</Text>
-            </View>
-            <Text style={[styles.kpiValue, { color: isDark ? '#10B981' : '#059669' }]}>
-              {report ? report.totalRevenue.toLocaleString('vi-VN') : 0} đ
-            </Text>
-            <Text style={[styles.kpiSub, { color: theme.textMuted }]}>
-              Đã bao gồm VAT 8% (Chỉ tính đơn Hoàn tất)
-            </Text>
+        <View style={[styles.kpiLayout, isMobile && styles.kpiLayoutMobile]}>
+          <View testID="kpi-revenue" style={isMobile ? styles.revenueWrapMobile : styles.revenueWrap}>
+            <Surface level="raised" style={[styles.revenuePanel, { borderLeftColor: theme.primary }]}>
+              <View style={styles.metricLabelRow}>
+                <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Doanh thu thuần</Text>
+                <AppIcon icon={TrendingUp} color={theme.primary} size={20} />
+              </View>
+              <Text style={[styles.revenueValue, { color: theme.textPrimary }]}>{report ? report.totalRevenue.toLocaleString('vi-VN') : 0} đ</Text>
+              <Text style={[styles.metricDescription, { color: theme.textSecondary }]}>Doanh thu từ đơn hoàn tất, đã bao gồm VAT 8%.</Text>
+            </Surface>
           </View>
 
-          {/* KPI 2: Tổng Số Đơn */}
-          <View testID="kpi-orders" style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={styles.kpiHeader}>
-              <Text style={[styles.kpiTitle, { color: theme.textMuted }]}>TỔNG ĐƠN HÀNG</Text>
-              <Text style={styles.kpiIcon}>🧾</Text>
+          <View style={styles.supportingMetrics}>
+            <View testID="kpi-orders" style={styles.supportingMetricWide}>
+              <Surface level="raised" style={styles.metricPanel}>
+                <View style={styles.metricLabelRow}>
+                  <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Đơn hàng</Text>
+                  <AppIcon icon={ReceiptText} color={theme.textSecondary} size={18} />
+                </View>
+                <Text style={[styles.metricValue, { color: theme.textPrimary }]}>{report?.totalOrders || 0}</Text>
+                <View style={styles.badgeRow}>
+                  <StatusBadge tone="success" label={`${completedCount} hoàn tất`} />
+                  <StatusBadge tone="danger" label={`${cancelledCount} đã hủy`} />
+                </View>
+              </Surface>
             </View>
-            <Text style={[styles.kpiValue, { color: theme.text }]}>
-              {report ? report.totalOrders : 0} đơn
-            </Text>
-            <View style={styles.orderBreakdownRow}>
-              <Text style={[styles.orderStatusPill, { color: '#059669' }]}>
-                ✓ {report?.completedOrders || 0} xong
-              </Text>
-              <Text style={[styles.orderStatusPill, { color: '#DC2626' }]}>
-                ✕ {report?.cancelledOrders || 0} hủy
-              </Text>
+            <View testID="kpi-aov" style={styles.supportingMetric}>
+              <Surface level="raised" style={styles.metricPanel}>
+                <View style={styles.metricLabelRow}>
+                  <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Giá trị đơn trung bình</Text>
+                  <AppIcon icon={Gauge} color={theme.textSecondary} size={18} />
+                </View>
+                <Text style={[styles.metricValue, { color: theme.textPrimary }]}>{report ? report.averageOrderValue.toLocaleString('vi-VN') : 0} đ</Text>
+                <Text style={[styles.metricDescription, { color: theme.textSecondary }]}>Trên mỗi đơn hoàn tất.</Text>
+              </Surface>
             </View>
-          </View>
-
-          {/* KPI 3: Giá Trị Đơn Trung Bình (AOV) */}
-          <View testID="kpi-aov" style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={styles.kpiHeader}>
-              <Text style={[styles.kpiTitle, { color: theme.textMuted }]}>GIÁ TRỊ TRUNG BÌNH (AOV)</Text>
-              <Text style={styles.kpiIcon}>🎯</Text>
-            </View>
-            <Text style={[styles.kpiValue, { color: theme.text }]}>
-              {report ? report.averageOrderValue.toLocaleString('vi-VN') : 0} đ
-            </Text>
-            <Text style={[styles.kpiSub, { color: theme.textMuted }]}>Trên mỗi đơn hàng hoàn tất</Text>
-          </View>
-
-          {/* KPI 4: Tốc Độ Phục Vụ SOS */}
-          <View testID="kpi-sos" style={[styles.kpiCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={styles.kpiHeader}>
-              <Text style={[styles.kpiTitle, { color: theme.textMuted }]}>TỐC ĐỘ PHỤC VỤ (SOS)</Text>
-              <Text style={styles.kpiIcon}>⏱️</Text>
-            </View>
-            <Text style={[styles.kpiValue, { color: theme.text }]}>
-              {report && report.averagePrepTimeSec > 0 ? `${prepMinutes}p ${prepSeconds}s` : '--'}
-            </Text>
-            <View style={[styles.sosBadge, { backgroundColor: sosTag.bg }]}>
-              <Text style={[styles.sosBadgeText, { color: sosTag.text }]}>{sosTag.label}</Text>
+            <View testID="kpi-sos" style={styles.supportingMetric}>
+              <Surface level="raised" style={styles.metricPanel}>
+                <View style={styles.metricLabelRow}>
+                  <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>Tốc độ phục vụ</Text>
+                  <AppIcon icon={Clock3} color={theme.textSecondary} size={18} />
+                </View>
+                <Text style={[styles.metricValue, { color: theme.textPrimary }]}>{report && report.averagePrepTimeSec > 0 ? `${prepMinutes}p ${prepSeconds}s` : '--'}</Text>
+                <StatusBadge tone={sosTag.tone} label={sosTag.label} />
+              </Surface>
             </View>
           </View>
         </View>
 
-        {/* Top 5 Món Bán Chạy Nhất Section */}
-        <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>
-              🏆 Top 5 Món Bán Chạy Nhất Trong Ngày
-            </Text>
-            <Text style={[styles.sectionSubtitle, { color: theme.textMuted }]}>
-              Xếp hạng theo số lượng phần ăn bán ra từ các đơn hoàn tất
-            </Text>
-          </View>
+        <View style={[styles.decisionGrid, isMobile && styles.decisionGridMobile]}>
+          <Surface level="raised" style={styles.outcomePanel}>
+            <View style={styles.sectionHeader}>
+              <Text accessibilityRole="header" style={[styles.sectionTitle, { color: theme.textPrimary }]}>Kết quả đơn hàng</Text>
+              <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>Tỷ trọng hoàn tất, hủy và đang xử lý trong ngày.</Text>
+            </View>
+            {report && report.totalOrders > 0 ? (
+              <>
+                <View accessibilityLabel="Phân bổ kết quả đơn hàng" style={[styles.outcomeBar, { backgroundColor: theme.surfaceSunken }]}>
+                  {completedCount > 0 && <View style={{ backgroundColor: reportPalette.primary, flex: completedCount }} />}
+                  {pendingCount > 0 && <View style={{ backgroundColor: reportPalette.secondary, flex: pendingCount }} />}
+                  {cancelledCount > 0 && <View style={{ backgroundColor: reportPalette.neutral, flex: cancelledCount }} />}
+                </View>
+                <View style={styles.outcomeLegend}>
+                  <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: reportPalette.primary }]} /><Text style={[styles.legendText, { color: theme.textSecondary }]}>Hoàn tất {completedCount}</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: reportPalette.secondary }]} /><Text style={[styles.legendText, { color: theme.textSecondary }]}>Đang xử lý {pendingCount}</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: reportPalette.neutral }]} /><Text style={[styles.legendText, { color: theme.textSecondary }]}>Đã hủy {cancelledCount}</Text></View>
+                </View>
+              </>
+            ) : <EmptyState title="Chưa có đơn hàng" description="Chọn ngày khác hoặc tải lại sau khi ca bán hàng bắt đầu." />}
+          </Surface>
 
-          {report?.topSellers && report.topSellers.length > 0 ? (
-            <View style={styles.topSellerList}>
-              {report.topSellers.map((item, index) => {
-                const rankIcons = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
-
-                return (
-                  <View
-                    key={item.menuItemId}
-                    style={[
-                      styles.topSellerRow,
-                      { borderBottomColor: theme.border },
-                      index === report.topSellers.length - 1 && { borderBottomWidth: 0 }
-                    ]}
-                  >
-                    <View style={styles.rankBadge}>
-                      <Text style={styles.rankText}>{rankIcons[index] || `#${index + 1}`}</Text>
-                    </View>
-
+          <Surface level="raised" style={styles.topItemsPanel}>
+            <View style={styles.sectionHeader}>
+              <Text accessibilityRole="header" style={[styles.sectionTitle, { color: theme.textPrimary }]}>Món bán chạy</Text>
+              <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>Xếp hạng theo số phần trong các đơn hoàn tất.</Text>
+            </View>
+            {report?.topSellers && report.topSellers.length > 0 ? (
+              <View style={styles.topSellerList}>
+                {report.topSellers.map((item, index) => (
+                  <View key={item.menuItemId} style={styles.topSellerRow}>
+                    <Text style={[styles.rank, { color: theme.textSecondary }]}>{index + 1}</Text>
                     <View style={styles.topSellerInfo}>
-                      <Text style={[styles.topSellerName, { color: theme.text }]}>{item.name}</Text>
-                      <Text style={[styles.topSellerSub, { color: theme.textMuted }]}>
-                        Doanh thu món: {item.revenue.toLocaleString('vi-VN')} đ
-                      </Text>
-                    </View>
-
-                    <View style={[styles.qtyBadge, { backgroundColor: isDark ? '#1E293B' : '#FEF3C7' }]}>
-                      <Text style={[styles.qtyText, { color: isDark ? '#FBBF24' : '#B45309' }]}>
-                        {item.quantitySold} phần
-                      </Text>
+                      <View style={styles.topSellerCopy}>
+                        <Text style={[styles.topSellerName, { color: theme.textPrimary }]} numberOfLines={1}>{item.name}</Text>
+                        <Text style={[styles.topSellerQuantity, { color: theme.textSecondary }]}>{item.quantitySold} phần</Text>
+                      </View>
+                      <View style={[styles.itemBarTrack, { backgroundColor: theme.surfaceSunken }]}><View style={[styles.itemBarFill, { backgroundColor: reportPalette.primary, width: `${Math.max(8, (item.quantitySold / maxTopSellerQuantity) * 100)}%` as `${number}%` }]} /></View>
+                      <Text style={[styles.topSellerRevenue, { color: theme.textSecondary }]}>{item.revenue.toLocaleString('vi-VN')} đ doanh thu</Text>
                     </View>
                   </View>
-                );
-              })}
-            </View>
-          ) : (
-            <View style={styles.emptyTopSellerBox}>
-              <Text style={styles.emptyIcon}>🍽️</Text>
-              <Text style={[styles.emptyText, { color: theme.textMuted }]}>
-                Chưa có món ăn nào được hoàn tất trong ngày này
-              </Text>
-            </View>
-          )}
+                ))}
+              </View>
+            ) : <EmptyState title="Chưa có xếp hạng" description="Món bán chạy sẽ xuất hiện khi có đơn hoàn tất trong ngày." />}
+          </Surface>
         </View>
 
-        {/* Completed Orders & Immutable Receipt Snapshots */}
-        <View style={[styles.sectionCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+        <Surface level="raised" style={styles.receiptPanel}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>
-              🧾 Xem Hóa Đơn Snapshot Bất Biến (Audit Trail)
-            </Text>
-            <Text style={[styles.sectionSubtitle, { color: theme.textMuted }]}>
-              Kiểm tra tính bất biến của hóa đơn snapshot theo từng đơn hàng đã thanh toán
-            </Text>
+            <Text accessibilityRole="header" style={[styles.sectionTitle, { color: theme.textPrimary }]}>Đối soát hóa đơn</Text>
+            <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>Mở bản ghi hóa đơn của các đơn đã hoàn tất trong phiên.</Text>
           </View>
-
           {completedOrders.length > 0 ? (
-            <View style={styles.completedOrdersList}>
-              {completedOrders.slice(0, 5).map((ord) => (
-                <View key={ord.id} style={[styles.orderSnapshotRow, { borderBottomColor: theme.border }]}>
+            <View>
+              {completedOrders.slice(0, 5).map((order, index) => (
+                <View key={order.id} style={[styles.orderSnapshotRow, index < Math.min(completedOrders.length, 5) - 1 && { borderBottomColor: theme.borderSubtle, borderBottomWidth: 1 }]}>
                   <View style={styles.orderSnapshotInfo}>
-                    <Text style={[styles.orderCode, { color: theme.text }]}>#{ord.code}</Text>
-                    <Text style={[styles.orderMeta, { color: theme.textMuted }]}>
-                      {ord.orderType === 'DINE_IN' ? `Bàn ${ord.tableNumber ?? ord.tableId}` : 'Mang về'} •{' '}
-                      {ord.finalAmount.toLocaleString('vi-VN')} đ
-                    </Text>
+                    <Text style={[styles.orderCode, { color: theme.textPrimary }]}>#{order.code}</Text>
+                    <Text style={[styles.orderMeta, { color: theme.textSecondary }]}>{order.orderType === 'DINE_IN' ? `Bàn ${order.tableNumber ?? order.tableId}` : 'Mang về'} · {order.finalAmount.toLocaleString('vi-VN')} đ</Text>
                   </View>
-
-                  <TouchableOpacity
-                    style={[styles.viewReceiptBtn, { backgroundColor: isDark ? '#334155' : '#EEF2FF', borderColor: isDark ? '#475569' : '#C7D2FE' }]}
-                    onPress={() => openReceipt(ord)}
-                    accessibilityLabel={`Xem hóa đơn #${ord.code}`}
-                  >
-                    <Text style={[styles.viewReceiptBtnText, { color: isDark ? '#818CF8' : '#4F46E5' }]}>
-                      👁️ Xem Hóa Đơn PDF
-                    </Text>
-                  </TouchableOpacity>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Xem hóa đơn #${order.code}`} onPress={() => openReceipt(order)} style={({ pressed }) => [styles.receiptButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}>
+                    <AppIcon icon={Eye} color={theme.textPrimary} size={17} />
+                    <Text style={[styles.receiptButtonText, { color: theme.textPrimary }]}>Xem hóa đơn</Text>
+                  </Pressable>
                 </View>
               ))}
             </View>
-          ) : (
-            <View style={styles.emptyTopSellerBox}>
-              <Text style={styles.emptyIcon}>📋</Text>
-              <Text style={[styles.emptyText, { color: theme.textMuted }]}>
-                Chưa có đơn hàng nào trong bộ nhớ phiên làm việc
-              </Text>
-            </View>
-          )}
-        </View>
+          ) : <EmptyState title="Chưa có hóa đơn trong phiên" description="Hóa đơn đã hoàn tất sẽ xuất hiện ở đây để đối soát." />}
+        </Surface>
       </ScrollView>
 
-      {/* Immutable Receipt Modal */}
       <ReceiptModal
         visible={isReceiptModalOpen}
         order={receiptOrder}
@@ -340,252 +280,63 @@ export const DashboardScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  dateBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    flexWrap: 'wrap',
-    gap: spacing.sm
-  },
-  dateSelector: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md
-  },
-  dateNavBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
-    minHeight: 38,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  dateNavBtnText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  dateCenterInfo: {
-    alignItems: 'center'
-  },
-  dateMainText: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold
-  },
-  dateSubText: {
-    fontSize: 10,
-    marginTop: 1
-  },
-  dateRightActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm
-  },
-  todayBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
-    borderWidth: 1,
-    minHeight: 38,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  todayBtnText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  refreshBtn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.xs,
-    borderRadius: 8,
-    minHeight: 38,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  refreshBtnText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  scrollContent: {
-    padding: spacing.lg,
-    gap: spacing.lg
-  },
-  errorBox: {
-    backgroundColor: '#FEE2E2',
-    padding: spacing.md,
-    borderRadius: 8
-  },
-  errorText: {
-    color: '#B91C1C',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium
-  },
-  kpiGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.md
-  },
-  kpiCard: {
-    flex: 1,
-    minWidth: 200,
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2
-  },
-  kpiHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xs
-  },
-  kpiTitle: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold,
-    letterSpacing: 0.5
-  },
-  kpiIcon: {
-    fontSize: 18
-  },
-  kpiValue: {
-    fontSize: typography.sizes.xl,
-    fontWeight: typography.weights.extraBold,
-    marginVertical: spacing.xs
-  },
-  kpiSub: {
-    fontSize: 11
-  },
-  orderBreakdownRow: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    marginTop: 2
-  },
-  orderStatusPill: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold
-  },
-  sosBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 3,
-    borderRadius: 6,
-    marginTop: spacing.xs
-  },
-  sosBadgeText: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold
-  },
-  sectionCard: {
-    borderRadius: 14,
-    borderWidth: 1,
-    padding: spacing.lg,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2
-  },
-  sectionHeader: {
-    marginBottom: spacing.md
-  },
-  sectionTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold
-  },
-  sectionSubtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2
-  },
-  topSellerList: {
-    gap: spacing.sm
-  },
-  topSellerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1
-  },
-  rankBadge: {
-    width: 36,
-    alignItems: 'center'
-  },
-  rankText: {
-    fontSize: 18
-  },
-  topSellerInfo: {
-    flex: 1,
-    marginLeft: spacing.sm
-  },
-  topSellerName: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  },
-  topSellerSub: {
-    fontSize: 11,
-    marginTop: 2
-  },
-  qtyBadge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 16
-  },
-  qtyText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  emptyTopSellerBox: {
-    alignItems: 'center',
-    padding: spacing.xl
-  },
-  emptyIcon: {
-    fontSize: 36,
-    marginBottom: spacing.xs
-  },
-  emptyText: {
-    fontSize: typography.sizes.xs
-  },
-  completedOrdersList: {
-    gap: spacing.xs
-  },
-  orderSnapshotRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1
-  },
-  orderSnapshotInfo: {
-    flex: 1
-  },
-  orderCode: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  },
-  orderMeta: {
-    fontSize: 11,
-    marginTop: 2
-  },
-  viewReceiptBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 6,
-    borderWidth: 1,
-    minHeight: 36,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  viewReceiptBtnText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  }
+  container: { flex: 1 },
+  reportHeader: { borderBottomWidth: 1, gap: spacing.md, padding: spacing.lg },
+  dateToolbar: { alignItems: 'center', flexDirection: 'row', gap: spacing.lg, justifyContent: 'space-between' },
+  dateToolbarMobile: { alignItems: 'stretch', flexDirection: 'column' },
+  dateSelector: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  dateButton: { alignItems: 'center', borderRadius: radii.md, height: spacing.touchTargetMobile, justifyContent: 'center', width: spacing.touchTargetMobile },
+  dateCopy: { alignItems: 'center', minWidth: 212 },
+  dateLabelRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.xs },
+  dateMainText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  dateSubText: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
+  dateActions: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
+  scrollContent: { gap: spacing.lg, padding: spacing.lg },
+  scrollContentMobile: { padding: spacing.md },
+  feedbackStack: { gap: spacing.sm },
+  retryButton: { alignSelf: 'flex-start' },
+  kpiLayout: { flexDirection: 'row', gap: spacing.md },
+  kpiLayoutMobile: { flexDirection: 'column' },
+  revenueWrap: { flex: 1.35 },
+  revenueWrapMobile: { width: '100%' },
+  revenuePanel: { borderLeftWidth: 4, gap: spacing.md, height: '100%', justifyContent: 'center', minHeight: 184, padding: spacing.xl },
+  supportingMetrics: { flex: 2, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  supportingMetricWide: { flexBasis: 248, flexGrow: 1.25 },
+  supportingMetric: { flexBasis: 212, flexGrow: 1 },
+  metricPanel: { gap: spacing.sm, height: '100%', minHeight: 184, padding: spacing.lg },
+  metricLabelRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
+  metricLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
+  revenueValue: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.display, fontVariant: ['tabular-nums'], lineHeight: typography.lineHeights.display },
+  metricValue: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, fontVariant: ['tabular-nums'], lineHeight: typography.lineHeights.xl },
+  metricDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
+  badgeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  decisionGrid: { alignItems: 'stretch', flexDirection: 'row', gap: spacing.lg },
+  decisionGridMobile: { flexDirection: 'column' },
+  outcomePanel: { flex: 0.8, gap: spacing.lg, padding: spacing.lg },
+  topItemsPanel: { flex: 1.2, gap: spacing.md, padding: spacing.lg },
+  sectionHeader: { gap: 2 },
+  sectionTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg, lineHeight: typography.lineHeights.lg },
+  sectionSubtitle: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
+  outcomeBar: { borderRadius: radii.xs, flexDirection: 'row', height: spacing.md, overflow: 'hidden' },
+  outcomeLegend: { gap: spacing.sm },
+  legendItem: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  legendSwatch: { borderRadius: radii.xs, height: spacing.sm, width: spacing.sm },
+  legendText: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
+  topSellerList: { gap: spacing.md },
+  topSellerRow: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md },
+  rank: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg, textAlign: 'center', width: spacing.xl },
+  topSellerInfo: { flex: 1, gap: spacing.xs },
+  topSellerCopy: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },
+  topSellerName: { flex: 1, fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  topSellerQuantity: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs, fontVariant: ['tabular-nums'] },
+  itemBarTrack: { borderRadius: radii.xs, height: spacing.xs, overflow: 'hidden' },
+  itemBarFill: { borderRadius: radii.xs, height: '100%' },
+  topSellerRevenue: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, fontVariant: ['tabular-nums'] },
+  receiptPanel: { gap: spacing.md, padding: spacing.lg },
+  orderSnapshotRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', minHeight: 64, paddingVertical: spacing.sm },
+  orderSnapshotInfo: { flex: 1, gap: 2 },
+  orderCode: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.md },
+  orderMeta: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  receiptButton: { alignItems: 'center', borderRadius: radii.md, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: spacing.touchTargetMobile, paddingHorizontal: spacing.md },
+  receiptButtonText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm }
 });

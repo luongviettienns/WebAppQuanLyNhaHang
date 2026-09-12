@@ -1,21 +1,24 @@
 import React, { useState, useMemo } from 'react';
+import { ImageIcon, Pencil, Plus, Search, Trash2, X } from 'lucide-react-native';
 import {
   StyleSheet,
   Text,
   View,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
   TextInput,
   Modal,
   ActivityIndicator,
   Alert,
   Image,
-  Switch
+  Switch,
+  useWindowDimensions
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { MenuItemDto, MenuItemUpsertDto } from '../../api/contracts';
-import { typography, spacing } from '../../theme';
+import { elevation, radii, spacing, statusColors, typography } from '../../theme';
+import { AppIcon, Button, EmptyState, Field, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 
 interface ModifierOptionForm {
   id?: number;
@@ -44,7 +47,8 @@ interface MenuItemForm {
 }
 
 export const MenuManagementScreen: React.FC = () => {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
+  const { width } = useWindowDimensions();
   const {
     categories,
     allMenuItems,
@@ -61,6 +65,7 @@ export const MenuManagementScreen: React.FC = () => {
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
+  const isMobile = width < 768;
 
   // Form State
   const [form, setForm] = useState<MenuItemForm>({
@@ -319,525 +324,249 @@ export const MenuManagementScreen: React.FC = () => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Sub Header / Action Bar */}
-      <View style={[styles.actionBar, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-        <View style={styles.actionBarLeft}>
-          <Text style={[styles.screenTitle, { color: theme.text }]}>Quản Lý Thực Đơn</Text>
-          <Text style={[styles.screenSubtitle, { color: theme.textMuted }]}>
-            {filteredItems.length} món • Phân quyền Admin
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          testID="admin-btn-add-item"
-          style={[styles.createBtn, { backgroundColor: theme.primary }]}
-          onPress={openCreateModal}
-          accessibilityLabel="Thêm món ăn mới"
-        >
-          <Text style={styles.createBtnText}>➕ Thêm Món Mới</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Search Bar & Category Filter Pills */}
-      <View style={[styles.filterSection, { borderBottomColor: theme.border }]}>
-        <View style={[styles.searchBox, { backgroundColor: isDark ? '#1E293B' : '#F1F5F9', borderColor: theme.border }]}>
-          <Text style={styles.searchIcon}>🔍</Text>
+    <View style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
+      <View style={[styles.toolbar, isMobile && styles.toolbarMobile, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
+        <ScreenHeader
+          title="Quản lý thực đơn"
+          description={`${filteredItems.length} món đang hiển thị`}
+          actions={<Button testID="admin-btn-add-item" variant="primary" label="Thêm món" icon={Plus} onPress={openCreateModal} />}
+        />
+        <View style={[styles.searchBox, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+          <AppIcon icon={Search} color={theme.textSecondary} size={18} />
           <TextInput
-            style={[styles.searchInput, { color: theme.text }]}
-            placeholder="Tìm theo tên món hoặc mô tả..."
-            placeholderTextColor={theme.textMuted}
+            accessibilityLabel="Tìm món"
+            style={[styles.searchInput, { color: theme.textPrimary }]}
+            placeholder="Tìm món theo tên hoặc mô tả"
+            placeholderTextColor={theme.textSecondary}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
           {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Text style={[styles.clearSearch, { color: theme.textMuted }]}>✕</Text>
-            </TouchableOpacity>
+            <Pressable accessibilityRole="button" accessibilityLabel="Xóa tìm kiếm" onPress={() => setSearchQuery('')} style={styles.iconButton}>
+              <AppIcon icon={X} color={theme.textSecondary} size={18} />
+            </Pressable>
           )}
         </View>
-
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPills}>
-          <TouchableOpacity
-            style={[
-              styles.pill,
-              selectedCategoryId === null
-                ? { backgroundColor: theme.primary }
-                : { backgroundColor: isDark ? '#334155' : '#E2E8F0' }
-            ]}
-            onPress={() => setSelectedCategoryId(null)}
-          >
-            <Text
-              style={[
-                styles.pillText,
-                selectedCategoryId === null
-                  ? { color: '#FFFFFF', fontWeight: typography.weights.bold }
-                  : { color: theme.text }
-              ]}
-            >
-              Tất cả ({allMenuItems.length})
-            </Text>
-          </TouchableOpacity>
-
-          {categories.map((cat) => {
-            const isSelected = selectedCategoryId === cat.id;
-            const itemCount = allMenuItems.filter((i) => i.categoryId === cat.id).length;
+          {[{ id: null, name: 'Tất cả', count: allMenuItems.length }, ...categories.map((category) => ({
+            id: category.id,
+            name: category.name,
+            count: allMenuItems.filter((item) => item.categoryId === category.id).length
+          }))].map((category) => {
+            const selected = selectedCategoryId === category.id;
             return (
-              <TouchableOpacity
-                key={cat.id}
-                style={[
-                  styles.pill,
-                  isSelected
-                    ? { backgroundColor: theme.primary }
-                    : { backgroundColor: isDark ? '#334155' : '#E2E8F0' }
-                ]}
-                onPress={() => setSelectedCategoryId(cat.id)}
+              <Pressable
+                key={category.id ?? 'all'}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() => setSelectedCategoryId(category.id)}
+                style={[styles.pill, { backgroundColor: selected ? theme.interactivePrimary : theme.interactiveQuiet }]}
               >
-                <Text
-                  style={[
-                    styles.pillText,
-                    isSelected
-                      ? { color: '#FFFFFF', fontWeight: typography.weights.bold }
-                      : { color: theme.text }
-                  ]}
-                >
-                  {cat.name} ({itemCount})
-                </Text>
-              </TouchableOpacity>
+                <Text style={[styles.pillText, { color: selected ? theme.textInverse : theme.textPrimary }]}>{category.name} ({category.count})</Text>
+              </Pressable>
             );
           })}
         </ScrollView>
       </View>
 
-      {/* Menu Item Cards List */}
       {isLoadingMenu ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={[styles.loadingText, { color: theme.textMuted }]}>Đang tải thực đơn...</Text>
+          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Đang tải thực đơn…</Text>
         </View>
       ) : filteredItems.length === 0 ? (
-        <View style={styles.centerContainer}>
-          <Text style={styles.emptyIcon}>🍽️</Text>
-          <Text style={[styles.emptyText, { color: theme.text }]}>Không tìm thấy món ăn nào</Text>
-          <Text style={[styles.emptySubtext, { color: theme.textMuted }]}>
-            Hãy thử tìm kiếm với từ khóa khác hoặc nhấn &quot;➕ Thêm Món Mới&quot;
-          </Text>
-        </View>
+        <EmptyState
+          title="Không có món phù hợp"
+          description="Thử từ khóa hoặc danh mục khác, hoặc thêm món mới vào thực đơn."
+          action={<Button variant="secondary" label="Thêm món" icon={Plus} onPress={openCreateModal} />}
+        />
       ) : (
         <ScrollView contentContainerStyle={styles.itemsList}>
-          {filteredItems.map((item) => {
-            const isToggling = togglingItemId === item.id;
-            const modGroupCount = item.modifierGroups?.length || 0;
+          <Surface level="raised" style={styles.menuTable}>
+            {!isMobile && (
+              <View style={[styles.tableHeader, { backgroundColor: theme.surfaceSunken, borderBottomColor: theme.borderSubtle }]}>
+                <Text style={[styles.headerItem, styles.productColumn, { color: theme.textSecondary }]}>Món ăn</Text>
+                <Text style={[styles.headerItem, styles.priceColumn, { color: theme.textSecondary }]}>Giá bán</Text>
+                <Text style={[styles.headerItem, styles.statusColumn, { color: theme.textSecondary }]}>Tình trạng</Text>
+                <Text style={[styles.headerItem, styles.actionColumn, { color: theme.textSecondary }]}>Thao tác</Text>
+              </View>
+            )}
 
-            return (
-              <View
-                key={item.id}
-                style={[
-                  styles.itemCard,
-                  { backgroundColor: theme.card, borderColor: theme.border },
-                  !item.isAvailable && styles.itemCardDisabled
-                ]}
-              >
-                {/* Left Thumbnail or Icon */}
-                <View style={styles.thumbnailContainer}>
-                  {item.imageUrl ? (
-                    <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" />
-                  ) : (
-                    <View style={[styles.fallbackThumbnail, { backgroundColor: isDark ? '#334155' : '#F1F5F9' }]}>
-                      <Text style={styles.fallbackIcon}>🍔</Text>
+            {filteredItems.map((item, index) => {
+              const isToggling = togglingItemId === item.id;
+              const modGroupCount = item.modifierGroups?.length || 0;
+              return (
+                <View
+                  key={item.id}
+                  style={[
+                    styles.itemRow,
+                    isMobile && styles.itemRowMobile,
+                    index < filteredItems.length - 1 && { borderBottomColor: theme.borderSubtle, borderBottomWidth: 1 },
+                    !item.isAvailable && styles.itemUnavailable
+                  ]}
+                >
+                  <View style={[styles.productCell, !isMobile && styles.productColumn]}>
+                    <View style={[styles.thumbnailContainer, { backgroundColor: theme.surfaceSunken }]}>
+                      {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={22} />}
                     </View>
-                  )}
-                  {!item.isAvailable && (
-                    <View style={styles.soldOutBadgeOverlay}>
-                      <Text style={styles.soldOutBadgeText}>86&apos;d</Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Middle Info */}
-                <View style={styles.itemInfo}>
-                  <View style={styles.itemTitleRow}>
-                    <Text style={[styles.itemName, { color: theme.text }]} numberOfLines={1}>
-                      {item.name}
-                    </Text>
-                    <View style={[styles.categoryTag, { backgroundColor: isDark ? '#1E293B' : '#F3F4F6' }]}>
-                      <Text style={[styles.categoryTagText, { color: theme.textMuted }]}>
-                        {getCategoryName(item.categoryId)}
+                    <View style={styles.itemInfo}>
+                      <Text style={[styles.itemName, { color: theme.textPrimary }]} numberOfLines={1}>{item.name}</Text>
+                      <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={2}>
+                        {getCategoryName(item.categoryId)}{modGroupCount > 0 ? ` · ${modGroupCount} nhóm tùy chọn` : ''}
                       </Text>
+                      {item.description ? <Text style={[styles.itemDescription, { color: theme.textSecondary }]} numberOfLines={2}>{item.description}</Text> : null}
                     </View>
                   </View>
 
-                  <Text style={[styles.itemPrice, { color: theme.primary }]}>
-                    {item.basePrice.toLocaleString('vi-VN')} đ
-                  </Text>
+                  <Text style={[styles.itemPrice, !isMobile && styles.priceColumn, { color: theme.textPrimary }]}>{item.basePrice.toLocaleString('vi-VN')} đ</Text>
 
-                  {item.description ? (
-                    <Text style={[styles.itemDesc, { color: theme.textMuted }]} numberOfLines={2}>
-                      {item.description}
-                    </Text>
-                  ) : null}
-
-                  {modGroupCount > 0 && (
-                    <View style={styles.modifierBadgesRow}>
-                      <Text style={[styles.modBadge, { backgroundColor: isDark ? '#064E3B' : '#D1FAE5', color: isDark ? '#6EE7B7' : '#065F46' }]}>
-                        ⚙️ {modGroupCount} nhóm tùy chọn
-                      </Text>
-                    </View>
-                  )}
-                </View>
-
-                {/* Right Actions: Sold-Out Switch & Edit Button */}
-                <View style={styles.itemActions}>
-                  <View style={styles.switchWrapper}>
-                    <Text style={[styles.switchLabel, { color: item.isAvailable ? '#10B981' : '#EF4444' }]}>
-                      {item.isAvailable ? 'Còn hàng' : 'Hết món'}
-                    </Text>
+                  <View style={[styles.availabilityCell, !isMobile && styles.statusColumn]}>
+                    <StatusBadge tone={item.isAvailable ? 'success' : 'danger'} label={item.isAvailable ? 'Còn hàng' : 'Hết món'} />
                     {isToggling ? (
                       <ActivityIndicator size="small" color={theme.primary} />
                     ) : (
                       <Switch
                         testID={`menu-item-switch-${item.id}`}
+                        accessibilityLabel={`${item.isAvailable ? 'Đánh dấu hết món' : 'Mở bán lại'} ${item.name}`}
                         value={item.isAvailable}
-                        onValueChange={() => handleToggleSoldOut(item)}
-                        trackColor={{ false: '#EF4444', true: '#10B981' }}
-                        thumbColor="#FFFFFF"
+                        onValueChange={() => void handleToggleSoldOut(item)}
+                        trackColor={{ false: statusColors.danger.border, true: statusColors.success.border }}
+                        thumbColor={theme.surfaceBase}
                       />
                     )}
                   </View>
 
-                  <TouchableOpacity
-                    style={[styles.editBtn, { backgroundColor: isDark ? '#334155' : '#EEF2FF', borderColor: isDark ? '#475569' : '#C7D2FE' }]}
-                    onPress={() => openEditModal(item)}
-                    accessibilityLabel={`Chỉnh sửa món ${item.name}`}
-                  >
-                    <Text style={[styles.editBtnText, { color: isDark ? '#818CF8' : '#4F46E5' }]}>✏️ Sửa</Text>
-                  </TouchableOpacity>
+                  <View style={[styles.actionCell, !isMobile && styles.actionColumn]}>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`Chỉnh sửa món ${item.name}`}
+                      onPress={() => openEditModal(item)}
+                      style={({ pressed }) => [styles.editButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}
+                    >
+                      <AppIcon icon={Pencil} color={theme.textPrimary} size={17} />
+                      <Text style={[styles.editButtonText, { color: theme.textPrimary }]}>Chỉnh sửa</Text>
+                    </Pressable>
+                  </View>
                 </View>
-              </View>
-            );
-          })}
+              );
+            })}
+          </Surface>
         </ScrollView>
       )}
 
-      {/* Upsert Modal (Create / Edit Menu Item) */}
       <Modal visible={isModalOpen} animationType="slide" transparent onRequestClose={() => setIsModalOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            {/* Modal Header */}
-            <View style={[styles.modalHeader, { borderBottomColor: theme.border }]}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>
-                {editingItem ? `✏️ Chỉnh Sửa: ${editingItem.name}` : '➕ Thêm Món Ăn Mới'}
-              </Text>
-              <TouchableOpacity onPress={() => setIsModalOpen(false)} style={styles.closeBtn}>
-                <Text style={[styles.closeBtnText, { color: theme.textMuted }]}>✕</Text>
-              </TouchableOpacity>
+        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+          <View style={[styles.modalCard, elevation.modal, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.borderSubtle }]}>
+              <View style={styles.modalHeadingCopy}>
+                <Text accessibilityRole="header" style={[styles.modalTitle, { color: theme.textPrimary }]}>{editingItem ? 'Chỉnh sửa món' : 'Thêm món mới'}</Text>
+                {editingItem && <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>{editingItem.name}</Text>}
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Đóng biểu mẫu" onPress={() => setIsModalOpen(false)} style={({ pressed }) => [styles.iconButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}>
+                <AppIcon icon={X} color={theme.textPrimary} />
+              </Pressable>
             </View>
 
-            {/* Error banner */}
-            {formError && (
-              <View style={styles.errorBanner}>
-                <Text style={styles.errorBannerText}>⚠️ {formError}</Text>
-              </View>
-            )}
-
-            {/* Modal Body Form */}
             <ScrollView contentContainerStyle={styles.modalBody}>
-              {/* Tên món */}
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, { color: theme.text }]}>
-                  Tên món ăn <Text style={styles.requiredMark}>*</Text>
-                </Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', color: theme.text, borderColor: theme.border }]}
-                  placeholder="VD: Burger Bò Phô Mai Đặc Biệt"
-                  placeholderTextColor={theme.textMuted}
-                  value={form.name}
-                  onChangeText={(val) => setForm((prev) => ({ ...prev, name: val }))}
-                />
-              </View>
+              {formError && <InlineAlert title="Chưa thể lưu món" message={formError} />}
 
-              {/* Danh mục */}
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, { color: theme.text }]}>
-                  Danh mục <Text style={styles.requiredMark}>*</Text>
-                </Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.catSelectRow}>
-                  {categories.map((cat) => {
-                    const isSelected = form.categoryId === cat.id;
-                    return (
-                      <TouchableOpacity
-                        key={cat.id}
-                        style={[
-                          styles.catSelectPill,
-                          isSelected
-                            ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                            : { backgroundColor: isDark ? '#1E293B' : '#F1F5F9', borderColor: theme.border }
-                        ]}
-                        onPress={() => setForm((prev) => ({ ...prev, categoryId: cat.id }))}
-                      >
-                        <Text
-                          style={[
-                            styles.catSelectText,
-                            isSelected ? { color: '#FFFFFF', fontWeight: typography.weights.bold } : { color: theme.text }
-                          ]}
-                        >
-                          {cat.name}
-                        </Text>
-                      </TouchableOpacity>
-                    );
-                  })}
-                </ScrollView>
-              </View>
-
-              {/* Giá cơ bản & Trạng thái còn hàng */}
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1, marginRight: spacing.md }]}>
-                  <Text style={[styles.label, { color: theme.text }]}>
-                    Giá cơ bản (VND) <Text style={styles.requiredMark}>*</Text>
-                  </Text>
-                  <TextInput
-                    style={[styles.input, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', color: theme.text, borderColor: theme.border }]}
-                    placeholder="VD: 65000"
-                    placeholderTextColor={theme.textMuted}
-                    keyboardType="numeric"
-                    value={form.basePriceStr}
-                    onChangeText={(val) => setForm((prev) => ({ ...prev, basePriceStr: val.replace(/[^0-9]/g, '') }))}
-                  />
+              <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
+                <View style={styles.sectionHeading}>
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Thông tin món</Text>
+                  <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>Tên, danh mục và nội dung khách nhìn thấy.</Text>
                 </View>
+                <Field label="Tên món *" placeholder="Ví dụ: Burger bò phô mai" value={form.name} onChangeText={(value) => setForm((previous) => ({ ...previous, name: value }))} />
+                <View style={styles.categoryField}>
+                  <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Danh mục *</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPills}>
+                    {categories.map((category) => {
+                      const selected = form.categoryId === category.id;
+                      return (
+                        <Pressable key={category.id} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => setForm((previous) => ({ ...previous, categoryId: category.id }))} style={[styles.pill, { backgroundColor: selected ? theme.interactivePrimary : theme.interactiveQuiet }]}>
+                          <Text style={[styles.pillText, { color: selected ? theme.textInverse : theme.textPrimary }]}>{category.name}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+                <Field label="Mô tả" placeholder="Thành phần hoặc đặc điểm của món" multiline numberOfLines={3} style={styles.textArea} value={form.description} onChangeText={(value) => setForm((previous) => ({ ...previous, description: value }))} />
+                <Field label="Đường dẫn ảnh" placeholder="https://..." autoCapitalize="none" value={form.imageUrl} onChangeText={(value) => setForm((previous) => ({ ...previous, imageUrl: value }))} />
+              </View>
 
-                <View style={[styles.formGroup, { width: 120 }]}>
-                  <Text style={[styles.label, { color: theme.text }]}>Trạng thái</Text>
-                  <View style={styles.switchRowInline}>
-                    <Switch
-                      value={form.isAvailable}
-                      onValueChange={(val) => setForm((prev) => ({ ...prev, isAvailable: val }))}
-                      trackColor={{ false: '#EF4444', true: '#10B981' }}
-                      thumbColor="#FFFFFF"
-                    />
-                    <Text style={[styles.switchStatusText, { color: form.isAvailable ? '#10B981' : '#EF4444' }]}>
-                      {form.isAvailable ? 'Còn' : 'Hết'}
-                    </Text>
-                  </View>
+              <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
+                <View style={styles.sectionHeading}>
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Giá bán</Text>
+                  <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>Nhập giá cơ bản trước tùy chọn, theo VND.</Text>
+                </View>
+                <Field label="Giá cơ bản *" placeholder="65000" keyboardType="numeric" value={form.basePriceStr} onChangeText={(value) => setForm((previous) => ({ ...previous, basePriceStr: value.replace(/[^0-9]/g, '') }))} />
+              </View>
+
+              <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
+                <View style={styles.sectionHeading}>
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Tình trạng phục vụ</Text>
+                  <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>Cho phép nhân viên và khách chọn món này ngay sau khi lưu.</Text>
+                </View>
+                <View style={styles.formAvailability}>
+                  <StatusBadge tone={form.isAvailable ? 'success' : 'danger'} label={form.isAvailable ? 'Còn hàng' : 'Hết món'} />
+                  <Switch accessibilityLabel="Mở bán món" value={form.isAvailable} onValueChange={(value) => setForm((previous) => ({ ...previous, isAvailable: value }))} trackColor={{ false: statusColors.danger.border, true: statusColors.success.border }} thumbColor={theme.surfaceBase} />
                 </View>
               </View>
 
-              {/* Mô tả */}
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, { color: theme.text }]}>Mô tả món ăn</Text>
-                <TextInput
-                  style={[
-                    styles.input,
-                    styles.textArea,
-                    { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', color: theme.text, borderColor: theme.border }
-                  ]}
-                  placeholder="Thành phần, đặc điểm nổi bật của món..."
-                  placeholderTextColor={theme.textMuted}
-                  multiline
-                  numberOfLines={3}
-                  value={form.description}
-                  onChangeText={(val) => setForm((prev) => ({ ...prev, description: val }))}
-                />
-              </View>
-
-              {/* Ảnh URL */}
-              <View style={styles.formGroup}>
-                <Text style={[styles.label, { color: theme.text }]}>Đường dẫn ảnh (Image URL)</Text>
-                <TextInput
-                  style={[styles.input, { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', color: theme.text, borderColor: theme.border }]}
-                  placeholder="https://images.unsplash.com/..."
-                  placeholderTextColor={theme.textMuted}
-                  value={form.imageUrl}
-                  onChangeText={(val) => setForm((prev) => ({ ...prev, imageUrl: val }))}
-                />
-              </View>
-
-              {/* Modifier Groups Section */}
-              <View style={styles.modifierSection}>
-                <View style={styles.modSectionHeader}>
-                  <View>
-                    <Text style={[styles.modSectionTitle, { color: theme.text }]}>⚙️ Nhóm Tùy Chọn (Modifiers)</Text>
-                    <Text style={[styles.modSectionSubtitle, { color: theme.textMuted }]}>
-                      Cỡ ly, Vị sốt cay, Topping thêm...
-                    </Text>
+              <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
+                <View style={[styles.modifierHeader, isMobile && styles.modifierHeaderMobile]}>
+                  <View style={styles.sectionHeading}>
+                    <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Nhóm tùy chọn</Text>
+                    <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>Cỡ phần, vị sốt hoặc món thêm đi kèm.</Text>
                   </View>
-                  <TouchableOpacity
-                    style={[styles.addModGroupBtn, { backgroundColor: isDark ? '#065F46' : '#ECFDF5', borderColor: isDark ? '#047857' : '#A7F3D0' }]}
-                    onPress={addModifierGroup}
-                  >
-                    <Text style={[styles.addModGroupBtnText, { color: isDark ? '#6EE7B7' : '#065F46' }]}>
-                      ➕ Thêm Nhóm
-                    </Text>
-                  </TouchableOpacity>
+                  <Button variant="secondary" label="Thêm nhóm" icon={Plus} onPress={addModifierGroup} />
                 </View>
 
                 {form.modifierGroups.length === 0 ? (
-                  <View style={[styles.noModBox, { borderColor: theme.border }]}>
-                    <Text style={[styles.noModText, { color: theme.textMuted }]}>
-                      Món này chưa có nhóm tùy chọn nào. Nhấn &quot;Thêm Nhóm&quot; nếu có yêu cầu chọn size, vị, topping...
-                    </Text>
-                  </View>
-                ) : (
-                  form.modifierGroups.map((group, groupIdx) => {
-                    const minVal = parseInt(group.minSelectStr || '0', 10);
-                    const maxVal = parseInt(group.maxSelectStr || '1', 10);
-                    const hasRuleError = minVal > maxVal || group.options.length < maxVal;
-
-                    return (
-                      <View
-                        key={groupIdx}
-                        style={[
-                          styles.groupCard,
-                          { backgroundColor: isDark ? '#1E293B' : '#F8FAFC', borderColor: hasRuleError ? '#EF4444' : theme.border }
-                        ]}
-                      >
-                        {/* Group Header */}
-                        <View style={styles.groupCardHeader}>
-                          <Text style={[styles.groupCardIndex, { color: theme.primary }]}>
-                            Nhóm #{groupIdx + 1}
-                          </Text>
-                          <TouchableOpacity onPress={() => removeModifierGroup(groupIdx)}>
-                            <Text style={styles.deleteGroupBtnText}>🗑️ Xóa nhóm</Text>
-                          </TouchableOpacity>
-                        </View>
-
-                        {/* Group Name & isRequired */}
-                        <View style={styles.formRow}>
-                          <View style={[styles.formGroup, { flex: 2, marginRight: spacing.md }]}>
-                            <Text style={[styles.subLabel, { color: theme.text }]}>Tên nhóm tùy chọn *</Text>
-                            <TextInput
-                              style={[styles.inputSmall, { backgroundColor: isDark ? '#0F172A' : '#FFFFFF', color: theme.text, borderColor: theme.border }]}
-                              placeholder="VD: Cấp độ cay / Size"
-                              placeholderTextColor={theme.textMuted}
-                              value={group.name}
-                              onChangeText={(val) => updateModifierGroup(groupIdx, 'name', val)}
-                            />
-                          </View>
-
-                          <View style={[styles.formGroup, { flex: 1 }]}>
-                            <Text style={[styles.subLabel, { color: theme.text }]}>Bắt buộc?</Text>
-                            <View style={styles.switchRowInline}>
-                              <Switch
-                                value={group.isRequired}
-                                onValueChange={(val) => updateModifierGroup(groupIdx, 'isRequired', val)}
-                                trackColor={{ false: '#94A3B8', true: theme.primary }}
-                                thumbColor="#FFFFFF"
-                              />
-                              <Text style={[styles.switchStatusText, { color: group.isRequired ? theme.primary : theme.textMuted }]}>
-                                {group.isRequired ? 'Có' : 'Không'}
-                              </Text>
-                            </View>
-                          </View>
-                        </View>
-
-                        {/* Min / Max Select */}
-                        <View style={styles.formRow}>
-                          <View style={[styles.formGroup, { flex: 1, marginRight: spacing.md }]}>
-                            <Text style={[styles.subLabel, { color: theme.text }]}>Chọn tối thiểu (minSelect)</Text>
-                            <TextInput
-                              style={[styles.inputSmall, { backgroundColor: isDark ? '#0F172A' : '#FFFFFF', color: theme.text, borderColor: theme.border }]}
-                              placeholder="0"
-                              placeholderTextColor={theme.textMuted}
-                              keyboardType="numeric"
-                              value={group.minSelectStr}
-                              onChangeText={(val) => updateModifierGroup(groupIdx, 'minSelectStr', val.replace(/[^0-9]/g, ''))}
-                            />
-                          </View>
-
-                          <View style={[styles.formGroup, { flex: 1 }]}>
-                            <Text style={[styles.subLabel, { color: theme.text }]}>Chọn tối đa (maxSelect)</Text>
-                            <TextInput
-                              style={[styles.inputSmall, { backgroundColor: isDark ? '#0F172A' : '#FFFFFF', color: theme.text, borderColor: theme.border }]}
-                              placeholder="1"
-                              placeholderTextColor={theme.textMuted}
-                              keyboardType="numeric"
-                              value={group.maxSelectStr}
-                              onChangeText={(val) => updateModifierGroup(groupIdx, 'maxSelectStr', val.replace(/[^0-9]/g, ''))}
-                            />
-                          </View>
-                        </View>
-
-                        {/* Validation notice for group constraints */}
-                        {hasRuleError && (
-                          <View style={styles.groupConstraintWarning}>
-                            <Text style={styles.groupConstraintWarningText}>
-                              {minVal > maxVal
-                                ? '⚠️ Lỗi: minSelect không được lớn hơn maxSelect'
-                                : `⚠️ Cần thêm ít nhất ${maxVal - group.options.length} tùy chọn nữa để đủ maxSelect = ${maxVal}`}
-                            </Text>
-                          </View>
-                        )}
-
-                        {/* Options List */}
-                        <Text style={[styles.optionsTitle, { color: theme.text }]}>
-                          Danh sách Lựa chọn ({group.options.length})
-                        </Text>
-
-                        {group.options.map((opt, optIdx) => (
-                          <View key={optIdx} style={styles.optionRow}>
-                            <TextInput
-                              style={[styles.optNameInput, { backgroundColor: isDark ? '#0F172A' : '#FFFFFF', color: theme.text, borderColor: theme.border }]}
-                              placeholder="Tên tùy chọn (VD: Cay vừa)"
-                              placeholderTextColor={theme.textMuted}
-                              value={opt.name}
-                              onChangeText={(val) => updateOptionInGroup(groupIdx, optIdx, 'name', val)}
-                            />
-
-                            <TextInput
-                              style={[styles.optPriceInput, { backgroundColor: isDark ? '#0F172A' : '#FFFFFF', color: theme.text, borderColor: theme.border }]}
-                              placeholder="+0đ"
-                              placeholderTextColor={theme.textMuted}
-                              keyboardType="numeric"
-                              value={opt.priceDeltaStr}
-                              onChangeText={(val) => updateOptionInGroup(groupIdx, optIdx, 'priceDeltaStr', val.replace(/[^0-9]/g, ''))}
-                            />
-
-                            <TouchableOpacity
-                              style={styles.deleteOptionBtn}
-                              onPress={() => removeOptionFromGroup(groupIdx, optIdx)}
-                            >
-                              <Text style={styles.deleteOptionBtnText}>✕</Text>
-                            </TouchableOpacity>
-                          </View>
-                        ))}
-
-                        <TouchableOpacity
-                          style={[styles.addOptionBtn, { borderColor: theme.border }]}
-                          onPress={() => addOptionToGroup(groupIdx)}
-                        >
-                          <Text style={[styles.addOptionBtnText, { color: theme.primary }]}>
-                            ➕ Thêm Lựa Chọn
-                          </Text>
-                        </TouchableOpacity>
+                  <EmptyState title="Chưa có nhóm tùy chọn" description="Thêm nhóm khi món cần chọn cỡ, vị hoặc món kèm." />
+                ) : form.modifierGroups.map((group, groupIndex) => {
+                  const minValue = parseInt(group.minSelectStr || '0', 10);
+                  const maxValue = parseInt(group.maxSelectStr || '1', 10);
+                  const hasRuleError = minValue > maxValue || group.options.length < maxValue;
+                  return (
+                    <View key={group.id ?? groupIndex} style={[styles.modifierGroup, { backgroundColor: theme.surfaceSunken, borderColor: hasRuleError ? theme.danger : theme.borderSubtle }]}>
+                      <View style={styles.groupHeader}>
+                        <Text style={[styles.groupTitle, { color: theme.textPrimary }]}>Nhóm {groupIndex + 1}</Text>
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Xóa nhóm ${groupIndex + 1}`} onPress={() => removeModifierGroup(groupIndex)} style={styles.destructiveIconButton}>
+                          <AppIcon icon={Trash2} color={theme.danger} size={18} />
+                        </Pressable>
                       </View>
-                    );
-                  })
-                )}
+                      <View style={[styles.formColumns, isMobile && styles.formColumnsMobile]}>
+                        <View style={styles.growField}><Field label="Tên nhóm *" placeholder="Ví dụ: Cấp độ cay" value={group.name} onChangeText={(value) => updateModifierGroup(groupIndex, 'name', value)} /></View>
+                        <View style={styles.requiredControl}>
+                          <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Bắt buộc</Text>
+                          <Switch value={group.isRequired} onValueChange={(value) => updateModifierGroup(groupIndex, 'isRequired', value)} trackColor={{ false: theme.borderStrong, true: theme.interactivePrimary }} thumbColor={theme.surfaceBase} />
+                        </View>
+                      </View>
+                      <View style={[styles.formColumns, isMobile && styles.formColumnsMobile]}>
+                        <View style={styles.growField}><Field label="Chọn tối thiểu" keyboardType="numeric" value={group.minSelectStr} onChangeText={(value) => updateModifierGroup(groupIndex, 'minSelectStr', value.replace(/[^0-9]/g, ''))} /></View>
+                        <View style={styles.growField}><Field label="Chọn tối đa" keyboardType="numeric" value={group.maxSelectStr} onChangeText={(value) => updateModifierGroup(groupIndex, 'maxSelectStr', value.replace(/[^0-9]/g, ''))} /></View>
+                      </View>
+                      {hasRuleError && <InlineAlert message={minValue > maxValue ? 'Số lượng tối thiểu không được lớn hơn tối đa.' : `Thêm ${maxValue - group.options.length} lựa chọn để đáp ứng số lượng tối đa.`} />}
+                      <Text style={[styles.optionsTitle, { color: theme.textPrimary }]}>Lựa chọn ({group.options.length})</Text>
+                      {group.options.map((option, optionIndex) => (
+                        <View key={option.id ?? optionIndex} style={[styles.optionRow, isMobile && styles.optionRowMobile]}>
+                          <View style={styles.optionName}><Field label={`Lựa chọn ${optionIndex + 1}`} placeholder="Tên lựa chọn" value={option.name} onChangeText={(value) => updateOptionInGroup(groupIndex, optionIndex, 'name', value)} /></View>
+                          <View style={styles.optionPrice}><Field label="Phụ phí" placeholder="0" keyboardType="numeric" value={option.priceDeltaStr} onChangeText={(value) => updateOptionInGroup(groupIndex, optionIndex, 'priceDeltaStr', value.replace(/[^0-9]/g, ''))} /></View>
+                          <Pressable accessibilityRole="button" accessibilityLabel={`Xóa lựa chọn ${optionIndex + 1}`} onPress={() => removeOptionFromGroup(groupIndex, optionIndex)} style={styles.destructiveIconButton}>
+                            <AppIcon icon={X} color={theme.danger} size={18} />
+                          </Pressable>
+                        </View>
+                      ))}
+                      <Button variant="quiet" label="Thêm lựa chọn" icon={Plus} onPress={() => addOptionToGroup(groupIndex)} />
+                    </View>
+                  );
+                })}
               </View>
             </ScrollView>
 
-            {/* Modal Footer Actions */}
-            <View style={[styles.modalFooter, { borderTopColor: theme.border }]}>
-              <TouchableOpacity
-                style={[styles.cancelBtn, { borderColor: theme.border }]}
-                onPress={() => setIsModalOpen(false)}
-                disabled={isSubmitting}
-              >
-                <Text style={[styles.cancelBtnText, { color: theme.textMuted }]}>Hủy Bỏ</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.saveBtn, { backgroundColor: theme.primary }]}
-                onPress={handleSubmitForm}
-                disabled={isSubmitting}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator size="small" color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.saveBtnText}>
-                    {editingItem ? 'Lưu Thay Đổi' : 'Tạo Món Ăn'}
-                  </Text>
-                )}
-              </TouchableOpacity>
+            <View style={[styles.modalFooter, { backgroundColor: theme.surfaceBase, borderTopColor: theme.borderSubtle }]}>
+              <View style={styles.footerButton}><Button variant="quiet" label="Hủy" disabled={isSubmitting} onPress={() => setIsModalOpen(false)} /></View>
+              <View style={styles.footerButtonPrimary}><Button variant="primary" label={editingItem ? 'Lưu thay đổi' : 'Tạo món'} loading={isSubmitting} onPress={() => void handleSubmitForm()} /></View>
             </View>
           </View>
         </View>
@@ -847,499 +576,71 @@ export const MenuManagementScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1
-  },
-  actionBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1
-  },
-  actionBarLeft: {
-    flex: 1
-  },
-  screenTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold
-  },
-  screenSubtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2
-  },
-  createBtn: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: 8,
-    minHeight: spacing.touchTargetMobile,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  createBtnText: {
-    color: '#FFFFFF',
-    fontWeight: typography.weights.bold,
-    fontSize: typography.sizes.sm
-  },
-  filterSection: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    gap: spacing.sm
-  },
-  searchBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    borderRadius: 8,
-    borderWidth: 1,
-    height: 44
-  },
-  searchIcon: {
-    fontSize: 16,
-    marginRight: spacing.sm
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: typography.sizes.sm
-  },
-  clearSearch: {
-    fontSize: 16,
-    padding: spacing.xs
-  },
-  categoryPills: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-    paddingVertical: spacing.xs
-  },
-  pill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 20
-  },
-  pillText: {
-    fontSize: typography.sizes.xs
-  },
-  centerContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.xl
-  },
-  loadingText: {
-    marginTop: spacing.md,
-    fontSize: typography.sizes.sm
-  },
-  emptyIcon: {
-    fontSize: 48,
-    marginBottom: spacing.md
-  },
-  emptyText: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold
-  },
-  emptySubtext: {
-    fontSize: typography.sizes.xs,
-    marginTop: spacing.xs,
-    textAlign: 'center'
-  },
-  itemsList: {
-    padding: spacing.lg,
-    gap: spacing.md
-  },
-  itemCard: {
-    flexDirection: 'row',
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: spacing.md,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
-    alignItems: 'center'
-  },
-  itemCardDisabled: {
-    opacity: 0.75
-  },
-  thumbnailContainer: {
-    position: 'relative',
-    width: 76,
-    height: 76,
-    borderRadius: 8,
-    overflow: 'hidden',
-    marginRight: spacing.md
-  },
-  thumbnail: {
-    width: '100%',
-    height: '100%'
-  },
-  fallbackThumbnail: {
-    width: '100%',
-    height: '100%',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  fallbackIcon: {
-    fontSize: 32
-  },
-  soldOutBadgeOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(239, 68, 68, 0.85)',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  soldOutBadgeText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.extraBold,
-    letterSpacing: 1
-  },
-  itemInfo: {
-    flex: 1,
-    marginRight: spacing.md
-  },
-  itemTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    flexWrap: 'wrap'
-  },
-  itemName: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold
-  },
-  categoryTag: {
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
-    borderRadius: 4
-  },
-  categoryTagText: {
-    fontSize: 10,
-    fontWeight: typography.weights.medium
-  },
-  itemPrice: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold,
-    marginTop: 2
-  },
-  itemDesc: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2
-  },
-  modifierBadgesRow: {
-    flexDirection: 'row',
-    marginTop: spacing.xs
-  },
-  modBadge: {
-    fontSize: 10,
-    fontWeight: typography.weights.bold,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 2,
-    borderRadius: 4
-  },
-  itemActions: {
-    alignItems: 'flex-end',
-    gap: spacing.sm
-  },
-  switchWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs
-  },
-  switchLabel: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold
-  },
-  editBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 6,
-    borderWidth: 1,
-    minHeight: 36,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  editBtnText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.65)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.lg
-  },
-  modalCard: {
-    width: '100%',
-    maxWidth: 680,
-    maxHeight: '90%',
-    borderRadius: 16,
-    borderWidth: 1,
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 8
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1
-  },
-  modalTitle: {
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold
-  },
-  closeBtn: {
-    padding: spacing.xs
-  },
-  closeBtnText: {
-    fontSize: 20,
-    fontWeight: typography.weights.bold
-  },
-  errorBanner: {
-    backgroundColor: '#FEE2E2',
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: '#FCA5A5'
-  },
-  errorBannerText: {
-    color: '#B91C1C',
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium
-  },
-  modalBody: {
-    padding: spacing.lg,
-    gap: spacing.md
-  },
-  formGroup: {
-    gap: spacing.xs
-  },
-  formRow: {
-    flexDirection: 'row',
-    alignItems: 'center'
-  },
-  label: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  subLabel: {
-    fontSize: 11,
-    fontWeight: typography.weights.medium
-  },
-  requiredMark: {
-    color: '#EF4444'
-  },
-  input: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: typography.sizes.sm
-  },
-  inputSmall: {
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    fontSize: typography.sizes.xs
-  },
-  textArea: {
-    height: 70,
-    textAlignVertical: 'top'
-  },
-  catSelectRow: {
-    flexDirection: 'row',
-    gap: spacing.xs,
-    paddingVertical: spacing.xs
-  },
-  catSelectPill: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 16,
-    borderWidth: 1
-  },
-  catSelectText: {
-    fontSize: typography.sizes.xs
-  },
-  switchRowInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    height: 38
-  },
-  switchStatusText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  modifierSection: {
-    marginTop: spacing.md,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(156, 163, 175, 0.2)',
-    paddingTop: spacing.md
-  },
-  modSectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm
-  },
-  modSectionTitle: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  },
-  modSectionSubtitle: {
-    fontSize: 11
-  },
-  addModGroupBtn: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 6,
-    borderWidth: 1
-  },
-  addModGroupBtnText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  noModBox: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderRadius: 8,
-    padding: spacing.md,
-    alignItems: 'center'
-  },
-  noModText: {
-    fontSize: typography.sizes.xs,
-    textAlign: 'center'
-  },
-  groupCard: {
-    borderRadius: 10,
-    borderWidth: 1,
-    padding: spacing.md,
-    marginBottom: spacing.md
-  },
-  groupCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.sm
-  },
-  groupCardIndex: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold
-  },
-  deleteGroupBtnText: {
-    fontSize: 11,
-    color: '#EF4444',
-    fontWeight: typography.weights.bold
-  },
-  groupConstraintWarning: {
-    backgroundColor: '#FEF2F2',
-    borderRadius: 6,
-    padding: spacing.xs,
-    marginBottom: spacing.xs
-  },
-  groupConstraintWarningText: {
-    color: '#B91C1C',
-    fontSize: 11
-  },
-  optionsTitle: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    marginTop: spacing.xs,
-    marginBottom: spacing.xs
-  },
-  optionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-    marginBottom: spacing.xs
-  },
-  optNameInput: {
-    flex: 2,
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    fontSize: typography.sizes.xs
-  },
-  optPriceInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    fontSize: typography.sizes.xs
-  },
-  deleteOptionBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#FEE2E2',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  deleteOptionBtnText: {
-    color: '#EF4444',
-    fontWeight: typography.weights.bold,
-    fontSize: 12
-  },
-  addOptionBtn: {
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderRadius: 6,
-    paddingVertical: spacing.xs,
-    alignItems: 'center',
-    marginTop: spacing.xs
-  },
-  addOptionBtnText: {
-    fontSize: 11,
-    fontWeight: typography.weights.bold
-  },
-  modalFooter: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderTopWidth: 1
-  },
-  cancelBtn: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    minHeight: spacing.touchTargetMobile,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  cancelBtnText: {
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.medium
-  },
-  saveBtn: {
-    borderRadius: 8,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-    minHeight: spacing.touchTargetMobile,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  saveBtnText: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.sm,
-    fontWeight: typography.weights.bold
-  }
+  container: { flex: 1 },
+  toolbar: { borderBottomWidth: 1, gap: spacing.md, padding: spacing.lg },
+  toolbarMobile: { padding: spacing.md },
+  searchBox: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: spacing.touchTargetMobile, paddingLeft: spacing.md, paddingRight: spacing.xs },
+  searchInput: { flex: 1, fontFamily: typography.families.body, fontSize: typography.sizes.sm, minHeight: spacing.touchTargetMobile },
+  iconButton: { alignItems: 'center', borderRadius: radii.md, height: spacing.touchTargetMobile, justifyContent: 'center', width: spacing.touchTargetMobile },
+  categoryPills: { flexDirection: 'row', gap: spacing.sm },
+  pill: { borderRadius: radii.pill, justifyContent: 'center', minHeight: spacing.touchTargetMobile, paddingHorizontal: spacing.md },
+  pillText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  centerContainer: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.xl },
+  loadingText: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, marginTop: spacing.md },
+  itemsList: { padding: spacing.lg },
+  menuTable: { overflow: 'hidden' },
+  tableHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', minHeight: spacing.touchTargetMobile, paddingHorizontal: spacing.lg },
+  headerItem: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
+  itemRow: { alignItems: 'center', flexDirection: 'row', minHeight: 96, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  itemRowMobile: { alignItems: 'stretch', flexDirection: 'column', gap: spacing.md, paddingHorizontal: spacing.md },
+  itemUnavailable: { opacity: 0.72 },
+  productColumn: { flex: 4 },
+  priceColumn: { flex: 1.2 },
+  statusColumn: { alignItems: 'flex-start', flex: 1.8 },
+  actionColumn: { alignItems: 'flex-end', width: 128 },
+  productCell: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },
+  thumbnailContainer: { alignItems: 'center', borderRadius: radii.md, height: 64, justifyContent: 'center', overflow: 'hidden', width: 64 },
+  thumbnail: { height: '100%', width: '100%' },
+  itemInfo: { flex: 1, gap: 2 },
+  itemName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md, lineHeight: typography.lineHeights.md },
+  itemMeta: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
+  itemDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
+  itemPrice: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg, fontVariant: ['tabular-nums'] },
+  availabilityCell: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  actionCell: { justifyContent: 'center' },
+  editButton: { alignItems: 'center', borderRadius: radii.md, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: spacing.touchTargetMobile, paddingHorizontal: spacing.md },
+  editButtonText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  modalOverlay: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.md },
+  modalCard: { borderRadius: radii.md, borderWidth: 1, maxHeight: '94%', maxWidth: 760, overflow: 'hidden', width: '100%' },
+  modalHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
+  modalHeadingCopy: { flex: 1, gap: 2 },
+  modalTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, lineHeight: typography.lineHeights.xl },
+  modalSubtitle: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
+  modalBody: { gap: spacing.md, padding: spacing.lg },
+  formSection: { borderRadius: radii.md, borderWidth: 1, gap: spacing.md, padding: spacing.lg },
+  sectionHeading: { flex: 1, gap: 2 },
+  sectionTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md, lineHeight: typography.lineHeights.md },
+  sectionDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
+  fieldLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  categoryField: { gap: spacing.xs },
+  textArea: { minHeight: 88, paddingTop: spacing.md, textAlignVertical: 'top' },
+  formAvailability: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', minHeight: spacing.touchTargetMobile },
+  modifierHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },
+  modifierHeaderMobile: { alignItems: 'stretch', flexDirection: 'column' },
+  modifierGroup: { borderRadius: radii.md, borderWidth: 1, gap: spacing.md, padding: spacing.md },
+  groupHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  groupTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg },
+  destructiveIconButton: { alignItems: 'center', borderRadius: radii.md, height: spacing.touchTargetMobile, justifyContent: 'center', width: spacing.touchTargetMobile },
+  formColumns: { alignItems: 'flex-end', flexDirection: 'row', gap: spacing.md },
+  formColumnsMobile: { alignItems: 'stretch', flexDirection: 'column' },
+  growField: { flex: 1 },
+  requiredControl: { gap: spacing.xs, minWidth: 112 },
+  optionsTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  optionRow: { alignItems: 'flex-end', flexDirection: 'row', gap: spacing.sm },
+  optionRowMobile: { alignItems: 'stretch', flexWrap: 'wrap' },
+  optionName: { flex: 2, minWidth: 180 },
+  optionPrice: { flex: 1, minWidth: 120 },
+  modalFooter: { borderTopWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end', padding: spacing.md },
+  footerButton: { minWidth: 104 },
+  footerButtonPrimary: { minWidth: 152 }
 });

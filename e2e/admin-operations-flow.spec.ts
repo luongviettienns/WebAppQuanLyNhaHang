@@ -19,12 +19,14 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
     await expect(adminTab.getByText('Quản trị')).toBeVisible();
     await adminTab.click();
 
-    // Verify Admin Header
-    await expect(page.getByText('TRUNG TÂM QUẢN TRỊ ADMIN')).toBeVisible({ timeout: 8000 });
+    // Verify the sentence-case admin hierarchy.
+    await expect(page.getByRole('heading', { name: 'Trung tâm quản trị' })).toBeVisible({ timeout: 8000 });
 
-    // 3. Menu Management: Verify items are listed and switch exists
+    // 3. Menu Management: Verify filters, actions, items, and availability controls.
     const menuSubtab = page.getByTestId('admin-subtab-menu');
     await expect(menuSubtab).toBeVisible();
+    await expect(page.getByPlaceholder('Tìm món theo tên hoặc mô tả')).toBeVisible();
+    await expect(page.getByTestId('admin-btn-add-item')).toContainText('Thêm món');
 
     const firstSwitch = page.locator('[data-testid^="menu-item-switch-"]').first();
     await expect(firstSwitch).toBeVisible({ timeout: 8000 });
@@ -34,7 +36,7 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
     await expect(reportsSubtab).toBeVisible();
     await reportsSubtab.click();
 
-    // 5. Verify 4 Primary KPI Cards
+    // 5. Verify the decision hierarchy remains readable after switching subtabs.
     const kpiRevenue = page.getByTestId('kpi-revenue');
     const kpiOrders = page.getByTestId('kpi-orders');
     const kpiAov = page.getByTestId('kpi-aov');
@@ -44,9 +46,13 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
     await expect(kpiOrders).toBeVisible();
     await expect(kpiAov).toBeVisible();
     await expect(kpiSos).toBeVisible();
+    await expect(kpiRevenue.getByText('Doanh thu thuần')).toBeVisible();
+    await expect(kpiOrders.getByText('Đơn hàng')).toBeVisible();
+    await expect(kpiAov.getByText('Giá trị đơn trung bình')).toBeVisible();
+    await expect(kpiSos.getByText('Tốc độ phục vụ')).toBeVisible();
 
     // Verify Top 5 Sellers section
-    await expect(page.getByText('Top 5 Món Bán Chạy Nhất')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Món bán chạy' })).toBeVisible();
 
     // 6. Navigate to Table Map to verify Admin Void functionality
     const tablesTab = page.getByTestId('tab-tables');

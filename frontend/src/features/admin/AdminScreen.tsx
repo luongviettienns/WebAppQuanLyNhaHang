@@ -1,70 +1,53 @@
 import React, { useState } from 'react';
-import { StyleSheet, Text, View, SafeAreaView, TouchableOpacity } from 'react-native';
+import { BarChart3, Utensils } from 'lucide-react-native';
+import { Pressable, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
-import { typography, spacing } from '../../theme';
+import { radii, spacing, typography } from '../../theme';
+import { AppIcon } from '../../ui';
 import { MenuManagementScreen } from './MenuManagementScreen';
 import { DashboardScreen } from '../reports/DashboardScreen';
 
 type AdminTab = 'menu' | 'reports';
 
 export const AdminScreen: React.FC = () => {
-  const { theme, isDark } = useTheme();
+  const { theme } = useTheme();
+  const { width } = useWindowDimensions();
   const [activeTab, setActiveTab] = useState<AdminTab>('menu');
+  const isMobile = width < 768;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* Top Banner Header */}
-      <View style={[styles.header, { backgroundColor: isDark ? '#4C1D95' : '#7C3AED', borderBottomColor: theme.border }]}>
-        <Text style={styles.title}>👑 TRUNG TÂM QUẢN TRỊ ADMIN</Text>
-        <Text style={[styles.subtitle, { color: isDark ? '#DDD6FE' : '#EDE9FE' }]}>
-          Quản lý thực đơn món ăn, Báo cáo doanh thu & Tốc độ phục vụ SOS
-        </Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
+      <View style={[styles.workspaceHeader, isMobile && styles.workspaceHeaderMobile, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
+        <View style={styles.headingCopy}>
+          <Text accessibilityRole="header" style={[styles.title, { color: theme.textPrimary }]}>Trung tâm quản trị</Text>
+          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>Theo dõi thực đơn và hiệu quả ca bán hàng.</Text>
+        </View>
 
-        {/* Sub Navigation Segmented Tabs */}
-        <View style={[styles.tabBar, { backgroundColor: isDark ? '#3B0764' : '#6D28D9' }]}>
-          <TouchableOpacity
+        <View accessibilityRole="tablist" style={[styles.tabBar, isMobile && styles.tabBarMobile, { backgroundColor: theme.surfaceSunken }]}>
+          <Pressable
             testID="admin-subtab-menu"
-            style={[
-              styles.tabBtn,
-              activeTab === 'menu' && (isDark ? styles.tabBtnActiveDark : styles.tabBtnActiveLight)
-            ]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeTab === 'menu' }}
+            style={({ pressed }) => [styles.tabBtn, activeTab === 'menu' && { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }, pressed && { backgroundColor: theme.interactiveQuiet }]}
             onPress={() => setActiveTab('menu')}
           >
-            <Text
-              style={[
-                styles.tabBtnText,
-                activeTab === 'menu'
-                  ? { color: isDark ? '#FFFFFF' : '#7C3AED', fontWeight: typography.weights.bold }
-                  : { color: isDark ? '#C4B5FD' : '#EDE9FE' }
-              ]}
-            >
-              📋 Quản Lý Thực Đơn (M7)
-            </Text>
-          </TouchableOpacity>
+            <AppIcon icon={Utensils} color={activeTab === 'menu' ? theme.primary : theme.textSecondary} size={18} />
+            <Text style={[styles.tabBtnText, { color: activeTab === 'menu' ? theme.primary : theme.textSecondary }]}>Thực đơn</Text>
+          </Pressable>
 
-          <TouchableOpacity
+          <Pressable
             testID="admin-subtab-reports"
-            style={[
-              styles.tabBtn,
-              activeTab === 'reports' && (isDark ? styles.tabBtnActiveDark : styles.tabBtnActiveLight)
-            ]}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: activeTab === 'reports' }}
+            style={({ pressed }) => [styles.tabBtn, activeTab === 'reports' && { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }, pressed && { backgroundColor: theme.interactiveQuiet }]}
             onPress={() => setActiveTab('reports')}
           >
-            <Text
-              style={[
-                styles.tabBtnText,
-                activeTab === 'reports'
-                  ? { color: isDark ? '#FFFFFF' : '#7C3AED', fontWeight: typography.weights.bold }
-                  : { color: isDark ? '#C4B5FD' : '#EDE9FE' }
-              ]}
-            >
-              📊 Báo Cáo & KPI (M8)
-            </Text>
-          </TouchableOpacity>
+            <AppIcon icon={BarChart3} color={activeTab === 'reports' ? theme.primary : theme.textSecondary} size={18} />
+            <Text style={[styles.tabBtnText, { color: activeTab === 'reports' ? theme.primary : theme.textSecondary }]}>Báo cáo</Text>
+          </Pressable>
         </View>
       </View>
 
-      {/* Main Tab Content */}
       <View style={styles.content}>
         {activeTab === 'menu' ? <MenuManagementScreen /> : <DashboardScreen />}
       </View>
@@ -76,86 +59,62 @@ const styles = StyleSheet.create({
   container: {
     flex: 1
   },
-  header: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.sm,
+  workspaceHeader: {
     alignItems: 'center',
-    borderBottomWidth: 1
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md
+  },
+  workspaceHeaderMobile: {
+    alignItems: 'stretch',
+    flexDirection: 'column',
+    gap: spacing.md
+  },
+  headingCopy: {
+    flex: 1,
+    gap: spacing.xs
   },
   title: {
-    color: '#FFFFFF',
-    fontSize: typography.sizes.md,
-    fontWeight: typography.weights.bold,
-    letterSpacing: 0.5
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xl,
+    lineHeight: typography.lineHeights.xl
   },
   subtitle: {
-    fontSize: typography.sizes.xs,
-    marginTop: 2,
-    marginBottom: spacing.sm
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.sm,
+    lineHeight: typography.lineHeights.sm
   },
   tabBar: {
+    alignSelf: 'center',
+    borderRadius: radii.md,
     flexDirection: 'row',
-    borderRadius: 10,
-    padding: 3,
-    maxWidth: 480,
+    gap: spacing.xs,
+    padding: spacing.xs,
+    width: 320
+  },
+  tabBarMobile: {
+    alignSelf: 'stretch',
     width: '100%'
   },
   tabBtn: {
-    flex: 1,
-    paddingVertical: spacing.xs,
     alignItems: 'center',
+    borderColor: 'transparent',
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm,
     justifyContent: 'center',
-    borderRadius: 8,
-    minHeight: 38
-  },
-  tabBtnActiveLight: {
-    backgroundColor: '#FFFFFF'
-  },
-  tabBtnActiveDark: {
-    backgroundColor: '#581C87'
+    minHeight: spacing.touchTargetMobile,
+    paddingHorizontal: spacing.md
   },
   tabBtnText: {
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.medium
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm
   },
   content: {
     flex: 1
-  },
-  reportsPlaceholder: {
-    flex: 1,
-    padding: spacing.xl,
-    justifyContent: 'center',
-    alignItems: 'center'
-  },
-  card: {
-    width: '100%',
-    maxWidth: 500,
-    borderRadius: 16,
-    padding: spacing.xl,
-    borderWidth: 1,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 10,
-    elevation: 3
-  },
-  badge: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: 20,
-    fontSize: typography.sizes.xs,
-    fontWeight: typography.weights.bold,
-    marginBottom: spacing.md
-  },
-  cardTitle: {
-    fontSize: typography.sizes.lg,
-    fontWeight: typography.weights.bold,
-    marginBottom: spacing.xs
-  },
-  cardText: {
-    fontSize: typography.sizes.sm,
-    textAlign: 'center'
   }
 });
