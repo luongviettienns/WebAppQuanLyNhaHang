@@ -196,7 +196,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
                   style={[styles.orderItem, index > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 }]}
                 >
                   <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
-                    {item.quantity} × {item.menuItemName || 'Món đã chọn'}
+                    {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
                   </Text>
                   <Text style={[styles.orderItemPrice, { color: theme.textPrimary }]}>{formatVND(item.subtotal)}</Text>
                 </View>
@@ -315,11 +315,12 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
               </Pressable>
             </View>
 
-            <View style={styles.qrBody}>
+            <ScrollView contentContainerStyle={styles.qrBody}>
               <Surface level="sunken" style={styles.qrCodePanel}>
                 <View style={[styles.qrPlaceholder, { backgroundColor: theme.surfaceBase, borderColor: theme.borderStrong }]}>
                   <AppIcon icon={QrCode} color={theme.textPrimary} size={88} />
                 </View>
+                <Text style={[styles.qrIllustrationHint, { color: theme.textSecondary }]}>Mã minh họa, không dùng để thanh toán.</Text>
                 <Text style={[styles.qrBankName, { color: theme.textPrimary }]}>MB Bank</Text>
                 <Text style={[styles.qrAccount, { color: theme.textSecondary }]}>0369888999 · Crispy Bite</Text>
               </Surface>
@@ -338,11 +339,11 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
               <InlineAlert
                 tone="info"
                 title="Cách thanh toán"
-                message="Quét mã bằng ứng dụng ngân hàng hoặc ví điện tử. Bàn sẽ được cập nhật sau khi giao dịch được xác nhận."
+                message="Vui lòng liên hệ nhân viên để xác nhận thông tin chuyển khoản và thanh toán."
               />
 
               <Button variant="quiet" label="Đóng" onPress={() => setIsVietQRModalOpen(false)} />
-            </View>
+            </ScrollView>
           </SafeAreaView>
         </View>
       </Modal>
@@ -513,6 +514,7 @@ const styles = StyleSheet.create({
   qrBody: { gap: spacing.lg, padding: spacing.lg },
   qrCodePanel: { alignItems: 'center', gap: spacing.sm, padding: spacing.lg },
   qrPlaceholder: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, height: 132, justifyContent: 'center', width: 132 },
+  qrIllustrationHint: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, textAlign: 'center' },
   qrBankName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
   qrAccount: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
   paymentDetails: { gap: spacing.md },

@@ -30,6 +30,9 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
 
     const firstSwitch = page.locator('[data-testid^="menu-item-switch-"]').first();
     await expect(firstSwitch).toBeVisible({ timeout: 8000 });
+    const switchBounds = await firstSwitch.boundingBox();
+    expect(switchBounds!.width).toBeGreaterThanOrEqual(44);
+    expect(switchBounds!.height).toBeGreaterThanOrEqual(44);
 
     // 4. Navigate to Reports Subtab
     const reportsSubtab = page.getByTestId('admin-subtab-reports');
@@ -61,9 +64,15 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
 
     // Table operations expose status filters and readable status text.
     await expect(page.getByRole('button', { name: 'Tất cả (12)' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Bàn trống (12)' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Đang phục vụ (0)' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Chờ dọn (0)' })).toBeVisible();
+    // Other lifecycle tests may have created orders. Verify the live filter counts,
+    // rather than assuming every project starts with twelve empty tables.
+    const counts: number[] = [];
+    for (const label of ['Bàn trống', 'Đang phục vụ', 'Chờ dọn']) {
+      const filter = page.getByRole('button', { name: new RegExp(`^${label} \\(\\d+\\)$`) });
+      await expect(filter).toBeVisible();
+      counts.push(Number((await filter.textContent())!.match(/\((\d+)\)/)![1]));
+    }
+    expect(counts.reduce((total, count) => total + count, 0)).toBe(12);
     await expect(page.getByText('Sẵn sàng', { exact: true }).first()).toBeVisible();
 
     // Check Table 01

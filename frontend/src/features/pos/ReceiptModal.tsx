@@ -65,7 +65,7 @@ export const ReceiptModal: React.FC<Props> = ({ visible, order, onClose }) => {
           <ScrollView contentContainerStyle={styles.receiptScroll} showsVerticalScrollIndicator={false}>
             <View style={[styles.receiptPaper, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
               <View style={styles.brandHeader}>
-                <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>CRISPY BITE QSR</Text>
+                <Text style={[styles.brandTitle, { color: theme.textPrimary }]}>Crispy Bite QSR</Text>
                 <Text style={[styles.brandInfo, { color: theme.textSecondary }]}>123 Nguyễn Huệ, Quận 1, TP. HCM</Text>
                 <Text style={[styles.brandInfo, { color: theme.textSecondary }]}>Hotline 1900 8888</Text>
               </View>
@@ -112,7 +112,7 @@ export const ReceiptModal: React.FC<Props> = ({ visible, order, onClose }) => {
                   <View key={item.id || index} style={[styles.itemRow, { borderBottomColor: theme.borderSubtle }]}>
                     <View style={styles.itemMainRow}>
                       <View style={styles.itemColumn}>
-                        <Text style={[styles.itemName, { color: theme.textPrimary }]}>{item.menuItemName}</Text>
+                        <Text style={[styles.itemName, { color: theme.textPrimary }]}>{item.menuItemName || `Món #${item.menuItemId}`}</Text>
                         {(item.selectedModifiersJson || []).map((modifier, modifierIndex) => (
                           <Text key={`${modifier.optionId}-${modifierIndex}`} style={[styles.itemMeta, { color: theme.textSecondary }]}>
                             {modifier.groupName}: {modifier.optionName}{modifier.priceDelta > 0 ? ` (+${modifier.priceDelta.toLocaleString('vi-VN')} đ)` : ''}

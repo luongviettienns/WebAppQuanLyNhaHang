@@ -12,6 +12,7 @@ import {
   Alert,
   Image,
   Switch,
+  Platform,
   useWindowDimensions
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -66,6 +67,11 @@ export const MenuManagementScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
   const isMobile = width < 768;
+  const switchAppearance = {
+    style: styles.switchTarget,
+    thumbColor: theme.surfaceBase,
+    ...(Platform.OS === 'web' ? { activeThumbColor: theme.surfaceBase } : {})
+  };
 
   // Form State
   const [form, setForm] = useState<MenuItemForm>({
@@ -426,6 +432,7 @@ export const MenuManagementScreen: React.FC = () => {
                       <ActivityIndicator size="small" color={theme.primary} />
                     ) : (
                       <Switch
+                        {...switchAppearance}
                         testID={`menu-item-switch-${item.id}`}
                         accessibilityLabel={`${item.isAvailable ? 'Đánh dấu hết món' : 'Mở bán lại'} ${item.name}`}
                         value={item.isAvailable}
@@ -508,7 +515,7 @@ export const MenuManagementScreen: React.FC = () => {
                 </View>
                 <View style={styles.formAvailability}>
                   <StatusBadge tone={form.isAvailable ? 'success' : 'danger'} label={form.isAvailable ? 'Còn hàng' : 'Hết món'} />
-                  <Switch accessibilityLabel="Mở bán món" value={form.isAvailable} onValueChange={(value) => setForm((previous) => ({ ...previous, isAvailable: value }))} trackColor={{ false: statusColors.danger.border, true: statusColors.success.border }} thumbColor={theme.surfaceBase} />
+                  <Switch {...switchAppearance} accessibilityLabel="Mở bán món" value={form.isAvailable} onValueChange={(value) => setForm((previous) => ({ ...previous, isAvailable: value }))} trackColor={{ false: statusColors.danger.border, true: statusColors.success.border }} />
                 </View>
               </View>
 
@@ -539,7 +546,7 @@ export const MenuManagementScreen: React.FC = () => {
                         <View style={styles.growField}><Field label="Tên nhóm *" placeholder="Ví dụ: Cấp độ cay" value={group.name} onChangeText={(value) => updateModifierGroup(groupIndex, 'name', value)} /></View>
                         <View style={styles.requiredControl}>
                           <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Bắt buộc</Text>
-                          <Switch value={group.isRequired} onValueChange={(value) => updateModifierGroup(groupIndex, 'isRequired', value)} trackColor={{ false: theme.borderStrong, true: theme.interactivePrimary }} thumbColor={theme.surfaceBase} />
+                          <Switch {...switchAppearance} accessibilityLabel={`Bắt buộc nhóm ${groupIndex + 1}`} value={group.isRequired} onValueChange={(value) => updateModifierGroup(groupIndex, 'isRequired', value)} trackColor={{ false: theme.borderStrong, true: theme.interactivePrimary }} />
                         </View>
                       </View>
                       <View style={[styles.formColumns, isMobile && styles.formColumnsMobile]}>
@@ -607,6 +614,7 @@ const styles = StyleSheet.create({
   itemDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
   itemPrice: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg, fontVariant: ['tabular-nums'] },
   availabilityCell: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  switchTarget: { justifyContent: 'center', minHeight: spacing.touchTargetMobile, minWidth: spacing.touchTargetMobile },
   actionCell: { justifyContent: 'center' },
   editButton: { alignItems: 'center', borderRadius: radii.md, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: spacing.touchTargetMobile, paddingHorizontal: spacing.md },
   editButtonText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },

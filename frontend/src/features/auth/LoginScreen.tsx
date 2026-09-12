@@ -69,14 +69,14 @@ export const LoginScreen: React.FC = () => {
               <View style={[styles.brandPlate, { backgroundColor: theme.surfaceBase }]}>
                 <BrandMark />
               </View>
-              <View style={styles.brandMessage}>
+              {isDesktop && <View style={styles.brandMessage}>
                 <Text style={[styles.brandHeading, { color: isDark ? theme.textPrimary : theme.textInverse }]}>Ca làm việc bắt đầu tại đây.</Text>
                 <Text style={[styles.brandBody, { color: isDark ? theme.textSecondary : theme.textInverse }]}>Một màn hình chung cho quầy, bếp và quản trị nhà hàng.</Text>
-              </View>
-              <View style={[styles.shiftStatus, { borderColor: isDark ? theme.borderStrong : theme.textInverse }]}>
+              </View>}
+              {isDesktop && <View style={[styles.shiftStatus, { borderColor: isDark ? theme.borderStrong : theme.textInverse }]}>
                 <View style={[styles.statusDot, { backgroundColor: isDark ? theme.success : theme.textInverse }]} />
                 <Text style={[styles.shiftText, { color: isDark ? theme.textPrimary : theme.textInverse }]}>Hệ thống sẵn sàng nhận ca</Text>
-              </View>
+              </View>}
             </View>
 
             <Surface level="base" style={[styles.formPanel, isDesktop && styles.formPanelDesktop]}>

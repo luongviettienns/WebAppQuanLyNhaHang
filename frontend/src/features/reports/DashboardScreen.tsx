@@ -13,7 +13,7 @@ import {
 import { useTheme } from '../../contexts/ThemeContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { DailyReportDto, OrderDto } from '../../api/contracts';
-import { brandColors, radii, spacing, statusColors, typography } from '../../theme';
+import { brandColors, radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import { ReceiptModal } from '../pos/ReceiptModal';
 
@@ -105,9 +105,10 @@ export const DashboardScreen: React.FC = () => {
   const pendingCount = Math.max(0, (report?.totalOrders || 0) - completedCount - cancelledCount);
   const maxTopSellerQuantity = Math.max(1, ...(report?.topSellers || []).map((item) => item.quantitySold));
   const reportPalette = {
-    primary: brandColors.primary,
-    secondary: brandColors.secondary,
-    neutral: statusColors.neutral.border
+    completed: brandColors.success,
+    pending: brandColors.warning,
+    cancelled: brandColors.danger,
+    ranking: brandColors.primary
   };
 
   const openReceipt = (order: OrderDto) => {
@@ -208,14 +209,14 @@ export const DashboardScreen: React.FC = () => {
             {report && report.totalOrders > 0 ? (
               <>
                 <View accessibilityLabel="Phân bổ kết quả đơn hàng" style={[styles.outcomeBar, { backgroundColor: theme.surfaceSunken }]}>
-                  {completedCount > 0 && <View style={{ backgroundColor: reportPalette.primary, flex: completedCount }} />}
-                  {pendingCount > 0 && <View style={{ backgroundColor: reportPalette.secondary, flex: pendingCount }} />}
-                  {cancelledCount > 0 && <View style={{ backgroundColor: reportPalette.neutral, flex: cancelledCount }} />}
+                  {completedCount > 0 && <View style={{ backgroundColor: reportPalette.completed, flex: completedCount }} />}
+                  {pendingCount > 0 && <View style={{ backgroundColor: reportPalette.pending, flex: pendingCount }} />}
+                  {cancelledCount > 0 && <View style={{ backgroundColor: reportPalette.cancelled, flex: cancelledCount }} />}
                 </View>
                 <View style={styles.outcomeLegend}>
-                  <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: reportPalette.primary }]} /><Text style={[styles.legendText, { color: theme.textSecondary }]}>Hoàn tất {completedCount}</Text></View>
-                  <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: reportPalette.secondary }]} /><Text style={[styles.legendText, { color: theme.textSecondary }]}>Đang xử lý {pendingCount}</Text></View>
-                  <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: reportPalette.neutral }]} /><Text style={[styles.legendText, { color: theme.textSecondary }]}>Đã hủy {cancelledCount}</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: reportPalette.completed }]} /><Text style={[styles.legendText, { color: theme.textSecondary }]}>Hoàn tất {completedCount}</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: reportPalette.pending }]} /><Text style={[styles.legendText, { color: theme.textSecondary }]}>Đang xử lý {pendingCount}</Text></View>
+                  <View style={styles.legendItem}><View style={[styles.legendSwatch, { backgroundColor: reportPalette.cancelled }]} /><Text style={[styles.legendText, { color: theme.textSecondary }]}>Đã hủy {cancelledCount}</Text></View>
                 </View>
               </>
             ) : <EmptyState title="Chưa có đơn hàng" description="Chọn ngày khác hoặc tải lại sau khi ca bán hàng bắt đầu." />}
@@ -236,7 +237,7 @@ export const DashboardScreen: React.FC = () => {
                         <Text style={[styles.topSellerName, { color: theme.textPrimary }]} numberOfLines={1}>{item.name}</Text>
                         <Text style={[styles.topSellerQuantity, { color: theme.textSecondary }]}>{item.quantitySold} phần</Text>
                       </View>
-                      <View style={[styles.itemBarTrack, { backgroundColor: theme.surfaceSunken }]}><View style={[styles.itemBarFill, { backgroundColor: reportPalette.primary, width: `${Math.max(8, (item.quantitySold / maxTopSellerQuantity) * 100)}%` as `${number}%` }]} /></View>
+                      <View style={[styles.itemBarTrack, { backgroundColor: theme.surfaceSunken }]}><View style={[styles.itemBarFill, { backgroundColor: reportPalette.ranking, width: `${Math.max(8, (item.quantitySold / maxTopSellerQuantity) * 100)}%` as `${number}%` }]} /></View>
                       <Text style={[styles.topSellerRevenue, { color: theme.textSecondary }]}>{item.revenue.toLocaleString('vi-VN')} đ doanh thu</Text>
                     </View>
                   </View>

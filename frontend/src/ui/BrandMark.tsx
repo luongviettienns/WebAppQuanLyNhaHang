@@ -18,7 +18,7 @@ export const BrandMark: React.FC<BrandMarkProps> = ({ compact = false, testID })
       </View>
       {!compact && (
         <View>
-          <Text style={[styles.name, { color: theme.textPrimary }]}>CRISPY BITE</Text>
+          <Text style={[styles.name, { color: theme.textPrimary }]}>Crispy Bite</Text>
           <Text style={[styles.tagline, { color: theme.textSecondary }]}>Vận hành nhanh gọn</Text>
         </View>
       )}

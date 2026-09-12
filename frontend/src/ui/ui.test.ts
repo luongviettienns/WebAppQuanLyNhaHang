@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buttonMetrics, buttonTone, fieldState, statusTone, surfaceTreatment } from './tokens';
+import { darkTheme, lightTheme } from '../theme';
 
 const contrastRatio = (first: string, second: string) => {
   const luminance = (hex: string) => {
@@ -18,6 +19,17 @@ const contrastRatio = (first: string, second: string) => {
 };
 
 describe('UI primitives', () => {
+  it('keeps operational text and selected filters readable in both themes', () => {
+    for (const theme of [lightTheme, darkTheme]) {
+      for (const foreground of [theme.primary, theme.danger, theme.warning]) {
+        for (const background of [theme.surfaceBase, theme.surfaceRaised, theme.surfaceSunken, theme.interactiveSecondary]) {
+          expect.soft(contrastRatio(foreground, background), `${theme.mode}: ${foreground} on ${background}`).toBeGreaterThanOrEqual(4.5);
+        }
+      }
+      expect(contrastRatio(theme.textInverse, theme.interactivePrimary)).toBeGreaterThanOrEqual(4.5);
+    }
+  });
+
   it('keeps primary operational buttons at least 52px high', () => {
     expect(buttonMetrics.primary.minHeight).toBeGreaterThanOrEqual(52);
   });

@@ -83,6 +83,7 @@ export const statusColors = {
 
 export const lightTheme: ThemeColors = {
   ...brandColors,
+  warning: '#8A480B',
   mode: 'light',
   background: '#F4F3F0',
   backgroundSecondary: '#ECEAE6',
@@ -118,6 +119,9 @@ export const lightTheme: ThemeColors = {
 
 export const darkTheme: ThemeColors = {
   ...brandColors,
+  primary: '#F28B82',
+  danger: '#F28B82',
+  warning: '#F1C78B',
   mode: 'dark',
   background: '#24211F',
   backgroundSecondary: '#2D2926',
@@ -142,7 +146,7 @@ export const darkTheme: ThemeColors = {
   borderSubtle: '#514C47',
   borderStrong: '#6B6560',
   focusRing: '#7DB8E8',
-  interactivePrimary: '#D34B40',
+  interactivePrimary: '#F28B82',
   interactivePrimaryPressed: '#B42318',
   interactiveSecondary: '#4A3520',
   interactiveSecondaryPressed: '#604527',

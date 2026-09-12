@@ -73,7 +73,7 @@ test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
     // Assert thermal receipt modal is open and shows VAT
     const receiptModal = page.getByTestId('receipt-modal');
     await expect(receiptModal).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('CRISPY BITE QSR')).toBeVisible();
+    await expect(page.getByText('Crispy Bite QSR')).toBeVisible();
     await expect(receiptModal.getByRole('heading', { name: 'Hóa đơn bán hàng' })).toBeVisible();
     await expect(receiptModal.getByText('Thuế GTGT (VAT 8%)')).toBeVisible();
     await expect(receiptModal.getByText('Tổng thanh toán')).toBeVisible();
@@ -105,7 +105,7 @@ test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
 
     // Verify KDS screen
     await expect(page.getByTestId('kds-screen-title')).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText('Kết nối thời gian thực', { exact: true })).toBeVisible();
+    await expect(page.getByText('Đồng bộ ticket', { exact: true })).toBeVisible();
 
     if ((page.viewportSize()?.width ?? 1280) >= 768) {
       await expect(page.getByRole('heading', { name: 'Chờ chế biến' })).toBeVisible();

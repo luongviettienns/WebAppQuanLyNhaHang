@@ -116,7 +116,7 @@ Tat ca tai khoan mac dinh co mat khau la: `123456`
 ## 7. Chay Kiem Thu Tu Dong (Automated Test Suites)
 
 ```bash
-# 1. Chay toan bo Unit & Integration tests (111 tests pass 100%)
+# 1. Chay toan bo Unit & Integration tests
 npm run test
 
 # 2. Kiem tra tinh hop le TypeScript (0 loi)
@@ -128,7 +128,7 @@ npm run doctor
 # 4. Kiem tra tieu chuan lint ESLint
 npm run lint
 
-# 5. Chay kiem thu E2E Playwright tren ca Desktop va Mobile Viewport (4 tests pass 100%)
+# 5. Chay kiem thu E2E Playwright tren ca Desktop va Mobile Viewport
 npm run test:e2e
 
 # 6. Kiem tra chat luong tong hop truoc khi release
@@ -145,3 +145,13 @@ Du an ap dung **Conventional Commits** voi noi dung mo ta bang **tieng Viet khon
 - `refactor(scope): ...` (Tai cau truc ma nguon)
 - `docs(scope): ...` (Tai lieu, ke hoach)
 - `chore(scope): ...` (Cau hinh, toolchain, moi truong)
+
+## 9. Quy uoc giao dien Crispy Bite
+
+- Theme mac dinh: Login/khach, thu ngan (POS) va quan tri dung light; vai tro bep (`KITCHEN`) dung dark. Lua chon thu cong duoc luu rieng theo vai tro va khoi phuc khi tai lai. Tab bep trong tai khoan admin van theo theme cua admin.
+- Layout: mobile duoi 768px dung navigation duoi; tablet 768–1199px dung navigation tren; desktop tu 1200px dung thanh dieu huong ben trai. POS co gio hang ben phai tu 900px; KDS tablet cuon ngang ba lane, mobile loc theo trang thai. Viewport QA: Login 390×844/1440×900; POS 1024×768/1440×900; KDS ca ba; QR 390×844; Admin 1440×900.
+- Font Barlow Condensed dung cho wordmark, ma don, so ban va tieu de; Inter dung cho noi dung va thao tac. Font duoc bundle qua Expo. Ung dung cho tai font xong, hoac hien thi bang font he thong neu tai font loi; E2E co kiem tra dang nhap khi chan request font.
+- `frontend/src/ui` chi chua trinh bay va hanh vi giao dien dung chung. Du lieu, business state, API/socket va callback nghiep vu o feature/context. Giu nguyen `testID` khi thay bo cuc. Mau/radius/typography lay tu token, nhan dung sentence case, thao tac toi thieu 44px (POS/KDS chinh 52px).
+- KDS hien thi trang thai **dong bo ticket qua REST**; context hien tai chua cung cap trang thai ket noi socket. Bieu tuong QR chuyen khoan chi la minh hoa; khach can lien he nhan vien de xac nhan thong tin thanh toan. API chua tra ten snapshot mon thi giao dien hien `Món #id` thay cho dong trong. Bao cao chi truc quan hoa tong hop ngay va xep hang mon vi API chua co chuoi thoi gian.
+
+Khi chay unit/integration tu mot launcher co nap `.env`, phai gan ro `NODE_ENV=test` **truoc khi khoi dong Vitest**. Xac minh `TEST_DATABASE_URL` tro den database ket thuc bang `_test`, khac database phat trien; cac test co thao tac reset du lieu. E2E can build moi ca frontend/backend va dung server rieng tro den database `_test`. Khong tai su dung cong dang phuc vu du lieu phat trien. E2E server can `NODE_ENV=production` de phuc vu `frontend/dist`; gan ca `DATABASE_URL` va `TEST_DATABASE_URL` ve database `_test` da xac minh truoc khi khoi dong.

@@ -78,7 +78,7 @@ const NavigationItems: React.FC<NavigationItemsProps> = ({ tabs, activeTab, onSe
             onPress={() => onSelect(tab.key)}
             style={({ pressed }) => [
               vertical ? styles.railItem : styles.tabItem,
-              { backgroundColor: active ? theme.interactiveSecondary : pressed ? theme.interactiveQuiet : 'transparent' },
+              { backgroundColor: active ? theme.interactiveSecondary : pressed ? theme.interactiveQuiet : 'transparent', borderColor: 'transparent' },
               active && { borderColor: theme.primary }
             ]}
           >

@@ -139,7 +139,7 @@ const OrderTicket: React.FC<TicketProps> = ({ order, now, updating, onTransition
             <View key={item.id || index} style={styles.itemRow}>
               <Text style={[styles.quantity, { color: theme.textPrimary }]}>{item.quantity}×</Text>
               <View style={styles.itemDetails}>
-                <Text style={[styles.itemName, { color: theme.textPrimary }]}>{item.menuItemName}</Text>
+                <Text style={[styles.itemName, { color: theme.textPrimary }]}>{item.menuItemName || `Món #${item.menuItemId}`}</Text>
                 {(item.selectedModifiersJson || []).map((modifier, modifierIndex) => (
                   <Text key={`${modifier.optionId}-${modifierIndex}`} style={[styles.itemMeta, { color: theme.textSecondary }]}>
                     {modifier.groupName}: {modifier.optionName}
@@ -313,7 +313,7 @@ export const KDSScreen: React.FC = () => {
   };
 
   const connectionTone: StatusTone = kdsError ? 'danger' : isLoadingKDS ? 'warning' : 'success';
-  const connectionState = kdsError ? 'Cần kết nối lại' : isLoadingKDS ? 'Đang đồng bộ' : 'Đã kết nối';
+  const connectionState = kdsError ? 'Đồng bộ thất bại' : isLoadingKDS ? 'Đang đồng bộ' : 'Đã đồng bộ';
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
@@ -327,7 +327,7 @@ export const KDSScreen: React.FC = () => {
         </View>
         <View style={[styles.headerUtility, !isMobile && styles.headerUtilityWide]}>
           <View style={styles.connectionGroup}>
-            <Text style={[styles.connectionLabel, { color: theme.textSecondary }]}>Kết nối thời gian thực</Text>
+            <Text style={[styles.connectionLabel, { color: theme.textSecondary }]}>Đồng bộ ticket</Text>
             <StatusBadge tone={connectionTone} label={connectionState} />
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.headerActions}>
