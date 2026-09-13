@@ -21,6 +21,7 @@ import type { StatusTone } from '../../ui';
 import { MenuCategoryPills } from '../pos/MenuCategoryPills';
 import { MenuItemCard } from '../pos/MenuItemCard';
 import { ModifierModal } from '../pos/ModifierModal';
+import { notificationHelper } from '../../lib/notificationHelper';
 
 interface Props {
   tableNumber?: number;
@@ -104,19 +105,22 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
       });
 
       if (latestOrderStatusChanged.status === 'PREPARING') {
+        notificationHelper.notifyOrderPreparing(formatTableNumber(tableNumber));
         showToast({
           type: 'info',
           title: 'Đang nấu món 🍳',
           message: `Bếp đã bắt đầu chuẩn bị các món ăn cho Bàn ${formatTableNumber(tableNumber)}!`
         });
       } else if (latestOrderStatusChanged.status === 'READY') {
+        notificationHelper.notifyOrderReady(formatTableNumber(tableNumber));
         showToast({
           type: 'success',
           title: 'Món ăn đã xong! 🎉',
           message: `Món ăn đã nấu xong! Nhân viên đang bưng ra Bàn ${formatTableNumber(tableNumber)} cho bạn.`,
-          duration: 5000
+          duration: 6000
         });
       } else if (latestOrderStatusChanged.status === 'COMPLETED') {
+        notificationHelper.notifyOrderCompleted(formatTableNumber(tableNumber));
         showToast({
           type: 'success',
           title: 'Hoàn tất đơn hàng ✨',
@@ -142,6 +146,9 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
     if (cart.length === 0) return;
     setIsSubmitting(true);
     setOrderError(null);
+
+    // Xin quyen thong bao trinh duyet khi khach dat mon
+    notificationHelper.requestPermission().catch(() => {});
 
     const result = await createDineInOrder(tableId);
     setIsSubmitting(false);
@@ -217,6 +224,34 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
             </View>
             <StatusBadge {...orderStatusConfig(liveOrder.status)} />
           </View>
+
+          {liveOrder.status === 'READY' && (
+            <View style={[styles.readyBanner, { backgroundColor: '#F0FDF4', borderColor: '#86EFAC' }]}>
+              <View style={[styles.readyBannerIcon, { backgroundColor: '#DCFCE7' }]}>
+                <AppIcon icon={UtensilsCrossed} color="#16A34A" size={24} />
+              </View>
+              <View style={styles.readyBannerCopy}>
+                <Text style={[styles.readyBannerTitle, { color: '#15803D' }]}>Món ăn đã xong! 🎉</Text>
+                <Text style={[styles.readyBannerText, { color: '#166534' }]}>
+                  Nhân viên đang bưng món ra Bàn {formatTableNumber(tableNumber)} cho bạn. Vui lòng ngồi chờ giây lát nhé!
+                </Text>
+              </View>
+            </View>
+          )}
+
+          {liveOrder.status === 'PREPARING' && (
+            <View style={[styles.readyBanner, { backgroundColor: '#EFF6FF', borderColor: '#93C5FD' }]}>
+              <View style={[styles.readyBannerIcon, { backgroundColor: '#DBEAFE' }]}>
+                <AppIcon icon={ChefHat} color="#2563EB" size={24} />
+              </View>
+              <View style={styles.readyBannerCopy}>
+                <Text style={[styles.readyBannerTitle, { color: '#1D4ED8' }]}>Bếp đang nấu món 🍳</Text>
+                <Text style={[styles.readyBannerText, { color: '#1E40AF' }]}>
+                  Đầu bếp đang chế biến các món ăn nóng hổi cho Bàn {formatTableNumber(tableNumber)}.
+                </Text>
+              </View>
+            </View>
+          )}
 
           <View style={styles.timeline}>
             {orderSteps.map((step, index) => {
@@ -507,6 +542,34 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.bodyMedium,
     fontSize: typography.sizes.sm,
     fontVariant: [...typography.numeric.fontVariant]
+  },
+  readyBanner: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: spacing.md,
+    padding: spacing.md
+  },
+  readyBannerIcon: {
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    height: 44,
+    justifyContent: 'center',
+    width: 44
+  },
+  readyBannerCopy: {
+    flex: 1,
+    gap: 2
+  },
+  readyBannerTitle: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.md
+  },
+  readyBannerText: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.sm,
+    lineHeight: typography.lineHeights.sm
   },
   timeline: { paddingTop: spacing.xs },
   timelineRow: { alignItems: 'stretch', flexDirection: 'row', gap: spacing.md },
