@@ -28,6 +28,7 @@ import { DiningTableDto, OrderStatus, PaymentMethod, TableStatus } from '../../a
 import { useAuth } from '../../contexts/AuthContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 import { elevation, radii, spacing, statusColors, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import type { StatusTone } from '../../ui';
@@ -80,6 +81,7 @@ const paymentOptions: Array<{ value: PaymentMethod; label: string; icon: LucideI
 export const TableScreen: React.FC = () => {
   const { theme } = useTheme();
   const { user } = useAuth();
+  const { showToast } = useToast();
   const { width } = useWindowDimensions();
   const { tables, isLoadingTables, fetchTables, payOrder, updateTableStatus, voidOrder } = useRestaurant();
 
@@ -136,7 +138,11 @@ export const TableScreen: React.FC = () => {
     setIsProcessingPay(false);
 
     if (!result.success) {
-      alert(result.error || 'Thanh toán thất bại');
+      showToast({
+        type: 'error',
+        title: 'Thanh toán thất bại',
+        message: result.error || 'Vui lòng kiểm tra lại phương thức thanh toán.'
+      });
       return;
     }
 
@@ -149,9 +155,15 @@ export const TableScreen: React.FC = () => {
       currentOrderId: nextOrder?.id ?? null
     });
     setSelectedOrderId(nextOrder?.id ?? null);
-    setPaySuccessMsg(nextOrder
+    const successText = nextOrder
       ? 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' còn ' + remainingOrders.length + ' đơn chưa thanh toán.'
-      : 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' đã sẵn sàng.');
+      : 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' đã hoàn tất.';
+    setPaySuccessMsg(successText);
+    showToast({
+      type: 'success',
+      title: 'Thanh toán thành công! 💳',
+      message: successText
+    });
     if (!nextOrder) {
       setTimeout(() => {
         setIsDetailModalOpen(false);
@@ -169,8 +181,16 @@ export const TableScreen: React.FC = () => {
         setSelectedTable((previous) => previous ? { ...previous, status: 'AVAILABLE' } : null);
         setPaySuccessMsg('Đã dọn bàn. Bàn sẵn sàng đón khách mới.');
       }
+      showToast({
+        type: 'success',
+        message: 'Đã dọn dẹp xong! Bàn sẵn sàng đón khách mới.'
+      });
     } else {
-      alert(result.error || 'Không thể cập nhật trạng thái bàn');
+      showToast({
+        type: 'error',
+        title: 'Thao tác không thành công',
+        message: result.error || 'Không thể cập nhật trạng thái bàn'
+      });
     }
   };
 
@@ -183,8 +203,16 @@ export const TableScreen: React.FC = () => {
         setSelectedTable((previous) => previous ? { ...previous, status: 'DIRTY' } : null);
         setPaySuccessMsg('Đã chuyển bàn sang trạng thái chờ dọn.');
       }
+      showToast({
+        type: 'info',
+        message: 'Đã chuyển bàn sang trạng thái Chờ dọn bàn.'
+      });
     } else {
-      alert(result.error || 'Không thể cập nhật trạng thái bàn');
+      showToast({
+        type: 'error',
+        title: 'Thao tác không thành công',
+        message: result.error || 'Không thể cập nhật trạng thái bàn'
+      });
     }
   };
 
@@ -207,6 +235,11 @@ export const TableScreen: React.FC = () => {
     setIsProcessingVoid(false);
     if (!result.success) {
       setVoidError(result.error || 'Hủy đơn hàng thất bại');
+      showToast({
+        type: 'error',
+        title: 'Hủy đơn thất bại',
+        message: result.error || 'Vui lòng kiểm tra quyền hạn và thử lại.'
+      });
       return;
     }
 
@@ -220,9 +253,15 @@ export const TableScreen: React.FC = () => {
       currentOrderId: nextOrder?.id ?? null
     } : null);
     setSelectedOrderId(nextOrder?.id ?? null);
-    setPaySuccessMsg(nextOrder
+    const voidSuccessText = nextOrder
       ? 'Đã hủy đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable?.tableNumber || 0) + ' còn ' + remainingOrders.length + ' đơn chưa thanh toán.'
-      : 'Đã hủy đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable?.tableNumber || 0) + ' đã sẵn sàng.');
+      : 'Đã hủy đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable?.tableNumber || 0) + ' đã sẵn sàng.';
+    setPaySuccessMsg(voidSuccessText);
+    showToast({
+      type: 'warning',
+      title: 'Đã hủy đơn hàng',
+      message: voidSuccessText
+    });
     if (!nextOrder) {
       setTimeout(() => {
         setIsDetailModalOpen(false);

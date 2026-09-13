@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -14,6 +14,7 @@ import { Check, ChefHat, CreditCard, QrCode, ShoppingBag, UtensilsCrossed, X } f
 import { MenuItemDto, OrderDto, OrderStatus } from '../../api/contracts';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 import { elevation, radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, InlineAlert, StatusBadge, Surface } from '../../ui';
 import type { StatusTone } from '../../ui';
@@ -46,6 +47,7 @@ const orderSteps = [
 
 export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
   const { theme } = useTheme();
+  const { showToast } = useToast();
   const {
     categories,
     allMenuItems,
@@ -63,7 +65,8 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
     addToCart,
     createDineInOrder,
     tables,
-    activeTableOrder
+    activeTableOrder,
+    latestOrderStatusChanged
   } = useRestaurant();
 
   const [currentOrder, setCurrentOrder] = useState<OrderDto | null>(null);
@@ -75,11 +78,63 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
   const tableId = table?.id || 1;
   const liveOrder = currentOrder || activeTableOrder || table?.orders?.[0] || null;
 
+  // Lang nghe socket cap nhat tien do don hang theo thoi gian thuc cho khach
+  useEffect(() => {
+    if (!latestOrderStatusChanged) return;
+    const isThisTable =
+      table?.orders?.some((o) => o.id === latestOrderStatusChanged.orderId) ||
+      (currentOrder && currentOrder.id === latestOrderStatusChanged.orderId);
+
+    if (isThisTable) {
+      setCurrentOrder((prev) => {
+        if (!prev || prev.id === latestOrderStatusChanged.orderId) {
+          const base = prev || table?.orders?.find((o) => o.id === latestOrderStatusChanged.orderId);
+          if (base) {
+            return {
+              ...base,
+              status: latestOrderStatusChanged.status,
+              prepTimeSec: latestOrderStatusChanged.prepTimeSec ?? base.prepTimeSec,
+              preparingAt: latestOrderStatusChanged.preparingAt ?? base.preparingAt,
+              readyAt: latestOrderStatusChanged.readyAt ?? base.readyAt,
+              completedAt: latestOrderStatusChanged.completedAt ?? base.completedAt
+            };
+          }
+        }
+        return prev;
+      });
+
+      if (latestOrderStatusChanged.status === 'PREPARING') {
+        showToast({
+          type: 'info',
+          title: 'Đang nấu món 🍳',
+          message: `Bếp đã bắt đầu chuẩn bị các món ăn cho Bàn ${formatTableNumber(tableNumber)}!`
+        });
+      } else if (latestOrderStatusChanged.status === 'READY') {
+        showToast({
+          type: 'success',
+          title: 'Món ăn đã xong! 🎉',
+          message: `Món ăn đã nấu xong! Nhân viên đang bưng ra Bàn ${formatTableNumber(tableNumber)} cho bạn.`,
+          duration: 5000
+        });
+      } else if (latestOrderStatusChanged.status === 'COMPLETED') {
+        showToast({
+          type: 'success',
+          title: 'Hoàn tất đơn hàng ✨',
+          message: `Đơn hàng Bàn ${formatTableNumber(tableNumber)} đã hoàn thành. Chúc bạn ngon miệng!`
+        });
+      }
+    }
+  }, [latestOrderStatusChanged, table?.orders, currentOrder, tableNumber, showToast]);
+
   const handleCardPress = (item: MenuItemDto) => {
     if (item.modifierGroups && item.modifierGroups.length > 0) {
       openModifierModal(item);
     } else {
       addToCart(item, 1, []);
+      showToast({
+        type: 'success',
+        message: `Đã thêm "${item.name}" vào giỏ hàng`
+      });
     }
   };
 
@@ -93,8 +148,18 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
 
     if (result.success && result.order) {
       setCurrentOrder(result.order);
+      showToast({
+        type: 'success',
+        title: 'Đặt món thành công! 🚀',
+        message: `Đơn hàng Bàn ${formatTableNumber(tableNumber)} đã được gửi xuống Bếp.`
+      });
     } else {
       setOrderError(result.error || 'Không thể gửi đơn xuống bếp');
+      showToast({
+        type: 'error',
+        title: 'Không thể gửi đơn',
+        message: result.error || 'Vui lòng thử lại'
+      });
     }
   };
 

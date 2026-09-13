@@ -13,6 +13,7 @@ import {
   useFonts as useInterFonts
 } from '@expo-google-fonts/inter';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
+import { ToastProvider } from './src/contexts/ToastContext';
 import { AuthProvider, useAuth } from './src/contexts/AuthContext';
 import { RestaurantProvider } from './src/contexts/RestaurantContext';
 import { RootNavigator } from './src/navigation/RootNavigator';
@@ -53,11 +54,13 @@ export default function App() {
 
   return (
     <ThemeProvider>
-      <AuthProvider>
-        <RestaurantProvider>
-          <AppContent />
-        </RestaurantProvider>
-      </AuthProvider>
+      <ToastProvider>
+        <AuthProvider>
+          <RestaurantProvider>
+            <AppContent />
+          </RestaurantProvider>
+        </AuthProvider>
+      </ToastProvider>
     </ThemeProvider>
   );
 }

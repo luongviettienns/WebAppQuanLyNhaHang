@@ -80,6 +80,9 @@ interface RestaurantContextType {
   updateTableStatus: (tableId: number, status: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') => Promise<{ success: boolean; table?: DiningTableDto; error?: string }>;
   voidOrder: (orderId: number, reason: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
 
+  // Real-time Updates
+  latestOrderStatusChanged?: SocketOrderStatusChangedPayload | null;
+
   // KDS State (Bếp thời gian thực)
   kdsOrders: OrderDto[];
   isLoadingKDS: boolean;
@@ -121,6 +124,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [activeTableId, setActiveTableId] = useState<number | null>(null);
   const [activeTableOrder, setActiveTableOrder] = useState<OrderDto | null>(null);
   const orderIdempotency = useRef(new IdempotencyKeyStore());
+
+  // Real-time Order Updates
+  const [latestOrderStatusChanged, setLatestOrderStatusChanged] = useState<SocketOrderStatusChangedPayload | null>(null);
 
   // KDS State (Bếp thời gian thực)
   const [kdsOrders, setKdsOrders] = useState<OrderDto[]>([]);
@@ -265,6 +271,8 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
     // Order Status Changed
     socket.on('order:statusChanged', (payload: SocketOrderStatusChangedPayload) => {
+      setLatestOrderStatusChanged(payload);
+      fetchTables();
       setActiveTableOrder((prev) => {
         if (prev && prev.id === payload.orderId) {
           return { ...prev, status: payload.status };
@@ -696,6 +704,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         payOrder,
         updateTableStatus,
         voidOrder,
+        latestOrderStatusChanged,
         kdsOrders,
         isLoadingKDS,
         kdsError,

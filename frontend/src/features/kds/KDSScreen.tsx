@@ -26,6 +26,7 @@ import type { LucideIcon } from 'lucide-react-native';
 import { MenuItemDto, OrderDto } from '../../api/contracts';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 import { radii, spacing, typography } from '../../theme';
 import {
   AppIcon,
@@ -250,6 +251,7 @@ const StatusSegment: React.FC<SegmentProps> = ({ status, count, selected, onPres
 
 export const KDSScreen: React.FC = () => {
   const { theme, isDark, toggleTheme } = useTheme();
+  const { showToast } = useToast();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
   const isDesktop = width >= 1200;
@@ -296,7 +298,36 @@ export const KDSScreen: React.FC = () => {
     setUpdatingOrderId(order.id);
     const result = await updateOrderStatus(order.id, nextStatus);
     setUpdatingOrderId(null);
-    if (!result.success) Alert.alert('Lỗi cập nhật', result.error || 'Không thể cập nhật trạng thái đơn');
+    if (!result.success) {
+      showToast({
+        type: 'error',
+        title: 'Lỗi cập nhật',
+        message: result.error || 'Không thể cập nhật trạng thái đơn'
+      });
+    } else {
+      const destination = order.orderType === 'DINE_IN'
+        ? `Bàn ${order.tableNumber ?? order.tableId ?? ''}`
+        : `Mang đi (Số ${order.buzzerNumber ?? ''})`;
+      if (nextStatus === 'PREPARING') {
+        showToast({
+          type: 'info',
+          title: 'Bắt đầu nấu món 🍳',
+          message: `Đơn ${order.code} (${destination}) đã chuyển sang Đang chế biến.`
+        });
+      } else if (nextStatus === 'READY') {
+        showToast({
+          type: 'success',
+          title: 'Món đã nấu xong! 🎉',
+          message: `Đơn ${order.code} (${destination}) đã sẵn sàng giao cho khách.`
+        });
+      } else if (nextStatus === 'COMPLETED') {
+        showToast({
+          type: 'success',
+          title: 'Đã hoàn tất giao món ✨',
+          message: `Đã giao thành công đơn ${order.code} (${destination}).`
+        });
+      }
+    }
   };
 
   const handleToggleSoldOut = async (item: MenuItemDto) => {
@@ -304,7 +335,19 @@ export const KDSScreen: React.FC = () => {
     setSoldOutError(null);
     const result = await toggleMenuItemSoldOut(item.id, !item.isAvailable);
     setTogglingItemId(null);
-    if (!result.success) setSoldOutError(result.error || 'Cập nhật món hết hàng thất bại');
+    if (!result.success) {
+      setSoldOutError(result.error || 'Cập nhật món hết hàng thất bại');
+      showToast({
+        type: 'error',
+        title: 'Cập nhật thất bại',
+        message: result.error || 'Không thể cập nhật trạng thái món ăn'
+      });
+    } else {
+      showToast({
+        type: 'info',
+        message: !item.isAvailable ? `Đã mở bán lại món "${item.name}"` : `Đã báo hết món (86) "${item.name}"`
+      });
+    }
   };
 
   const openSoldOutModal = () => {

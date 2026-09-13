@@ -3,6 +3,7 @@ import { Modal, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View } fr
 import { Check, Minus, Plus, X } from 'lucide-react-native';
 import { MenuItemDto, SelectedModifierDto } from '../../api/contracts';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 import { elevation, radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, Field, InlineAlert, StatusBadge } from '../../ui';
 
@@ -23,6 +24,7 @@ const formatVND = (amount: number) =>
 
 export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddToCart }) => {
   const { theme } = useTheme();
+  const { showToast } = useToast();
   const [quantity, setQuantity] = useState(1);
   const [selectedModifiers, setSelectedModifiers] = useState<Record<number, number[]>>({});
   const [notes, setNotes] = useState('');
@@ -89,6 +91,10 @@ export const ModifierModal: React.FC<Props> = ({ visible, item, onClose, onAddTo
       });
     });
     onAddToCart(item, quantity, resultModifiers, notes.trim() || undefined);
+    showToast({
+      type: 'success',
+      message: `Đã thêm ${quantity > 1 ? `${quantity}x ` : ''}"${item.name}" vào giỏ hàng`
+    });
   };
 
   return (

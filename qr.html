@@ -2,94 +2,235 @@
 <html lang="vi">
 <head>
   <meta charset="UTF-8">
-  <title>CRISPY BITE - Quét Mã Expo Go Android</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRISPY BITE - Bảng Mã QR Đặt Món 12 Bàn Ăn</title>
   <style>
+    * { box-sizing: border-box; }
     body {
-      font-family: system-ui, -apple-system, sans-serif;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
       background: #0F172A;
       color: #F8FAFC;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      min-height: 100vh;
       margin: 0;
-      padding: 20px;
+      padding: 24px;
+      min-height: 100vh;
     }
-    .card {
-      background: #1E293B;
-      border: 1px solid #334155;
-      border-radius: 20px;
-      padding: 30px;
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    header {
       text-align: center;
-      max-width: 420px;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+      margin-bottom: 30px;
     }
     h1 {
-      color: #DC2626;
-      margin: 0 0 10px 0;
-      font-size: 24px;
+      color: #EF4444;
+      font-size: 28px;
+      margin: 0 0 8px 0;
       letter-spacing: 1px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
     }
-    p {
+    .subtitle {
       color: #94A3B8;
-      font-size: 14px;
-      margin-bottom: 20px;
+      font-size: 15px;
+      margin: 0 0 20px 0;
     }
-    .qr-box {
-      background: #FFFFFF;
-      padding: 16px;
+    .ip-bar {
+      background: #1E293B;
+      border: 1px solid #334155;
+      padding: 12px 20px;
       border-radius: 12px;
-      display: inline-block;
-      margin-bottom: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+      font-size: 14px;
     }
-    .qr-box img {
-      display: block;
-      width: 220px;
-      height: 220px;
-    }
-    .url-box {
+    .ip-bar input {
       background: #0F172A;
-      padding: 12px;
-      border-radius: 8px;
-      font-family: monospace;
+      border: 1px solid #475569;
       color: #38BDF8;
+      font-family: monospace;
       font-size: 15px;
       font-weight: bold;
-      border: 1px solid #334155;
-      margin-bottom: 15px;
-      user-select: all;
+      padding: 6px 12px;
+      border-radius: 6px;
+      width: 170px;
+      text-align: center;
     }
-    .steps {
-      text-align: left;
-      font-size: 13px;
-      color: #CBD5E1;
+    .ip-bar button {
+      background: #EF4444;
+      color: white;
+      border: none;
+      padding: 7px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .ip-bar button:hover {
+      background: #DC2626;
+    }
+    .instruction-card {
+      background: rgba(30, 41, 59, 0.6);
+      border: 1px dashed #475569;
+      border-radius: 12px;
+      padding: 16px 24px;
+      margin-bottom: 30px;
+      font-size: 14px;
       line-height: 1.6;
+      color: #CBD5E1;
     }
-    .steps ol {
-      padding-left: 20px;
-      margin: 0;
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 20px;
+    }
+    .table-card {
+      background: #1E293B;
+      border: 1px solid #334155;
+      border-radius: 16px;
+      padding: 20px;
+      text-align: center;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+    .table-card:hover {
+      transform: translateY(-4px);
+      border-color: #EF4444;
+      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.2);
+    }
+    .table-badge {
+      display: inline-block;
+      background: #EF4444;
+      color: white;
+      font-weight: 700;
+      font-size: 15px;
+      padding: 4px 14px;
+      border-radius: 20px;
+      margin-bottom: 12px;
+      letter-spacing: 0.5px;
+    }
+    .table-capacity {
+      color: #94A3B8;
+      font-size: 12px;
+      margin-bottom: 14px;
+    }
+    .qr-frame {
+      background: white;
+      padding: 12px;
+      border-radius: 10px;
+      display: inline-block;
+      margin-bottom: 14px;
+    }
+    .qr-frame img {
+      display: block;
+      width: 180px;
+      height: 180px;
+    }
+    .table-url {
+      font-family: monospace;
+      font-size: 11px;
+      color: #38BDF8;
+      background: #0F172A;
+      padding: 6px 10px;
+      border-radius: 6px;
+      word-break: break-all;
+      margin-bottom: 12px;
+    }
+    .open-btn {
+      display: block;
+      background: #334155;
+      color: #F8FAFC;
+      text-decoration: none;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      transition: background 0.15s;
+    }
+    .open-btn:hover {
+      background: #EF4444;
+      color: white;
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <h1>🍔 CRISPY BITE QSR</h1>
-    <p>Quét mã bằng camera hoặc ứng dụng <b>Expo Go</b> trên Android</p>
-    
-    <div class="qr-box">
-      <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=exp://172.16.18.80:8081" alt="Expo Go QR Code" />
-    </div>
+  <div class="container">
+    <header>
+      <h1>🍔 CRISPY BITE QSR - MÃ QR 12 BÀN ĂN</h1>
+      <p class="subtitle">Khách hàng dùng Camera điện thoại quét mã QR tại bàn để vào thẳng thực đơn chọn món</p>
+      
+      <div class="ip-bar">
+        <span>🌐 Địa chỉ IP máy chủ:</span>
+        <input type="text" id="hostIp" value="192.168.1.11" />
+        <span>Port: <b>8081</b></span>
+        <button onclick="updateQRCodes()">Cập nhật QR</button>
+      </div>
 
-    <div class="url-box">exp://172.16.18.80:8081</div>
+      <div class="instruction-card">
+        💡 <b>Hướng dẫn quét thử nghiệm:</b>
+        <br>• <b>Trên điện thoại thật</b>: Kết nối cùng Wi-Fi với máy tính $\rightarrow$ Mở <b>Camera</b> hoặc <b>Zalo</b> $\rightarrow$ Quét mã QR của bất kỳ bàn nào bên dưới. Điện thoại sẽ mở thẳng giao diện chọn món của bàn đó!
+        <br>• <b>Trên máy tính</b>: Bạn có thể bấm nút <b>"Mở thử Bàn..."</b> dưới mỗi mã QR để mở tab khách chọn món ngay trên trình duyệt PC.
+      </div>
+    </header>
 
-    <div class="steps">
-      <ol>
-        <li>Mở ứng dụng <b>Expo Go</b> trên điện thoại Android.</li>
-        <li>Bấm nút <b>"Scan QR code"</b> để quét mã ở trên.</li>
-        <li>Hoặc bấm <b>"Enter URL manually"</b> và dán link màu xanh ở trên.</li>
-      </ol>
+    <div class="grid" id="tablesGrid">
+      <!-- 12 bàn ăn sẽ được render tự động -->
     </div>
   </div>
+
+  <script>
+    const tables = [
+      { id: 1, name: "Bàn 01", cap: "Bàn 2 người" },
+      { id: 2, name: "Bàn 02", cap: "Bàn 2 người" },
+      { id: 3, name: "Bàn 03", cap: "Bàn 2 người" },
+      { id: 4, name: "Bàn 04", cap: "Bàn 2 người" },
+      { id: 5, name: "Bàn 05", cap: "Bàn 4 người" },
+      { id: 6, name: "Bàn 06", cap: "Bàn 4 người" },
+      { id: 7, name: "Bàn 07", cap: "Bàn 4 người" },
+      { id: 8, name: "Bàn 08", cap: "Bàn 4 người" },
+      { id: 9, name: "Bàn 09", cap: "Bàn 4 người" },
+      { id: 10, name: "Bàn 10", cap: "Bàn 4 người" },
+      { id: 11, name: "Bàn 11", cap: "Bàn nhóm 8 người" },
+      { id: 12, name: "Bàn 12", cap: "Bàn nhóm 8 người" },
+    ];
+
+    // Tu dong nhan dien IP neu dang mo qua HTTP
+    if (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+      document.getElementById('hostIp').value = window.location.hostname;
+    }
+
+    function renderTables() {
+      const ip = document.getElementById('hostIp').value.trim() || '192.168.1.11';
+      const grid = document.getElementById('tablesGrid');
+      grid.innerHTML = '';
+
+      tables.forEach(t => {
+        const url = `http://${ip}:8081/?table=${t.id}`;
+        const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(url)}`;
+        
+        const card = document.createElement('div');
+        card.className = 'table-card';
+        card.innerHTML = `
+          <div class="table-badge">${t.name}</div>
+          <div class="table-capacity">Sức chứa: ${t.cap}</div>
+          <div class="qr-frame">
+            <img src="${qrApi}" alt="QR ${t.name}" loading="lazy" />
+          </div>
+          <div class="table-url">${url}</div>
+          <a href="${url}" target="_blank" class="open-btn">Mở thử ${t.name} ↗</a>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    function updateQRCodes() {
+      renderTables();
+    }
+
+    renderTables();
+  </script>
 </body>
 </html>

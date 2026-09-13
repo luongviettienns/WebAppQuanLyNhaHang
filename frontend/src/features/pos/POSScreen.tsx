@@ -25,6 +25,7 @@ import {
 import { MenuItemDto, OrderDto, OrderType } from '../../api/contracts';
 import { CartItem, useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 import { elevation, radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, Surface } from '../../ui';
 import { MenuCategoryPills } from './MenuCategoryPills';
@@ -146,6 +147,7 @@ const CartPanel: React.FC<CartPanelProps> = ({
 
 export const POSScreen: React.FC = () => {
   const { theme } = useTheme();
+  const { showToast } = useToast();
   const { width } = useWindowDimensions();
   const isSplitLayout = width >= 900;
   const menuColumns = width >= 1400 ? 3 : width >= 600 ? 2 : 1;
@@ -189,6 +191,10 @@ export const POSScreen: React.FC = () => {
       openModifierModal(item);
     } else {
       addToCart(item, 1, []);
+      showToast({
+        type: 'success',
+        message: `Đã thêm "${item.name}" vào giỏ hàng`
+      });
     }
   };
 
@@ -219,8 +225,19 @@ export const POSScreen: React.FC = () => {
     if (result.success && result.order) {
       setSuccessOrderCode(result.order.code);
       setCreatedOrder(result.order);
+      const chosenTable = tables.find((t) => t.id === selectedTableId);
+      showToast({
+        type: 'success',
+        title: 'Tạo đơn thành công! 🎉',
+        message: `Đơn ${result.order.code} (${orderType === 'DINE_IN' ? `Bàn ${chosenTable?.tableNumber ?? ''}` : 'Mang đi'}) đã được gửi xuống bếp.`
+      });
     } else {
       setSubmitError(result.error || 'Gửi đơn thất bại. Vui lòng thử lại.');
+      showToast({
+        type: 'error',
+        title: 'Không thể tạo đơn',
+        message: result.error || 'Vui lòng thử lại.'
+      });
     }
   };
 
