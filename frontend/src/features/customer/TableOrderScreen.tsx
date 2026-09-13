@@ -272,46 +272,45 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
       <View style={[styles.customerHeader, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
         <View style={styles.tableIdentity}>
-          <View style={[styles.brandMark, { backgroundColor: theme.interactivePrimary }]}>
-            <Text style={[styles.brandMarkText, { color: theme.textInverse }]}>CB</Text>
-          </View>
+          {liveOrder && isBrowsingMenu ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Quay lại xem tiến độ đơn"
+              onPress={() => setIsBrowsingMenu(false)}
+              style={({ pressed }) => [
+                styles.headerBackButton,
+                { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceRaised, borderColor: theme.borderSubtle }
+              ]}
+            >
+              <AppIcon icon={ChevronLeft} color={theme.textPrimary} size={20} />
+            </Pressable>
+          ) : (
+            <View style={[styles.brandMark, { backgroundColor: theme.interactivePrimary }]}>
+              <Text style={[styles.brandMarkText, { color: theme.textInverse }]}>CB</Text>
+            </View>
+          )}
           <View style={styles.tableIdentityCopy}>
-            <Text style={[styles.headerHint, { color: theme.textSecondary }]}>Đặt món tại bàn</Text>
+            <Text style={[styles.headerHint, { color: theme.textSecondary }]}>
+              {liveOrder && isBrowsingMenu ? `Đơn ${liveOrder.code}` : 'Đặt món tại bàn'}
+            </Text>
             <Text style={[styles.tableIdentityNumber, { color: theme.textPrimary }]}>Bàn {formatTableNumber(tableNumber)}</Text>
           </View>
         </View>
 
-        <View style={styles.headerRightActions}>
-          {liveOrder && isBrowsingMenu && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Xem tiến độ đơn"
-              onPress={() => setIsBrowsingMenu(false)}
-              style={({ pressed }) => [
-                styles.headerPayment,
-                { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase, borderColor: theme.borderSubtle, borderWidth: 1 }
-              ]}
-            >
-              <AppIcon icon={ChevronLeft} color={theme.primary} size={18} />
-              <Text style={[styles.headerPaymentText, { color: theme.primary }]}>Xem đơn ({liveOrder.code})</Text>
-            </Pressable>
-          )}
-
-          {liveOrder && (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel={'Thanh toán ' + formatVND(liveOrder.finalAmount)}
-              onPress={() => setIsVietQRModalOpen(true)}
-              style={({ pressed }) => [
-                styles.headerPayment,
-                { backgroundColor: pressed ? theme.interactiveSecondaryPressed : theme.interactiveSecondary }
-              ]}
-            >
-              <AppIcon icon={CreditCard} color={theme.primary} size={18} />
-              <Text style={[styles.headerPaymentText, { color: theme.primary }]}>Thanh toán</Text>
-            </Pressable>
-          )}
-        </View>
+        {liveOrder && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={'Thanh toán ' + formatVND(liveOrder.finalAmount)}
+            onPress={() => setIsVietQRModalOpen(true)}
+            style={({ pressed }) => [
+              styles.headerPayment,
+              { backgroundColor: pressed ? theme.interactiveSecondaryPressed : theme.interactiveSecondary }
+            ]}
+          >
+            <AppIcon icon={CreditCard} color={theme.primary} size={18} />
+            <Text style={[styles.headerPaymentText, { color: theme.primary }]}>Thanh toán</Text>
+          </Pressable>
+        )}
       </View>
 
       {liveOrder && !isBrowsingMenu && cart.length === 0 ? (
@@ -438,23 +437,6 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
         </ScrollView>
       ) : (
         <View style={styles.menuArea}>
-          {liveOrder && (
-            <View style={styles.browsingMoreBar}>
-              <Pressable
-                onPress={() => setIsBrowsingMenu(false)}
-                style={({ pressed }) => [
-                  styles.backToOrderButton,
-                  { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceRaised, borderColor: theme.borderSubtle }
-                ]}
-              >
-                <AppIcon icon={ChevronLeft} color={theme.primary} size={16} />
-                <Text style={[styles.backToOrderText, { color: theme.primary }]}>
-                  Quay lại xem tiến độ Đơn {liveOrder.code}
-                </Text>
-              </Pressable>
-            </View>
-          )}
-
           <View style={styles.menuHeading}>
             <View>
               <Text accessibilityRole="header" style={[styles.screenTitle, { color: theme.textPrimary }]}>Thực đơn</Text>
@@ -916,26 +898,12 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.bodySemibold,
     fontSize: typography.sizes.xs
   },
-  headerRightActions: {
+  headerBackButton: {
     alignItems: 'center',
-    flexDirection: 'row',
-    gap: spacing.xs
-  },
-  browsingMoreBar: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md
-  },
-  backToOrderButton: {
-    alignItems: 'center',
-    borderRadius: radii.md,
+    borderRadius: radii.pill,
     borderWidth: 1,
-    flexDirection: 'row',
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm
-  },
-  backToOrderText: {
-    fontFamily: typography.families.bodySemibold,
-    fontSize: typography.sizes.sm
+    height: 38,
+    justifyContent: 'center',
+    width: 38
   }
 });
