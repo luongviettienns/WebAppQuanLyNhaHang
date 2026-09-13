@@ -81,9 +81,22 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
     notificationHelper.getPermissionStatus()
   );
 
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+
   const table = tables.find((t) => t.tableNumber === tableNumber) || tables[0];
   const tableId = table?.id || 1;
-  const liveOrder = currentOrder || activeTableOrder || table?.orders?.[0] || null;
+  const allTableOrders = table?.orders || [];
+  const liveOrder =
+    (selectedOrderId ? allTableOrders.find((o) => o.id === selectedOrderId) : null) ||
+    currentOrder ||
+    activeTableOrder ||
+    allTableOrders[0] ||
+    null;
+
+  const totalTableAmount =
+    allTableOrders.length > 0
+      ? allTableOrders.reduce((sum, o) => sum + (o.finalAmount || 0), 0)
+      : liveOrder?.finalAmount || 0;
 
   // Luu vet status da thong bao de chan triet de viec spam chuong / rung / toast
   const lastNotifiedStatusKeyRef = useRef<string | null>(null);
@@ -142,6 +155,9 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
   useEffect(() => {
     const latestTableOrder = table?.orders?.[0];
     if (latestTableOrder) {
+      if (!selectedOrderId) {
+        setSelectedOrderId(latestTableOrder.id);
+      }
       setCurrentOrder((prev) => {
         if (!prev || prev.id !== latestTableOrder.id || prev.status !== latestTableOrder.status) {
           return latestTableOrder;
@@ -154,7 +170,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
         notifyStatusTransition(latestTableOrder.id, latestTableOrder.status);
       }
     }
-  }, [table?.orders, notifyStatusTransition]);
+  }, [table?.orders, selectedOrderId, notifyStatusTransition]);
 
   // Lang nghe socket cap nhat tien do don hang theo thoi gian thuc cho khach
   useEffect(() => {
@@ -229,6 +245,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
 
     if (result.success && result.order) {
       setCurrentOrder(result.order);
+      setSelectedOrderId(result.order.id);
       setIsBrowsingMenu(false);
       showToast({
         type: 'success',
@@ -300,7 +317,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
         {liveOrder && (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={'Thanh toán ' + formatVND(liveOrder.finalAmount)}
+            accessibilityLabel={'Thanh toán ' + formatVND(totalTableAmount)}
             onPress={() => setIsVietQRModalOpen(true)}
             style={({ pressed }) => [
               styles.headerPayment,
@@ -308,7 +325,9 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
             ]}
           >
             <AppIcon icon={CreditCard} color={theme.primary} size={18} />
-            <Text style={[styles.headerPaymentText, { color: theme.primary }]}>Thanh toán</Text>
+            <Text style={[styles.headerPaymentText, { color: theme.primary }]}>
+              {allTableOrders.length > 1 ? `Thanh toán (${formatVND(totalTableAmount)})` : 'Thanh toán'}
+            </Text>
           </Pressable>
         )}
       </View>
@@ -317,11 +336,85 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
         <ScrollView contentContainerStyle={styles.progressContent} showsVerticalScrollIndicator={false}>
           <View style={styles.progressHeading}>
             <View style={styles.progressHeadingCopy}>
-              <Text accessibilityRole="header" style={[styles.screenTitle, { color: theme.textPrimary }]}>Đơn của bạn</Text>
-              <Text style={[styles.orderCode, { color: theme.textSecondary }]}>Mã đơn {liveOrder.code}</Text>
+              <Text accessibilityRole="header" style={[styles.screenTitle, { color: theme.textPrimary }]}>
+                {allTableOrders.length > 1 ? `Đơn hàng (${allTableOrders.length} đợt gọi)` : 'Đơn của bạn'}
+              </Text>
+              <Text style={[styles.orderCode, { color: theme.textSecondary }]}>
+                {allTableOrders.length > 1
+                  ? `Đang xem Đợt #${liveOrder.code} · ${new Date(liveOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}`
+                  : `Mã đơn ${liveOrder.code}`}
+              </Text>
             </View>
             <StatusBadge {...orderStatusConfig(liveOrder.status)} />
           </View>
+
+          {/* Thanh chon dot don hang khi co nhieu dot goi mon */}
+          {allTableOrders.length > 1 && (
+            <View style={styles.batchSelectorContainer}>
+              <View style={styles.batchSelectorHeader}>
+                <Text style={[styles.batchSelectorLabel, { color: theme.textSecondary }]}>
+                  Chọn đợt để xem tiến độ nấu:
+                </Text>
+                <Text style={[styles.batchTotalHint, { color: theme.primary }]}>
+                  Tổng bàn: {formatVND(totalTableAmount)}
+                </Text>
+              </View>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.batchList}>
+                {allTableOrders.map((order, idx) => {
+                  const isSelected = order.id === liveOrder?.id;
+                  const batchNumber = allTableOrders.length - idx;
+                  const statusCfg = orderStatusConfig(order.status);
+                  return (
+                    <Pressable
+                      key={order.id}
+                      onPress={() => {
+                        setSelectedOrderId(order.id);
+                        setCurrentOrder(order);
+                      }}
+                      style={({ pressed }) => [
+                        styles.batchChip,
+                        {
+                          backgroundColor: isSelected ? theme.interactivePrimary : theme.surfaceRaised,
+                          borderColor: isSelected ? theme.interactivePrimary : theme.borderSubtle,
+                          opacity: pressed ? 0.85 : 1
+                        }
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.batchChipTitle,
+                          { color: isSelected ? theme.textInverse : theme.textPrimary }
+                        ]}
+                      >
+                        Đợt {batchNumber} (#{order.code})
+                      </Text>
+                      <View
+                        style={[
+                          styles.batchChipBadge,
+                          {
+                            backgroundColor: isSelected
+                              ? 'rgba(255,255,255,0.25)'
+                              : statusColors.order[order.status]?.background || theme.surfaceSunken
+                          }
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.batchChipStatus,
+                            {
+                              color: isSelected ? theme.textInverse : statusColors.order[order.status]?.text || theme.textSecondary
+                            }
+                          ]}
+                        >
+                          {statusCfg.label}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
 
           {/* Banner nhanh nhan thong bao neu chua cap quyen */}
           {liveOrder.status !== 'COMPLETED' && notifPermission === 'default' && (
@@ -407,32 +500,122 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
           </View>
 
           <View style={styles.orderSection}>
-            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Món đã gọi</Text>
-            <View style={[styles.orderItems, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
-              {liveOrder.items?.map((item, index) => (
-                <View
-                  key={item.id || String(item.menuItemId) + '-' + index}
-                  style={[styles.orderItem, index > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 }]}
-                >
-                  <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
-                    {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
-                  </Text>
-                  <Text style={[styles.orderItemPrice, { color: theme.textPrimary }]}>{formatVND(item.subtotal)}</Text>
-                </View>
-              ))}
-              <View style={[styles.orderTotal, { borderTopColor: theme.borderSubtle }]}>
-                <View>
-                  <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Tổng thanh toán</Text>
-                  <Text style={[styles.vatNote, { color: theme.textSecondary }]}>Đã gồm VAT 8%</Text>
-                </View>
-                <Text style={[styles.totalValue, { color: theme.primary }]}>{formatVND(liveOrder.finalAmount)}</Text>
-              </View>
+            <View style={styles.orderSectionHeaderRow}>
+              <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+                {allTableOrders.length > 1 ? 'Danh sách món theo đợt' : 'Món đã gọi'}
+              </Text>
+              {allTableOrders.length > 1 && (
+                <Text style={[styles.batchCountBadge, { color: theme.textSecondary }]}>
+                  {allTableOrders.length} đợt gọi món
+                </Text>
+              )}
             </View>
+
+            {allTableOrders.length > 1 ? (
+              <View style={styles.batchCardsContainer}>
+                {allTableOrders.map((batchOrder, bIdx) => {
+                  const batchNumber = allTableOrders.length - bIdx;
+                  const isCurrentBatch = batchOrder.id === liveOrder?.id;
+                  return (
+                    <Pressable
+                      key={batchOrder.id}
+                      onPress={() => {
+                        setSelectedOrderId(batchOrder.id);
+                        setCurrentOrder(batchOrder);
+                      }}
+                      style={({ pressed }) => [
+                        styles.batchOrderCard,
+                        {
+                          backgroundColor: theme.surfaceBase,
+                          borderColor: isCurrentBatch ? theme.interactivePrimary : theme.borderSubtle,
+                          borderWidth: isCurrentBatch ? 2 : 1,
+                          opacity: pressed ? 0.9 : 1
+                        }
+                      ]}
+                    >
+                      <View style={styles.batchOrderHeader}>
+                        <View style={styles.batchOrderTitleGroup}>
+                          <Text style={[styles.batchOrderTitle, { color: isCurrentBatch ? theme.primary : theme.textPrimary }]}>
+                            Đợt {batchNumber} · Mã #{batchOrder.code} {isCurrentBatch ? '(Đang xem tiến độ)' : ''}
+                          </Text>
+                          <StatusBadge {...orderStatusConfig(batchOrder.status)} />
+                        </View>
+                        <Text style={[styles.batchOrderTime, { color: theme.textSecondary }]}>
+                          {new Date(batchOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                        </Text>
+                      </View>
+
+                      <View style={styles.batchItemsList}>
+                        {batchOrder.items?.map((item, iIdx) => (
+                          <View
+                            key={item.id || String(item.menuItemId) + '-' + iIdx}
+                            style={[styles.batchItemRow, iIdx > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 }]}
+                          >
+                            <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
+                              {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
+                            </Text>
+                            <Text style={[styles.orderItemPrice, { color: theme.textPrimary }]}>
+                              {formatVND(item.subtotal)}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+
+                      <View style={[styles.batchSubtotalRow, { borderTopColor: theme.borderSubtle }]}>
+                        <Text style={[styles.batchSubtotalLabel, { color: theme.textSecondary }]}>Tiền đợt {batchNumber}:</Text>
+                        <Text style={[styles.batchSubtotalValue, { color: theme.textPrimary }]}>
+                          {formatVND(batchOrder.finalAmount)}
+                        </Text>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+
+                {/* Grand Total Summary Card */}
+                <View style={[styles.grandTotalCard, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderStrong }]}>
+                  <View>
+                    <Text style={[styles.grandTotalLabel, { color: theme.textPrimary }]}>
+                      Tổng hóa đơn cả bàn ({allTableOrders.length} đợt)
+                    </Text>
+                    <Text style={[styles.vatNote, { color: theme.textSecondary }]}>Đã gồm thuế VAT 8%</Text>
+                  </View>
+                  <Text style={[styles.grandTotalValue, { color: theme.primary }]}>
+                    {formatVND(totalTableAmount)}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <View style={[styles.orderItems, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+                {liveOrder.items?.map((item, index) => (
+                  <View
+                    key={item.id || String(item.menuItemId) + '-' + index}
+                    style={[styles.orderItem, index > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 }]}
+                  >
+                    <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
+                      {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
+                    </Text>
+                    <Text style={[styles.orderItemPrice, { color: theme.textPrimary }]}>{formatVND(item.subtotal)}</Text>
+                  </View>
+                ))}
+                <View style={[styles.orderTotal, { borderTopColor: theme.borderSubtle }]}>
+                  <View>
+                    <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Tổng thanh toán</Text>
+                    <Text style={[styles.vatNote, { color: theme.textSecondary }]}>Đã gồm VAT 8%</Text>
+                  </View>
+                  <Text style={[styles.totalValue, { color: theme.primary }]}>{formatVND(liveOrder.finalAmount)}</Text>
+                </View>
+              </View>
+            )}
           </View>
 
           <View style={styles.progressActions}>
             <Button variant="secondary" label="Gọi thêm món" icon={Plus} onPress={() => setIsBrowsingMenu(true)} />
-            <Button variant="primary" label="Thanh toán" icon={CreditCard} onPress={() => setIsVietQRModalOpen(true)} />
+            <Button
+              variant="primary"
+              label={allTableOrders.length > 1 ? `Thanh toán cả bàn (${formatVND(totalTableAmount)})` : 'Thanh toán'}
+              icon={CreditCard}
+              onPress={() => setIsVietQRModalOpen(true)}
+            />
           </View>
         </ScrollView>
       ) : (
@@ -549,11 +732,13 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
               <View style={styles.paymentDetails}>
                 <View>
                   <Text style={[styles.paymentLabel, { color: theme.textSecondary }]}>Số tiền</Text>
-                  <Text style={[styles.qrAmount, { color: theme.primary }]}>{liveOrder ? formatVND(liveOrder.finalAmount) : '0 ₫'}</Text>
+                  <Text style={[styles.qrAmount, { color: theme.primary }]}>{formatVND(totalTableAmount)}</Text>
                 </View>
                 <View>
                   <Text style={[styles.paymentLabel, { color: theme.textSecondary }]}>Nội dung chuyển khoản</Text>
-                  <Text style={[styles.transferContent, { color: theme.textPrimary }]}>BAN{tableNumber} {liveOrder?.code || ''}</Text>
+                  <Text style={[styles.transferContent, { color: theme.textPrimary }]}>
+                    BAN{tableNumber} {allTableOrders.length > 1 ? `TONG${allTableOrders.length}DON` : (liveOrder?.code || '')}
+                  </Text>
                 </View>
               </View>
 
@@ -905,5 +1090,129 @@ const styles = StyleSheet.create({
     height: 38,
     justifyContent: 'center',
     width: 38
+  },
+  batchSelectorContainer: {
+    gap: spacing.xs,
+    paddingTop: spacing.xs
+  },
+  batchSelectorHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingHorizontal: 2
+  },
+  batchSelectorLabel: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.xs
+  },
+  batchTotalHint: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.xs
+  },
+  batchList: {
+    gap: spacing.sm,
+    paddingVertical: spacing.xs
+  },
+  batchChip: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs
+  },
+  batchChipTitle: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.xs
+  },
+  batchChipBadge: {
+    borderRadius: radii.pill,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: 2
+  },
+  batchChipStatus: {
+    fontFamily: typography.families.bodyMedium,
+    fontSize: 10
+  },
+  orderSectionHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingBottom: spacing.xs
+  },
+  batchCountBadge: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs
+  },
+  batchCardsContainer: {
+    gap: spacing.md
+  },
+  batchOrderCard: {
+    borderRadius: radii.md,
+    overflow: 'hidden',
+    padding: spacing.md
+  },
+  batchOrderHeader: {
+    alignItems: 'flex-start',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingBottom: spacing.xs
+  },
+  batchOrderTitleGroup: {
+    flex: 1,
+    gap: 2
+  },
+  batchOrderTitle: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm
+  },
+  batchOrderTime: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs
+  },
+  batchItemsList: {
+    gap: spacing.xs,
+    paddingVertical: spacing.xs
+  },
+  batchItemRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs
+  },
+  batchSubtotalRow: {
+    alignItems: 'center',
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingTop: spacing.xs
+  },
+  batchSubtotalLabel: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs
+  },
+  batchSubtotalValue: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm
+  },
+  grandTotalCard: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: spacing.md
+  },
+  grandTotalLabel: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.sm
+  },
+  grandTotalValue: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.lg,
+    fontVariant: [...typography.numeric.fontVariant]
   }
 });
