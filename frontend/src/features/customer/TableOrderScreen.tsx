@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -80,25 +80,76 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
   const tableId = table?.id || 1;
   const liveOrder = currentOrder || activeTableOrder || table?.orders?.[0] || null;
 
-  // Fallback polling dinh ky de bao dam man hinh khach luon tu dong cap nhat ngay ca khi mat ket noi tam thoi
+  // Luu vet status da thong bao de chan triet de viec spam chuong / rung / toast
+  const lastNotifiedStatusKeyRef = useRef<string | null>(null);
+  const isFirstMountRef = useRef<boolean>(true);
+
+  // Fallback polling dinh ky nhe nhang (4.5s) de dong bo trang thai khi dien thoai mo khoa man hinh
   useEffect(() => {
     const interval = setInterval(() => {
       fetchTables();
-    }, 3500);
+    }, 4500);
     return () => clearInterval(interval);
   }, [fetchTables]);
 
-  // Tu dong cap nhat don hang hien tai khi du lieu ban an thay doi
+  // Ham thong bao chuyen trang thai cho khach (dam bao moi cap orderId + status chi kich hoat 1 lan duy nhat)
+  const notifyStatusTransition = useCallback((orderId: number, status: OrderStatus) => {
+    const statusKey = `${orderId}_${status}`;
+    if (lastNotifiedStatusKeyRef.current === statusKey) {
+      return;
+    }
+    lastNotifiedStatusKeyRef.current = statusKey;
+
+    if (status === 'PREPARING') {
+      notificationHelper.notifyOrderPreparing(formatTableNumber(tableNumber));
+      showToast({
+        type: 'info',
+        title: 'Đang nấu món 🍳',
+        message: `Bếp đã bắt đầu chuẩn bị các món ăn cho Bàn ${formatTableNumber(tableNumber)}!`
+      });
+    } else if (status === 'READY') {
+      notificationHelper.notifyOrderReady(formatTableNumber(tableNumber));
+      showToast({
+        type: 'success',
+        title: 'Món ăn đã xong! 🎉',
+        message: `Món ăn đã nấu xong! Nhân viên đang bưng ra Bàn ${formatTableNumber(tableNumber)} cho bạn.`,
+        duration: 6000
+      });
+    } else if (status === 'COMPLETED') {
+      notificationHelper.notifyOrderCompleted(formatTableNumber(tableNumber));
+      showToast({
+        type: 'success',
+        title: 'Hoàn tất đơn hàng ✨',
+        message: `Đơn hàng Bàn ${formatTableNumber(tableNumber)} đã hoàn thành. Chúc bạn ngon miệng!`
+      });
+    }
+  }, [tableNumber, showToast]);
+
+  // Danh dau moc trang thai ban dau de khong ban thong bao don hang cu khi moi vao trang
+  useEffect(() => {
+    if (isFirstMountRef.current && liveOrder) {
+      lastNotifiedStatusKeyRef.current = `${liveOrder.id}_${liveOrder.status}`;
+      isFirstMountRef.current = false;
+    }
+  }, [liveOrder]);
+
+  // Tu dong cap nhat don hang hien tai khi du lieu ban an thay doi (polling fallback)
   useEffect(() => {
     const latestTableOrder = table?.orders?.[0];
     if (latestTableOrder) {
-      if (!currentOrder || currentOrder.id === latestTableOrder.id) {
-        if (!currentOrder || currentOrder.status !== latestTableOrder.status) {
-          setCurrentOrder(latestTableOrder);
+      setCurrentOrder((prev) => {
+        if (!prev || prev.id !== latestTableOrder.id || prev.status !== latestTableOrder.status) {
+          return latestTableOrder;
         }
+        return prev;
+      });
+
+      // Neu trang thai tren server thay doi do polling bat duoc thi van thong bao an toan 1 lan
+      if (!isFirstMountRef.current) {
+        notifyStatusTransition(latestTableOrder.id, latestTableOrder.status);
       }
     }
-  }, [table?.orders, currentOrder]);
+  }, [table?.orders, notifyStatusTransition]);
 
   // Lang nghe socket cap nhat tien do don hang theo thoi gian thuc cho khach
   useEffect(() => {
@@ -125,31 +176,9 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
         return prev;
       });
 
-      if (latestOrderStatusChanged.status === 'PREPARING') {
-        notificationHelper.notifyOrderPreparing(formatTableNumber(tableNumber));
-        showToast({
-          type: 'info',
-          title: 'Đang nấu món 🍳',
-          message: `Bếp đã bắt đầu chuẩn bị các món ăn cho Bàn ${formatTableNumber(tableNumber)}!`
-        });
-      } else if (latestOrderStatusChanged.status === 'READY') {
-        notificationHelper.notifyOrderReady(formatTableNumber(tableNumber));
-        showToast({
-          type: 'success',
-          title: 'Món ăn đã xong! 🎉',
-          message: `Món ăn đã nấu xong! Nhân viên đang bưng ra Bàn ${formatTableNumber(tableNumber)} cho bạn.`,
-          duration: 6000
-        });
-      } else if (latestOrderStatusChanged.status === 'COMPLETED') {
-        notificationHelper.notifyOrderCompleted(formatTableNumber(tableNumber));
-        showToast({
-          type: 'success',
-          title: 'Hoàn tất đơn hàng ✨',
-          message: `Đơn hàng Bàn ${formatTableNumber(tableNumber)} đã hoàn thành. Chúc bạn ngon miệng!`
-        });
-      }
+      notifyStatusTransition(latestOrderStatusChanged.orderId, latestOrderStatusChanged.status);
     }
-  }, [latestOrderStatusChanged, table?.orders, currentOrder, liveOrder, tableId, tableNumber, showToast]);
+  }, [latestOrderStatusChanged, tableId, tableNumber, notifyStatusTransition]);
 
   const handleCardPress = (item: MenuItemDto) => {
     if (item.modifierGroups && item.modifierGroups.length > 0) {
