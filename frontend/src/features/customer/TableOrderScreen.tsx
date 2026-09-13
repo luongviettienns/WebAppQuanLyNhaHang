@@ -10,7 +10,7 @@ import {
   Text,
   View
 } from 'react-native';
-import { Bell, Check, ChefHat, CreditCard, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
+import { Bell, Check, ChefHat, ChevronLeft, CreditCard, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
 import { MenuItemDto, OrderDto, OrderStatus } from '../../api/contracts';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -76,6 +76,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
   const [orderError, setOrderError] = useState<string | null>(null);
   const [isVietQRModalOpen, setIsVietQRModalOpen] = useState(false);
   const [isNotifPromptModalOpen, setIsNotifPromptModalOpen] = useState(false);
+  const [isBrowsingMenu, setIsBrowsingMenu] = useState(false);
   const [notifPermission, setNotifPermission] = useState<'granted' | 'denied' | 'default' | 'unsupported'>(
     notificationHelper.getPermissionStatus()
   );
@@ -228,6 +229,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
 
     if (result.success && result.order) {
       setCurrentOrder(result.order);
+      setIsBrowsingMenu(false);
       showToast({
         type: 'success',
         title: 'Đặt món thành công! 🚀',
@@ -279,23 +281,40 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
           </View>
         </View>
 
-        {liveOrder && (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={'Thanh toán ' + formatVND(liveOrder.finalAmount)}
-            onPress={() => setIsVietQRModalOpen(true)}
-            style={({ pressed }) => [
-              styles.headerPayment,
-              { backgroundColor: pressed ? theme.interactiveSecondaryPressed : theme.interactiveSecondary }
-            ]}
-          >
-            <AppIcon icon={CreditCard} color={theme.primary} size={18} />
-            <Text style={[styles.headerPaymentText, { color: theme.primary }]}>Thanh toán</Text>
-          </Pressable>
-        )}
+        <View style={styles.headerRightActions}>
+          {liveOrder && isBrowsingMenu && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Xem tiến độ đơn"
+              onPress={() => setIsBrowsingMenu(false)}
+              style={({ pressed }) => [
+                styles.headerPayment,
+                { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase, borderColor: theme.borderSubtle, borderWidth: 1 }
+              ]}
+            >
+              <AppIcon icon={ChevronLeft} color={theme.primary} size={18} />
+              <Text style={[styles.headerPaymentText, { color: theme.primary }]}>Xem đơn ({liveOrder.code})</Text>
+            </Pressable>
+          )}
+
+          {liveOrder && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={'Thanh toán ' + formatVND(liveOrder.finalAmount)}
+              onPress={() => setIsVietQRModalOpen(true)}
+              style={({ pressed }) => [
+                styles.headerPayment,
+                { backgroundColor: pressed ? theme.interactiveSecondaryPressed : theme.interactiveSecondary }
+              ]}
+            >
+              <AppIcon icon={CreditCard} color={theme.primary} size={18} />
+              <Text style={[styles.headerPaymentText, { color: theme.primary }]}>Thanh toán</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
-      {liveOrder && cart.length === 0 ? (
+      {liveOrder && !isBrowsingMenu && cart.length === 0 ? (
         <ScrollView contentContainerStyle={styles.progressContent} showsVerticalScrollIndicator={false}>
           <View style={styles.progressHeading}>
             <View style={styles.progressHeadingCopy}>
@@ -413,16 +432,35 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
           </View>
 
           <View style={styles.progressActions}>
-            <Button variant="secondary" label="Gọi thêm món" onPress={() => setCurrentOrder(null)} />
+            <Button variant="secondary" label="Gọi thêm món" icon={Plus} onPress={() => setIsBrowsingMenu(true)} />
             <Button variant="primary" label="Thanh toán" icon={CreditCard} onPress={() => setIsVietQRModalOpen(true)} />
           </View>
         </ScrollView>
       ) : (
         <View style={styles.menuArea}>
+          {liveOrder && (
+            <View style={styles.browsingMoreBar}>
+              <Pressable
+                onPress={() => setIsBrowsingMenu(false)}
+                style={({ pressed }) => [
+                  styles.backToOrderButton,
+                  { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceRaised, borderColor: theme.borderSubtle }
+                ]}
+              >
+                <AppIcon icon={ChevronLeft} color={theme.primary} size={16} />
+                <Text style={[styles.backToOrderText, { color: theme.primary }]}>
+                  Quay lại xem tiến độ Đơn {liveOrder.code}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
           <View style={styles.menuHeading}>
             <View>
               <Text accessibilityRole="header" style={[styles.screenTitle, { color: theme.textPrimary }]}>Thực đơn</Text>
-              <Text style={[styles.menuDescription, { color: theme.textSecondary }]}>Chọn món bạn muốn gọi tại bàn.</Text>
+              <Text style={[styles.menuDescription, { color: theme.textSecondary }]}>
+                {liveOrder ? 'Chọn thêm món bạn muốn gọi thêm vào bàn.' : 'Chọn món bạn muốn gọi tại bàn.'}
+              </Text>
             </View>
           </View>
 
@@ -877,5 +915,27 @@ const styles = StyleSheet.create({
   notifOptInButtonText: {
     fontFamily: typography.families.bodySemibold,
     fontSize: typography.sizes.xs
+  },
+  headerRightActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs
+  },
+  browsingMoreBar: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.md
+  },
+  backToOrderButton: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm
+  },
+  backToOrderText: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm
   }
 });
