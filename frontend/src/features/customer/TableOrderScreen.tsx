@@ -10,12 +10,12 @@ import {
   Text,
   View
 } from 'react-native';
-import { Check, ChefHat, CreditCard, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
+import { Bell, Check, ChefHat, CreditCard, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
 import { MenuItemDto, OrderDto, OrderStatus } from '../../api/contracts';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
-import { elevation, radii, spacing, typography } from '../../theme';
+import { elevation, radii, spacing, statusColors, typography } from '../../theme';
 import { AppIcon, Button, InlineAlert, StatusBadge, Surface } from '../../ui';
 import type { StatusTone } from '../../ui';
 import { MenuCategoryPills } from '../pos/MenuCategoryPills';
@@ -75,6 +75,10 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [isVietQRModalOpen, setIsVietQRModalOpen] = useState(false);
+  const [isNotifPromptModalOpen, setIsNotifPromptModalOpen] = useState(false);
+  const [notifPermission, setNotifPermission] = useState<'granted' | 'denied' | 'default' | 'unsupported'>(
+    notificationHelper.getPermissionStatus()
+  );
 
   const table = tables.find((t) => t.tableNumber === tableNumber) || tables[0];
   const tableId = table?.id || 1;
@@ -180,6 +184,25 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
     }
   }, [latestOrderStatusChanged, tableId, tableNumber, notifyStatusTransition]);
 
+  const handleEnableNotification = async () => {
+    setIsNotifPromptModalOpen(false);
+    const granted = await notificationHelper.requestPermission();
+    setNotifPermission(notificationHelper.getPermissionStatus());
+    if (granted) {
+      notificationHelper.vibrate([200]);
+      showToast({
+        type: 'success',
+        title: 'Đã bật thông báo! 🔔',
+        message: 'Hệ thống sẽ rung chuông và thông báo khi món ăn sẵn sàng.'
+      });
+    } else {
+      showToast({
+        type: 'info',
+        message: 'Bạn có thể bật lại thông báo bất cứ lúc nào trong cài đặt trình duyệt.'
+      });
+    }
+  };
+
   const handleCardPress = (item: MenuItemDto) => {
     if (item.modifierGroups && item.modifierGroups.length > 0) {
       openModifierModal(item);
@@ -210,6 +233,13 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
         title: 'Đặt món thành công! 🚀',
         message: `Đơn hàng Bàn ${formatTableNumber(tableNumber)} đã được gửi xuống Bếp.`
       });
+
+      // Sau khi dat mon thanh cong, hoi khach co muon nhan thong bao va rung chuong khong
+      if (notificationHelper.getPermissionStatus() === 'default') {
+        setTimeout(() => {
+          setIsNotifPromptModalOpen(true);
+        }, 500);
+      }
     } else {
       setOrderError(result.error || 'Không thể gửi đơn xuống bếp');
       showToast({
@@ -274,6 +304,27 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
             </View>
             <StatusBadge {...orderStatusConfig(liveOrder.status)} />
           </View>
+
+          {/* Banner nhanh nhan thong bao neu chua cap quyen */}
+          {liveOrder.status !== 'COMPLETED' && notifPermission === 'default' && (
+            <Surface level="raised" style={[styles.notifOptInBanner, { borderColor: statusColors.info.border, backgroundColor: statusColors.info.background }]}>
+              <View style={styles.notifOptInLeft}>
+                <View style={[styles.notifOptInIconCircle, { backgroundColor: '#DBEAFE' }]}>
+                  <AppIcon icon={Bell} color="#2563EB" size={18} />
+                </View>
+                <View style={styles.notifOptInCopy}>
+                  <Text style={[styles.notifOptInTitle, { color: statusColors.info.text }]}>Nhận thông báo khi món xong?</Text>
+                  <Text style={[styles.notifOptInSubtitle, { color: theme.textSecondary }]}>Rung máy và chuông reo báo nhân viên bưng món ra</Text>
+                </View>
+              </View>
+              <Pressable
+                onPress={handleEnableNotification}
+                style={({ pressed }) => [styles.notifOptInButton, { backgroundColor: theme.interactivePrimary, opacity: pressed ? 0.85 : 1 }]}
+              >
+                <Text style={[styles.notifOptInButtonText, { color: theme.textInverse }]}>Bật ngay</Text>
+              </Pressable>
+            </Surface>
+          )}
 
           {liveOrder.status === 'READY' && (
             <View style={[styles.readyBanner, { backgroundColor: '#F0FDF4', borderColor: '#86EFAC' }]}>
@@ -497,6 +548,45 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
           </SafeAreaView>
         </View>
       </Modal>
+
+      {/* Modal hoi cap quyen thong bao sau khi khach dat mon */}
+      <Modal
+        animationType="fade"
+        transparent
+        visible={isNotifPromptModalOpen}
+        onRequestClose={() => setIsNotifPromptModalOpen(false)}
+      >
+        <View style={[styles.modalBackdrop, { backgroundColor: 'rgba(0,0,0,0.65)' }]}>
+          <SafeAreaView style={[styles.notifPromptModal, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+            <View style={styles.notifPromptContent}>
+              <View style={[styles.notifPromptIconCircle, { backgroundColor: '#EFF6FF' }]}>
+                <AppIcon icon={Bell} color="#2563EB" size={36} />
+              </View>
+
+              <Text style={[styles.notifPromptTitle, { color: theme.textPrimary }]}>
+                Bật thông báo khi món đã xong?
+              </Text>
+
+              <Text style={[styles.notifPromptDesc, { color: theme.textSecondary }]}>
+                Để bạn thoải mái trò chuyện và không phải chờ đợi sốt ruột, điện thoại sẽ rung và gửi thông báo ngay khi đầu bếp nấu xong món ăn cho Bàn {formatTableNumber(tableNumber)}.
+              </Text>
+
+              <View style={styles.notifPromptActions}>
+                <Button
+                  variant="primary"
+                  label="🔔 Bật thông báo & Rung"
+                  onPress={handleEnableNotification}
+                />
+                <Button
+                  variant="quiet"
+                  label="Để sau / Không cần"
+                  onPress={() => setIsNotifPromptModalOpen(false)}
+                />
+              </View>
+            </View>
+          </SafeAreaView>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -708,5 +798,84 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.md,
     fontVariant: [...typography.numeric.fontVariant],
     marginTop: spacing.xs
+  },
+  notifPromptModal: {
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    maxWidth: 420,
+    overflow: 'hidden',
+    width: '92%'
+  },
+  notifPromptContent: {
+    alignItems: 'center',
+    gap: spacing.md,
+    padding: spacing.xl
+  },
+  notifPromptIconCircle: {
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    height: 64,
+    justifyContent: 'center',
+    width: 64
+  },
+  notifPromptTitle: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.lg,
+    textAlign: 'center'
+  },
+  notifPromptDesc: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.sm,
+    lineHeight: typography.lineHeights.md,
+    textAlign: 'center'
+  },
+  notifPromptActions: {
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    width: '100%'
+  },
+  notifOptInBanner: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    padding: spacing.md
+  },
+  notifOptInLeft: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm
+  },
+  notifOptInIconCircle: {
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    height: 36,
+    justifyContent: 'center',
+    width: 36
+  },
+  notifOptInCopy: {
+    flex: 1,
+    gap: 1
+  },
+  notifOptInTitle: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm
+  },
+  notifOptInSubtitle: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs
+  },
+  notifOptInButton: {
+    borderRadius: radii.sm,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs
+  },
+  notifOptInButtonText: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.xs
   }
 });

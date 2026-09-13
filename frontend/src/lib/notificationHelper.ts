@@ -17,6 +17,13 @@ class NotificationHelper {
     return this.audioCtx;
   }
 
+  public getPermissionStatus(): 'granted' | 'denied' | 'default' | 'unsupported' {
+    if (typeof window === 'undefined' || !(window as any).Notification) {
+      return 'unsupported';
+    }
+    return (window as any).Notification.permission || 'default';
+  }
+
   public async requestPermission(): Promise<boolean> {
     if (typeof window === 'undefined' || !(window as any).Notification) {
       return false;
@@ -105,13 +112,28 @@ class NotificationHelper {
     // Show OS notification
     const Notif = (window as any).Notification;
     if (Notif && Notif.permission === 'granted') {
+      const options = {
+        body,
+        icon: '/favicon.ico',
+        badge: '/favicon.ico',
+        tag: 'crispy-bite-order',
+        renotify: true,
+        vibrate: [600, 200, 600, 200, 1000]
+      };
+
+      // Service worker showNotification for mobile Android Chrome
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator && (navigator as any).serviceWorker.ready) {
+        (navigator as any).serviceWorker.ready
+          .then((reg: any) => {
+            if (reg && reg.showNotification) {
+              return reg.showNotification(title, options);
+            }
+          })
+          .catch(() => {});
+      }
+
       try {
-        const notif = new Notif(title, {
-          body,
-          icon: '/favicon.ico',
-          badge: '/favicon.ico',
-          tag: 'crispy-bite-order'
-        });
+        const notif = new Notif(title, options);
         notif.onclick = () => {
           window.focus();
           notif.close();
@@ -124,7 +146,7 @@ class NotificationHelper {
 
   public notifyOrderPreparing(tableNumber: string | number): void {
     this.playChime('preparing');
-    this.vibrate([150]);
+    this.vibrate([350]);
     this.sendSystemNotification(
       'Bếp đang nấu món 🍳',
       `Đơn hàng Bàn ${tableNumber} đã bắt đầu được chế biến!`
@@ -133,7 +155,7 @@ class NotificationHelper {
 
   public notifyOrderReady(tableNumber: string | number): void {
     this.playChime('ready');
-    this.vibrate([300, 150, 300, 150, 450]);
+    this.vibrate([600, 200, 600, 200, 1000]);
     this.sendSystemNotification(
       'Món ăn đã xong! 🎉',
       `Món ăn đã nấu xong! Nhân viên đang bưng ra Bàn ${tableNumber} cho bạn, chuẩn bị thưởng thức nhé!`
@@ -141,7 +163,7 @@ class NotificationHelper {
   }
 
   public notifyOrderCompleted(tableNumber: string | number): void {
-    this.vibrate([200]);
+    this.vibrate([300, 150, 300]);
     this.sendSystemNotification(
       'Hoàn tất giao món ✨',
       `Chúc bạn ngon miệng tại Bàn ${tableNumber}!`

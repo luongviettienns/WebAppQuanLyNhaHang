@@ -163,8 +163,29 @@ describe('NotificationHelper', () => {
     });
   });
 
+  describe('getPermissionStatus', () => {
+    it('returns unsupported when window or Notification is unavailable', () => {
+      vi.stubGlobal('window', {});
+      expect(notificationHelper.getPermissionStatus()).toBe('unsupported');
+    });
+
+    it('returns granted when permission is granted', () => {
+      vi.stubGlobal('window', {
+        Notification: { permission: 'granted' }
+      });
+      expect(notificationHelper.getPermissionStatus()).toBe('granted');
+    });
+
+    it('returns default when permission has not been requested yet', () => {
+      vi.stubGlobal('window', {
+        Notification: { permission: 'default' }
+      });
+      expect(notificationHelper.getPermissionStatus()).toBe('default');
+    });
+  });
+
   describe('high-level order notifications', () => {
-    it('notifyOrderPreparing triggers preparing chime, vibration, and system notification', () => {
+    it('notifyOrderPreparing triggers preparing chime, stronger vibration (350ms), and system notification', () => {
       const chimeSpy = vi.spyOn(notificationHelper, 'playChime');
       const vibrateSpy = vi.spyOn(notificationHelper, 'vibrate');
       const notifSpy = vi.spyOn(notificationHelper, 'sendSystemNotification');
@@ -172,11 +193,11 @@ describe('NotificationHelper', () => {
       notificationHelper.notifyOrderPreparing('05');
 
       expect(chimeSpy).toHaveBeenCalledWith('preparing');
-      expect(vibrateSpy).toHaveBeenCalledWith([150]);
+      expect(vibrateSpy).toHaveBeenCalledWith([350]);
       expect(notifSpy).toHaveBeenCalledWith('Bếp đang nấu món 🍳', expect.stringContaining('Bàn 05'));
     });
 
-    it('notifyOrderReady triggers ready chime, extended vibration, and system notification', () => {
+    it('notifyOrderReady triggers ready chime, maximum power vibration ([600, 200, 600, 200, 1000]), and system notification', () => {
       const chimeSpy = vi.spyOn(notificationHelper, 'playChime');
       const vibrateSpy = vi.spyOn(notificationHelper, 'vibrate');
       const notifSpy = vi.spyOn(notificationHelper, 'sendSystemNotification');
@@ -184,7 +205,7 @@ describe('NotificationHelper', () => {
       notificationHelper.notifyOrderReady('05');
 
       expect(chimeSpy).toHaveBeenCalledWith('ready');
-      expect(vibrateSpy).toHaveBeenCalledWith([300, 150, 300, 150, 450]);
+      expect(vibrateSpy).toHaveBeenCalledWith([600, 200, 600, 200, 1000]);
       expect(notifSpy).toHaveBeenCalledWith('Món ăn đã xong! 🎉', expect.stringContaining('Bàn 05'));
     });
 
@@ -194,7 +215,7 @@ describe('NotificationHelper', () => {
 
       notificationHelper.notifyOrderCompleted('05');
 
-      expect(vibrateSpy).toHaveBeenCalledWith([200]);
+      expect(vibrateSpy).toHaveBeenCalledWith([300, 150, 300]);
       expect(notifSpy).toHaveBeenCalledWith('Hoàn tất giao món ✨', expect.stringContaining('Bàn 05'));
     });
   });
