@@ -1,15 +1,15 @@
-import { Platform } from 'react-native';
-
 class NotificationHelper {
   private audioCtx: any = null;
 
+  public resetForTesting(): void {
+    this.audioCtx = null;
+  }
+
   private getAudioContext(): any {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
-    if (!this.audioCtx) {
-      const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
-      if (AudioContextClass) {
-        this.audioCtx = new AudioContextClass();
-      }
+    if (typeof window === 'undefined') return null;
+    const AudioContextClass = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!this.audioCtx && AudioContextClass) {
+      this.audioCtx = new AudioContextClass();
     }
     if (this.audioCtx && this.audioCtx.state === 'suspended') {
       this.audioCtx.resume().catch(() => {});
@@ -18,13 +18,14 @@ class NotificationHelper {
   }
 
   public async requestPermission(): Promise<boolean> {
-    if (Platform.OS !== 'web' || typeof window === 'undefined' || !('Notification' in window)) {
+    if (typeof window === 'undefined' || !(window as any).Notification) {
       return false;
     }
     try {
-      if (Notification.permission === 'granted') return true;
-      if (Notification.permission !== 'denied') {
-        const permission = await Notification.requestPermission();
+      const Notif = (window as any).Notification;
+      if (Notif.permission === 'granted') return true;
+      if (Notif.permission !== 'denied') {
+        const permission = await Notif.requestPermission();
         return permission === 'granted';
       }
     } catch {
@@ -34,7 +35,7 @@ class NotificationHelper {
   }
 
   public playChime(type: 'ready' | 'preparing' = 'ready'): void {
-    if (Platform.OS !== 'web') return;
+    if (typeof window === 'undefined') return;
     try {
       const ctx = this.getAudioContext();
       if (!ctx) return;
@@ -78,7 +79,7 @@ class NotificationHelper {
   }
 
   public vibrate(pattern: number[] = [200, 100, 200]): void {
-    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
         navigator.vibrate(pattern);
       } catch {
@@ -88,21 +89,24 @@ class NotificationHelper {
   }
 
   public sendSystemNotification(title: string, body: string): void {
-    if (Platform.OS !== 'web' || typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return;
 
     // Flash tab title
     try {
-      const oldTitle = document.title;
-      document.title = `🔔 ${title}`;
-      setTimeout(() => {
-        document.title = oldTitle;
-      }, 8000);
+      if (typeof document !== 'undefined') {
+        const oldTitle = document.title;
+        document.title = `🔔 ${title}`;
+        setTimeout(() => {
+          document.title = oldTitle;
+        }, 8000);
+      }
     } catch {}
 
     // Show OS notification
-    if ('Notification' in window && Notification.permission === 'granted') {
+    const Notif = (window as any).Notification;
+    if (Notif && Notif.permission === 'granted') {
       try {
-        const notif = new Notification(title, {
+        const notif = new Notif(title, {
           body,
           icon: '/favicon.ico',
           badge: '/favicon.ico',
