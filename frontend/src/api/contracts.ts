@@ -234,6 +234,8 @@ export interface SocketOrderStatusChangedPayload {
   orderId: number;
   code: string;
   status: OrderStatus;
+  tableId?: number | null;
+  tableNumber?: number | null;
   prepTimeSec?: number;
   preparingAt?: string;
   readyAt?: string;

@@ -32,8 +32,5 @@ export function getApiBaseUrl(): string {
 }
 
 export function getSocketBaseUrl(): string {
-  if (process.env.EXPO_PUBLIC_SOCKET_URL && !process.env.EXPO_PUBLIC_SOCKET_URL.includes('localhost')) {
-    return process.env.EXPO_PUBLIC_SOCKET_URL;
-  }
   return getApiBaseUrl();
 }

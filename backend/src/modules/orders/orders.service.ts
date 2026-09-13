@@ -341,6 +341,8 @@ export class OrdersService {
       orderId: updatedOrder.id,
       code: updatedOrder.code,
       status: 'COMPLETED',
+      tableId: updatedOrder.tableId,
+      tableNumber: tableState?.tableNumber,
       completedAt: updatedOrder.completedAt?.toISOString()
     });
 
@@ -436,6 +438,8 @@ export class OrdersService {
       orderId: updatedOrder.id,
       code: updatedOrder.code,
       status: updatedOrder.status,
+      tableId: updatedOrder.tableId ?? updatedOrder.table?.id,
+      tableNumber: updatedOrder.table?.tableNumber,
       prepTimeSec: orderDto.prepTimeSec,
       preparingAt: orderDto.preparingAt,
       readyAt: orderDto.readyAt,
@@ -528,6 +532,8 @@ export class OrdersService {
       orderId: orderDto.id,
       code: orderDto.code,
       status: orderDto.status,
+      tableId: orderDto.tableId,
+      tableNumber: orderDto.tableNumber,
       cancelledAt: orderDto.cancelledAt
     };
 

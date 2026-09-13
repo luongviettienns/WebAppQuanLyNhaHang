@@ -66,6 +66,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
     addToCart,
     createDineInOrder,
     tables,
+    fetchTables,
     activeTableOrder,
     latestOrderStatusChanged
   } = useRestaurant();
@@ -79,27 +80,47 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
   const tableId = table?.id || 1;
   const liveOrder = currentOrder || activeTableOrder || table?.orders?.[0] || null;
 
+  // Fallback polling dinh ky de bao dam man hinh khach luon tu dong cap nhat ngay ca khi mat ket noi tam thoi
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchTables();
+    }, 3500);
+    return () => clearInterval(interval);
+  }, [fetchTables]);
+
+  // Tu dong cap nhat don hang hien tai khi du lieu ban an thay doi
+  useEffect(() => {
+    const latestTableOrder = table?.orders?.[0];
+    if (latestTableOrder) {
+      if (!currentOrder || currentOrder.id === latestTableOrder.id) {
+        if (!currentOrder || currentOrder.status !== latestTableOrder.status) {
+          setCurrentOrder(latestTableOrder);
+        }
+      }
+    }
+  }, [table?.orders, currentOrder]);
+
   // Lang nghe socket cap nhat tien do don hang theo thoi gian thuc cho khach
   useEffect(() => {
     if (!latestOrderStatusChanged) return;
     const isThisTable =
-      table?.orders?.some((o) => o.id === latestOrderStatusChanged.orderId) ||
-      (currentOrder && currentOrder.id === latestOrderStatusChanged.orderId);
+      (latestOrderStatusChanged.tableNumber != null && latestOrderStatusChanged.tableNumber === tableNumber) ||
+      (latestOrderStatusChanged.tableId != null && latestOrderStatusChanged.tableId === tableId) ||
+      (liveOrder && liveOrder.id === latestOrderStatusChanged.orderId) ||
+      table?.orders?.some((o) => o.id === latestOrderStatusChanged.orderId);
 
     if (isThisTable) {
       setCurrentOrder((prev) => {
-        if (!prev || prev.id === latestOrderStatusChanged.orderId) {
-          const base = prev || table?.orders?.find((o) => o.id === latestOrderStatusChanged.orderId);
-          if (base) {
-            return {
-              ...base,
-              status: latestOrderStatusChanged.status,
-              prepTimeSec: latestOrderStatusChanged.prepTimeSec ?? base.prepTimeSec,
-              preparingAt: latestOrderStatusChanged.preparingAt ?? base.preparingAt,
-              readyAt: latestOrderStatusChanged.readyAt ?? base.readyAt,
-              completedAt: latestOrderStatusChanged.completedAt ?? base.completedAt
-            };
-          }
+        const base = prev || liveOrder || table?.orders?.find((o) => o.id === latestOrderStatusChanged.orderId);
+        if (base) {
+          return {
+            ...base,
+            status: latestOrderStatusChanged.status,
+            prepTimeSec: latestOrderStatusChanged.prepTimeSec ?? base.prepTimeSec,
+            preparingAt: latestOrderStatusChanged.preparingAt ?? base.preparingAt,
+            readyAt: latestOrderStatusChanged.readyAt ?? base.readyAt,
+            completedAt: latestOrderStatusChanged.completedAt ?? base.completedAt
+          };
         }
         return prev;
       });
@@ -128,7 +149,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
         });
       }
     }
-  }, [latestOrderStatusChanged, table?.orders, currentOrder, tableNumber, showToast]);
+  }, [latestOrderStatusChanged, table?.orders, currentOrder, liveOrder, tableId, tableNumber, showToast]);
 
   const handleCardPress = (item: MenuItemDto) => {
     if (item.modifierGroups && item.modifierGroups.length > 0) {

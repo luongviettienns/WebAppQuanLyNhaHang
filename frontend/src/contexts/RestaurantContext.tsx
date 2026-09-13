@@ -280,6 +280,30 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         return prev;
       });
 
+      // Sync local tables orders array
+      setTables((prevTables) =>
+        prevTables.map((tbl) => {
+          if (tbl.orders?.some((o) => o.id === payload.orderId)) {
+            return {
+              ...tbl,
+              orders: tbl.orders.map((o) =>
+                o.id === payload.orderId
+                  ? {
+                      ...o,
+                      status: payload.status,
+                      prepTimeSec: payload.prepTimeSec ?? o.prepTimeSec,
+                      preparingAt: payload.preparingAt ?? o.preparingAt,
+                      readyAt: payload.readyAt ?? o.readyAt,
+                      completedAt: payload.completedAt ?? o.completedAt
+                    }
+                  : o
+              )
+            };
+          }
+          return tbl;
+        })
+      );
+
       setKdsOrders((prev) => {
         if (payload.status === 'COMPLETED' || payload.status === 'CANCELLED') {
           return prev.filter((o) => o.id !== payload.orderId);
