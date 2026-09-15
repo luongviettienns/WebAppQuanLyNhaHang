@@ -52,14 +52,37 @@ export class OrdersService {
 
     // 2. Kiem tra tinh hop le cua ban an neu la DINE_IN
     let targetTable: { id: number; tableNumber: number } | null = null;
-    if (input.orderType === 'DINE_IN' && input.tableId) {
-      const table = await prisma.diningTable.findUnique({
-        where: { id: input.tableId }
-      });
-      if (!table) {
-        throw ApiError.badRequest(`Bàn ăn ID ${input.tableId} không tồn tại`);
+    let resolvedTableId = input.tableId;
+    if (input.orderType === 'DINE_IN') {
+      if (createdByUserId === undefined) {
+        if (!input.qrCodeToken) {
+          throw ApiError.badRequest('Khách gọi món tại bàn cần có mã QR hợp lệ');
+        }
+
+        const table = await prisma.diningTable.findUnique({
+          where: { qrCodeToken: input.qrCodeToken }
+        });
+        if (!table) {
+          throw ApiError.notFound('Mã QR bàn không hợp lệ hoặc đã hết hạn');
+        }
+        if (input.tableId && input.tableId !== table.id) {
+          throw ApiError.badRequest('Mã QR không khớp với bàn được chọn');
+        }
+        resolvedTableId = table.id;
+        targetTable = table;
+      } else {
+        if (!input.tableId) {
+          throw ApiError.badRequest('Vui lòng chọn bàn ăn cho đơn tại chỗ');
+        }
+
+        const table = await prisma.diningTable.findUnique({
+          where: { id: input.tableId }
+        });
+        if (!table) {
+          throw ApiError.badRequest(`Bàn ăn ID ${input.tableId} không tồn tại`);
+        }
+        targetTable = table;
       }
-      targetTable = table;
     }
 
     // 3. Lay thong tin cac mon an tu Database de xac thuc gia va tinh toan
@@ -172,8 +195,8 @@ export class OrdersService {
     let transactionResult: { order: any; isDuplicate: boolean };
     try {
       transactionResult = await prisma.$transaction(async (tx) => {
-        if (input.orderType === 'DINE_IN' && input.tableId) {
-          await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${input.tableId} FOR UPDATE`;
+        if (input.orderType === 'DINE_IN' && resolvedTableId) {
+          await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${resolvedTableId} FOR UPDATE`;
         }
 
         if (input.idempotencyKey) {
@@ -189,7 +212,7 @@ export class OrdersService {
             code,
             orderType: input.orderType,
             status: 'PENDING',
-            tableId: input.tableId,
+            tableId: resolvedTableId,
             buzzerNumber: input.buzzerNumber,
             totalAmount,
             vatAmount,
@@ -214,9 +237,9 @@ export class OrdersService {
         });
 
         // Neu la don an tai ban -> cap nhat trang thai ban sang OCCUPIED
-        if (input.orderType === 'DINE_IN' && input.tableId) {
+        if (input.orderType === 'DINE_IN' && resolvedTableId) {
           await tx.diningTable.update({
-            where: { id: input.tableId },
+            where: { id: resolvedTableId },
             data: {
               status: 'OCCUPIED',
               currentOrderId: order.id

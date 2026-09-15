@@ -22,6 +22,16 @@ export class TablesController {
     }
   }
 
+  static async getTableByQrToken(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const token = req.params.token;
+      const data = await TablesService.getTableByQrToken(token);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async updateTableStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const id = parseInt(req.params.id, 10);

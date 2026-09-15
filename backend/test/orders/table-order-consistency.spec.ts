@@ -144,7 +144,7 @@ describe('multiple unpaid orders on one table', () => {
       orderType: 'DINE_IN',
       tableId: 1,
       items: [{ menuItemId: 10, quantity: 1, selectedModifiers: [] }]
-    });
+    }, 2);
 
     expect(transactionEvents).toEqual(['lock-table', 'create-order', 'update-table']);
   });

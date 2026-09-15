@@ -53,7 +53,7 @@ describe('Table Operations & Audited Void (Task 11 - Module M6)', () => {
         orderType: 'DINE_IN',
         tableId: table.id,
         items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
-      });
+      }, 2);
       orderToVoidId = res.order.id;
     });
 
@@ -109,7 +109,9 @@ describe('Table Operations & Audited Void (Task 11 - Module M6)', () => {
       expect(res.body.data.order.voidedByUserId).toBe(1);
 
       // Verify table state is now AVAILABLE
-      const tableRes = await request(app).get(`/api/tables/${tableId}`);
+      const tableRes = await request(app)
+        .get(`/api/tables/${tableId}`)
+        .set('Authorization', `Bearer ${adminToken}`);
       expect(tableRes.body.data.table.status).toBe('AVAILABLE');
       expect(tableRes.body.data.table.currentOrderId).toBeNull();
     });

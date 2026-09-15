@@ -71,7 +71,7 @@ describe('Payment authorization', () => {
     } as Awaited<ReturnType<typeof OrdersService.createOrder>>);
 
     const res = await request(app).post('/api/orders').send({
-      orderType: 'DINE_IN', tableId: 1, items: [{ menuItemId: 1, quantity: 1 }]
+      orderType: 'DINE_IN', tableId: 1, qrCodeToken: 'QR-TABLE-01', items: [{ menuItemId: 1, quantity: 1 }]
     });
 
     expect(res.status).toBe(201);

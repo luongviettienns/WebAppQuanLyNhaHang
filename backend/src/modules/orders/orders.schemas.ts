@@ -15,6 +15,7 @@ export const orderItemCreateSchema = z.object({
 export const createOrderSchema = z.object({
   orderType: z.enum(['DINE_IN', 'TAKE_AWAY']).default('DINE_IN'),
   tableId: z.number().optional(),
+  qrCodeToken: z.string().trim().min(1, 'Mã QR bàn là bắt buộc khi khách tự gọi món').optional(),
   buzzerNumber: z.number().optional(),
   idempotencyKey: z.string().optional(),
   notes: z.string().max(200).optional(),

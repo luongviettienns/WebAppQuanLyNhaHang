@@ -33,7 +33,9 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
   });
 
   it('GET /api/tables tra ve danh sach 12 ban an voi trang thai mac dinh AVAILABLE', async () => {
-    const res = await request(app).get('/api/tables');
+    const res = await request(app)
+      .get('/api/tables')
+      .set('Authorization', `Bearer ${cashierToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('data');
@@ -52,11 +54,65 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     const table = await prismaTest.diningTable.findFirst({ where: { tableNumber: 4 } });
     expect(table).not.toBeNull();
 
-    const res = await request(app).get(`/api/tables/${table!.id}`);
+    const res = await request(app)
+      .get(`/api/tables/${table!.id}`)
+      .set('Authorization', `Bearer ${cashierToken}`);
 
     expect(res.status).toBe(200);
     expect(res.body.data.table.tableNumber).toBe(4);
     expect(res.body.data.table.status).toBe('AVAILABLE');
+  });
+
+  it('GET /api/tables/qr/:token chi tra context cua ban QR va khong lo token', async () => {
+    const table = await prismaTest.diningTable.findFirstOrThrow({ where: { tableNumber: 11 } });
+
+    const res = await request(app).get(`/api/tables/qr/${table.qrCodeToken}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.table.tableNumber).toBe(11);
+    expect(res.body.data.table).not.toHaveProperty('qrCodeToken');
+  });
+
+  it('POST /api/orders tu choi guest dine-in neu khong co QR token', async () => {
+    const table = await prismaTest.diningTable.findFirstOrThrow({ where: { tableNumber: 12 } });
+    const item = await prismaTest.menuItem.findFirstOrThrow({
+      where: {
+        isAvailable: true,
+        modifierGroups: { none: { isRequired: true } }
+      }
+    });
+
+    const res = await request(app)
+      .post('/api/orders')
+      .send({
+        tableId: table.id,
+        orderType: 'DINE_IN',
+        items: [{ menuItemId: item.id, quantity: 1 }]
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('POST /api/orders cho phep guest tao don dine-in bang QR token hop le', async () => {
+    const table = await prismaTest.diningTable.findFirstOrThrow({ where: { tableNumber: 11 } });
+    const item = await prismaTest.menuItem.findFirstOrThrow({
+      where: {
+        isAvailable: true,
+        modifierGroups: { none: { isRequired: true } }
+      }
+    });
+
+    const res = await request(app)
+      .post('/api/orders')
+      .send({
+        qrCodeToken: table.qrCodeToken,
+        orderType: 'DINE_IN',
+        items: [{ menuItemId: item.id, quantity: 1 }]
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.order.tableId).toBe(table.id);
   });
 
   it('POST /api/orders tao don hang An tai ban (Dine-in) thanh cong, tinh dung VAT 8% va chuyen ban sang OCCUPIED', async () => {
@@ -84,6 +140,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     const idempotencyKey = `test-idemp-key-dinein-${Date.now()}-${Math.random()}`;
     const orderPayload = {
       tableId: table!.id,
+      qrCodeToken: table!.qrCodeToken,
       orderType: 'DINE_IN',
       idempotencyKey,
       notes: 'Ít đá, không hành',
@@ -141,6 +198,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
         .post('/api/orders')
         .send({
           tableId: table!.id,
+          qrCodeToken: table!.qrCodeToken,
           orderType: 'DINE_IN',
           items: [
             {
@@ -169,6 +227,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
       .post('/api/orders')
       .send({
         tableId: table!.id,
+        qrCodeToken: table!.qrCodeToken,
         orderType: 'DINE_IN',
         items: [
           {
@@ -200,6 +259,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
 
     const payload = {
       tableId: table!.id,
+      qrCodeToken: table!.qrCodeToken,
       orderType: 'DINE_IN',
       idempotencyKey: idempKey,
       items: [{ menuItemId: item!.id, quantity: 1 }]

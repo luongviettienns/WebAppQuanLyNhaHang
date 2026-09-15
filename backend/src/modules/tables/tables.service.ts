@@ -65,6 +65,31 @@ export class TablesService {
     return { table: deriveTableState(table) };
   }
 
+  static async getTableByQrToken(qrCodeToken: string) {
+    const table = await prisma.diningTable.findUnique({
+      where: { qrCodeToken },
+      include: {
+        orders: {
+          where: {
+            paymentStatus: 'UNPAID',
+            status: { not: 'CANCELLED' }
+          },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            items: true
+          }
+        }
+      }
+    });
+
+    if (!table) {
+      throw ApiError.notFound('Mã QR bàn không hợp lệ hoặc đã hết hạn');
+    }
+
+    const { qrCodeToken: _qrCodeToken, ...safeTable } = deriveTableState(table);
+    return { table: safeTable };
+  }
+
   static async updateTableStatus(id: number, inputStatus: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') {
     const existingTable = await prisma.diningTable.findUnique({
       where: { id },
