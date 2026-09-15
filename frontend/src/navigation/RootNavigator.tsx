@@ -10,25 +10,37 @@ export const RootNavigator: React.FC = () => {
   const { user, isLoading } = useAuth();
   const { theme } = useTheme();
 
-  // Tu dong phat hien tham so so ban khi khach quet ma QR (?table=X hoac #table=X)
-  const [guestTableNumber] = useState<number | null>(() => {
+  // Tu dong phat hien QR token/so ban khi khach quet ma QR
+  const [guestQrContext] = useState<{ tableNumber: number | null; qrCodeToken: string | null }>(() => {
     if (typeof window !== 'undefined' && window.location) {
       const searchParams = new URLSearchParams(window.location.search);
+      const qrCodeToken = searchParams.get('token') || searchParams.get('qr') || searchParams.get('tableToken');
       const tableParam = searchParams.get('table');
+      let tableNumber: number | null = null;
       if (tableParam && !isNaN(Number(tableParam))) {
-        return Number(tableParam);
+        tableNumber = Number(tableParam);
       }
       const hash = window.location.hash;
-      const match = hash.match(/table[=/](\d+)/i);
-      if (match && match[1]) {
-        return Number(match[1]);
+      const tableMatch = hash.match(/table[=/](\d+)/i);
+      if (!tableNumber && tableMatch && tableMatch[1]) {
+        tableNumber = Number(tableMatch[1]);
       }
+      const tokenMatch = hash.match(/(?:token|qr|tableToken)[=/]([^&]+)/i);
+      return {
+        tableNumber,
+        qrCodeToken: qrCodeToken || (tokenMatch?.[1] ? decodeURIComponent(tokenMatch[1]) : null)
+      };
     }
-    return null;
+    return { tableNumber: null, qrCodeToken: null };
   });
 
-  if (guestTableNumber && !user) {
-    return <TableOrderScreen tableNumber={guestTableNumber} />;
+  if ((guestQrContext.qrCodeToken || guestQrContext.tableNumber) && !user) {
+    return (
+      <TableOrderScreen
+        tableNumber={guestQrContext.tableNumber ?? undefined}
+        qrCodeToken={guestQrContext.qrCodeToken ?? undefined}
+      />
+    );
   }
 
   if (isLoading && !user) {

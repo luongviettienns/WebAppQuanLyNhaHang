@@ -125,7 +125,7 @@ export interface MenuItemUpsertDto {
 export interface DiningTableDto {
   id: number;
   tableNumber: number;
-  qrCodeToken: string;
+  qrCodeToken?: string;
   status: TableStatus;
   capacity: number;
   currentOrderId?: number | null;
@@ -153,6 +153,7 @@ export interface OrderItemCreateDto {
 export interface OrderCreateDto {
   orderType: OrderType;
   tableId?: number;
+  qrCodeToken?: string;
   buzzerNumber?: number;
   items: OrderItemCreateDto[];
   notes?: string;

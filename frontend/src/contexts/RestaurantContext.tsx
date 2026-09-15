@@ -73,9 +73,10 @@ interface RestaurantContextType {
   createOrder: (payload: {
     orderType: OrderType;
     tableId?: number | null;
+    qrCodeToken?: string;
     notes?: string;
   }) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
-  createDineInOrder: (tableId: number, notes?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
+  createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   payOrder: (orderId: number, paymentMethod: PaymentMethod) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   updateTableStatus: (tableId: number, status: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') => Promise<{ success: boolean; table?: DiningTableDto; error?: string }>;
   voidOrder: (orderId: number, reason: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
@@ -158,7 +159,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const fetchTables = useCallback(async () => {
     setIsLoadingTables(true);
     try {
-      const response = await fetch(`${API_URL}/api/tables`);
+      const response = await fetch(`${API_URL}/api/tables`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      });
       const json = await response.json();
 
       if (response.ok) {
@@ -169,7 +172,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     } finally {
       setIsLoadingTables(false);
     }
-  }, []);
+  }, [token]);
 
   // 3. Fetch KDS Orders from Backend API
   const fetchKDSOrders = useCallback(async () => {
@@ -429,10 +432,12 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const createOrder = async ({
     orderType,
     tableId,
+    qrCodeToken,
     notes
   }: {
     orderType: OrderType;
     tableId?: number | null;
+    qrCodeToken?: string;
     notes?: string;
   }): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
     if (cart.length === 0) {
@@ -455,6 +460,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const orderPayload = {
       ...(orderType === 'DINE_IN' && tableId ? { tableId } : {}),
+      ...(orderType === 'DINE_IN' && qrCodeToken ? { qrCodeToken } : {}),
       orderType,
       items: itemsPayload,
       notes
@@ -493,9 +499,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const createDineInOrder = async (
     tableId: number,
-    notes?: string
+    notes?: string,
+    qrCodeToken?: string
   ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
-    return createOrder({ orderType: 'DINE_IN', tableId, notes });
+    return createOrder({ orderType: 'DINE_IN', tableId, notes, qrCodeToken });
   };
 
   const payOrder = async (

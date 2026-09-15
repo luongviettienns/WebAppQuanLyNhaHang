@@ -11,7 +11,8 @@ import {
   View
 } from 'react-native';
 import { Bell, Check, ChefHat, ChevronLeft, CreditCard, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
-import { MenuItemDto, OrderDto, OrderStatus } from '../../api/contracts';
+import { DiningTableDto, MenuItemDto, OrderDto, OrderStatus } from '../../api/contracts';
+import { getApiBaseUrl } from '../../api/config';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -25,6 +26,7 @@ import { notificationHelper } from '../../lib/notificationHelper';
 
 interface Props {
   tableNumber?: number;
+  qrCodeToken?: string;
 }
 
 const formatVND = (amount: number) =>
@@ -46,7 +48,7 @@ const orderSteps = [
   { title: 'Sẵn sàng phục vụ', description: 'Nhân viên sẽ mang món đến bàn ngay.', icon: UtensilsCrossed }
 ] as const;
 
-export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
+export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken }) => {
   const { theme } = useTheme();
   const { showToast } = useToast();
   const {
@@ -77,14 +79,43 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
   const [isVietQRModalOpen, setIsVietQRModalOpen] = useState(false);
   const [isNotifPromptModalOpen, setIsNotifPromptModalOpen] = useState(false);
   const [isBrowsingMenu, setIsBrowsingMenu] = useState(false);
+  const [guestTable, setGuestTable] = useState<DiningTableDto | null>(null);
+  const [guestTableError, setGuestTableError] = useState<string | null>(null);
   const [notifPermission, setNotifPermission] = useState<'granted' | 'denied' | 'default' | 'unsupported'>(
     notificationHelper.getPermissionStatus()
   );
 
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
 
-  const table = tables.find((t) => t.tableNumber === tableNumber) || tables[0];
-  const tableId = table?.id || 1;
+  useEffect(() => {
+    if (!qrCodeToken) return;
+    let cancelled = false;
+    const loadGuestTable = async () => {
+      setGuestTableError(null);
+      try {
+        const response = await fetch(`${getApiBaseUrl()}/api/tables/qr/${encodeURIComponent(qrCodeToken)}`);
+        const json = await response.json();
+        if (!response.ok) {
+          throw new Error(json.error?.message || 'Mã QR bàn không hợp lệ');
+        }
+        if (!cancelled) {
+          setGuestTable(json.data.table);
+        }
+      } catch (err: any) {
+        if (!cancelled) {
+          setGuestTableError(err.message || 'Không thể tải thông tin bàn từ mã QR');
+        }
+      }
+    };
+    void loadGuestTable();
+    return () => {
+      cancelled = true;
+    };
+  }, [qrCodeToken]);
+
+  const table = qrCodeToken ? guestTable : tables.find((t) => t.tableNumber === tableNumber) || tables[0];
+  const tableId = table?.id;
+  const displayTableNumber = table?.tableNumber ?? tableNumber;
   const allTableOrders = table?.orders || [];
   const liveOrder =
     (selectedOrderId ? allTableOrders.find((o) => o.id === selectedOrderId) : null) ||
@@ -119,29 +150,29 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
     lastNotifiedStatusKeyRef.current = statusKey;
 
     if (status === 'PREPARING') {
-      notificationHelper.notifyOrderPreparing(formatTableNumber(tableNumber));
+        notificationHelper.notifyOrderPreparing(formatTableNumber(displayTableNumber));
       showToast({
         type: 'info',
         title: 'Đang nấu món 🍳',
-        message: `Bếp đã bắt đầu chuẩn bị các món ăn cho Bàn ${formatTableNumber(tableNumber)}!`
+        message: `Bếp đã bắt đầu chuẩn bị các món ăn cho Bàn ${formatTableNumber(displayTableNumber)}!`
       });
     } else if (status === 'READY') {
-      notificationHelper.notifyOrderReady(formatTableNumber(tableNumber));
+      notificationHelper.notifyOrderReady(formatTableNumber(displayTableNumber));
       showToast({
         type: 'success',
         title: 'Món ăn đã xong! 🎉',
-        message: `Món ăn đã nấu xong! Nhân viên đang bưng ra Bàn ${formatTableNumber(tableNumber)} cho bạn.`,
+        message: `Món ăn đã nấu xong! Nhân viên đang bưng ra Bàn ${formatTableNumber(displayTableNumber)} cho bạn.`,
         duration: 6000
       });
     } else if (status === 'COMPLETED') {
-      notificationHelper.notifyOrderCompleted(formatTableNumber(tableNumber));
+      notificationHelper.notifyOrderCompleted(formatTableNumber(displayTableNumber));
       showToast({
         type: 'success',
         title: 'Hoàn tất đơn hàng ✨',
-        message: `Đơn hàng Bàn ${formatTableNumber(tableNumber)} đã hoàn thành. Chúc bạn ngon miệng!`
+        message: `Đơn hàng Bàn ${formatTableNumber(displayTableNumber)} đã hoàn thành. Chúc bạn ngon miệng!`
       });
     }
-  }, [tableNumber, showToast]);
+  }, [displayTableNumber, showToast]);
 
   // Danh dau moc trang thai ban dau de khong ban thong bao don hang cu khi moi vao trang
   useEffect(() => {
@@ -176,7 +207,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
   useEffect(() => {
     if (!latestOrderStatusChanged) return;
     const isThisTable =
-      (latestOrderStatusChanged.tableNumber != null && latestOrderStatusChanged.tableNumber === tableNumber) ||
+      (latestOrderStatusChanged.tableNumber != null && latestOrderStatusChanged.tableNumber === displayTableNumber) ||
       (latestOrderStatusChanged.tableId != null && latestOrderStatusChanged.tableId === tableId) ||
       (liveOrder && liveOrder.id === latestOrderStatusChanged.orderId) ||
       table?.orders?.some((o) => o.id === latestOrderStatusChanged.orderId);
@@ -199,7 +230,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
 
       notifyStatusTransition(latestOrderStatusChanged.orderId, latestOrderStatusChanged.status);
     }
-  }, [latestOrderStatusChanged, tableId, tableNumber, notifyStatusTransition]);
+  }, [latestOrderStatusChanged, tableId, displayTableNumber, notifyStatusTransition]);
 
   const handleEnableNotification = async () => {
     setIsNotifPromptModalOpen(false);
@@ -234,13 +265,17 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
 
   const handleSendToKitchen = async () => {
     if (cart.length === 0) return;
+    if (!tableId) {
+      setOrderError(guestTableError || 'Không xác định được bàn từ mã QR');
+      return;
+    }
     setIsSubmitting(true);
     setOrderError(null);
 
     // Xin quyen thong bao trinh duyet khi khach dat mon
     notificationHelper.requestPermission().catch(() => {});
 
-    const result = await createDineInOrder(tableId);
+    const result = await createDineInOrder(tableId, undefined, qrCodeToken);
     setIsSubmitting(false);
 
     if (result.success && result.order) {
@@ -250,7 +285,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
       showToast({
         type: 'success',
         title: 'Đặt món thành công! 🚀',
-        message: `Đơn hàng Bàn ${formatTableNumber(tableNumber)} đã được gửi xuống Bếp.`
+        message: `Đơn hàng Bàn ${formatTableNumber(displayTableNumber)} đã được gửi xuống Bếp.`
       });
 
       // Sau khi dat mon thanh cong, hoi khach co muon nhan thong bao va rung chuong khong
@@ -310,7 +345,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
             <Text style={[styles.headerHint, { color: theme.textSecondary }]}>
               {liveOrder && isBrowsingMenu ? `Đơn ${liveOrder.code}` : 'Đặt món tại bàn'}
             </Text>
-            <Text style={[styles.tableIdentityNumber, { color: theme.textPrimary }]}>Bàn {formatTableNumber(tableNumber)}</Text>
+            <Text style={[styles.tableIdentityNumber, { color: theme.textPrimary }]}>Bàn {formatTableNumber(displayTableNumber)}</Text>
           </View>
         </View>
 
@@ -445,7 +480,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
               <View style={styles.readyBannerCopy}>
                 <Text style={[styles.readyBannerTitle, { color: '#15803D' }]}>Món ăn đã xong! 🎉</Text>
                 <Text style={[styles.readyBannerText, { color: '#166534' }]}>
-                  Nhân viên đang bưng món ra Bàn {formatTableNumber(tableNumber)} cho bạn. Vui lòng ngồi chờ giây lát nhé!
+                  Nhân viên đang bưng món ra Bàn {formatTableNumber(displayTableNumber)} cho bạn. Vui lòng ngồi chờ giây lát nhé!
                 </Text>
               </View>
             </View>
@@ -459,7 +494,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
               <View style={styles.readyBannerCopy}>
                 <Text style={[styles.readyBannerTitle, { color: '#1D4ED8' }]}>Bếp đang nấu món 🍳</Text>
                 <Text style={[styles.readyBannerText, { color: '#1E40AF' }]}>
-                  Đầu bếp đang chế biến các món ăn nóng hổi cho Bàn {formatTableNumber(tableNumber)}.
+                  Đầu bếp đang chế biến các món ăn nóng hổi cho Bàn {formatTableNumber(displayTableNumber)}.
                 </Text>
               </View>
             </View>
@@ -636,6 +671,10 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
             totalItemCount={allMenuItems.length}
           />
 
+          {guestTableError && (
+            <InlineAlert title="Không mở được bàn" message={guestTableError} />
+          )}
+
           {isLoadingMenu ? (
             <View style={styles.centerContainer}>
               <ActivityIndicator size="large" color={theme.primary} />
@@ -707,7 +746,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
             <View style={[styles.qrHeader, { borderBottomColor: theme.borderSubtle }]}>
               <View style={styles.qrHeaderCopy}>
                 <Text accessibilityRole="header" style={[styles.qrTitle, { color: theme.textPrimary }]}>Thanh toán chuyển khoản</Text>
-                <Text style={[styles.qrSubtitle, { color: theme.textSecondary }]}>Bàn {formatTableNumber(tableNumber)}</Text>
+                <Text style={[styles.qrSubtitle, { color: theme.textSecondary }]}>Bàn {formatTableNumber(displayTableNumber)}</Text>
               </View>
               <Pressable
                 accessibilityRole="button"
@@ -737,7 +776,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
                 <View>
                   <Text style={[styles.paymentLabel, { color: theme.textSecondary }]}>Nội dung chuyển khoản</Text>
                   <Text style={[styles.transferContent, { color: theme.textPrimary }]}>
-                    BAN{tableNumber} {allTableOrders.length > 1 ? `TONG${allTableOrders.length}DON` : (liveOrder?.code || '')}
+                    BAN{displayTableNumber} {allTableOrders.length > 1 ? `TONG${allTableOrders.length}DON` : (liveOrder?.code || '')}
                   </Text>
                 </View>
               </View>
@@ -773,7 +812,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4 }) => {
               </Text>
 
               <Text style={[styles.notifPromptDesc, { color: theme.textSecondary }]}>
-                Để bạn thoải mái trò chuyện và không phải chờ đợi sốt ruột, điện thoại sẽ rung và gửi thông báo ngay khi đầu bếp nấu xong món ăn cho Bàn {formatTableNumber(tableNumber)}.
+                Để bạn thoải mái trò chuyện và không phải chờ đợi sốt ruột, điện thoại sẽ rung và gửi thông báo ngay khi đầu bếp nấu xong món ăn cho Bàn {formatTableNumber(displayTableNumber)}.
               </Text>
 
               <View style={styles.notifPromptActions}>
