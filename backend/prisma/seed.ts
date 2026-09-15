@@ -1,5 +1,6 @@
 import { PrismaClient, Role, TableStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
 import dotenv from 'dotenv';
 import path from 'path';
 
@@ -15,6 +16,14 @@ const defaultPrisma = new PrismaClient({
     }
   }
 });
+
+function generateQrCodeToken() {
+  return `qr_${randomBytes(18).toString('base64url')}`;
+}
+
+function isLegacyQrCodeToken(token?: string | null) {
+  return /^QR-TABLE-\d{2}$/.test(token ?? '');
+}
 
 export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
   console.log('🌱 Bat dau seed du lieu mau cho CRISPY BITE...');
@@ -52,7 +61,14 @@ export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
   // 2. Seed 12 Ban an (Table 01 -> 12)
   for (let i = 1; i <= 12; i++) {
     const tableNum = i;
-    const token = `QR-TABLE-${tableNum < 10 ? '0' + tableNum : tableNum}`;
+    const existingTable = await prisma.diningTable.findUnique({
+      where: { tableNumber: tableNum },
+      select: { qrCodeToken: true }
+    });
+    const token =
+      existingTable && !isLegacyQrCodeToken(existingTable.qrCodeToken)
+        ? existingTable.qrCodeToken
+        : generateQrCodeToken();
     const cap = tableNum <= 4 ? 2 : tableNum <= 10 ? 4 : 8;
 
     await prisma.diningTable.upsert({

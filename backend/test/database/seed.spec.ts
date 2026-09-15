@@ -71,5 +71,9 @@ describe('Database Seed & Schema Verification (Task 5)', () => {
     const tokens = tables.map(t => t.qrCodeToken);
     const uniqueTokens = new Set(tokens);
     expect(uniqueTokens.size).toBe(12);
+    tokens.forEach(token => {
+      expect(token).toMatch(/^qr_[A-Za-z0-9_-]{20,}$/);
+      expect(token).not.toMatch(/^QR-TABLE-\d{2}$/);
+    });
   });
 });
