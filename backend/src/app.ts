@@ -2,7 +2,8 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
-import { env } from './config/env';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './config/swagger';
 import { systemRouter } from './modules/system/system.routes';
 import { authRouter } from './modules/auth/auth.routes';
 import { menuRouter } from './modules/menu/menu.routes';
@@ -29,6 +30,9 @@ app.use(express.json({ limit: '10mb' }));
 // Phục vụ ảnh tải lên tĩnh
 const uploadsDir = getUploadsDir();
 app.use('/uploads', express.static(uploadsDir));
+
+// Swagger UI Documentation Endpoint
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Health Check Endpoint theo Foundation Contract
 app.get('/health', (_req: Request, res: Response) => {

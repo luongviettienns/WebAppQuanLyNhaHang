@@ -3,7 +3,7 @@
 > **Hệ Thống Đa Nền Tảng Đặt Món & Quản Lý Nhà Hàng Fast Food "CRISPY BITE"**  
 > **Kiến trúc**: Full-Stack Monorepo (React Native / Expo SDK 54 + Node.js / Express / Prisma / MySQL + Real-time Socket.io)  
 > **Trạng thái**: Đã hoàn thiện 100% các Module nghiệp vụ từ M1 đến M8; Full Quality Gate PASS.  
-> **Cập nhật lần cuối**: 2026-09-17 16:25:00
+> **Cập nhật lần cuối**: 2026-09-18 00:30:00
 
 ---
 
@@ -14,10 +14,10 @@
 ```
 
 ### 🧪 Bằng chứng kiểm chứng chất lượng (Verification Metrics)
-- **Backend Test Suite (Vitest)**: 22/22 test files passed (161/161 tests pass 100% - bao gồm Inventory Math, Excel Parsing/Export, Inventory Service, Inventory API, BOM Deduct on Paid, Shared Ingredient Atomic Decrement & Seed BOM Verification).
-- **Frontend Test Suite (Vitest)**: 7/7 test files passed (33/33 tests pass 100% - bao gồm menu management filters, notification helper & theme coordinator).
+- **Backend Test Suite (Vitest)**: 22/22 test files passed (163/163 tests pass 100% - bao gồm Swagger Docs, Inventory Math, Excel Parsing/Export, Inventory Service, Inventory API, BOM Deduct on Paid, Shared Ingredient Atomic Decrement, Seed BOM Verification & Async Audit Logging).
+- **Frontend Test Suite (Vitest)**: 9/9 test files passed (39/39 tests pass 100% - bao gồm Login 401 Credential State Preservation, Web Warning Guards, menu management filters, notification helper & theme coordinator).
 - **Playwright E2E Suite**: 3/3 spec files (`cashier-kitchen-flow`, `admin-operations-flow`, `ui-consistency`).
-- **Tổng Unit / Integration Tests**: 194/194 tests passed 100% (161 backend + 33 frontend).
+- **Tổng Unit / Integration Tests**: 202/202 tests passed 100% (163 backend + 39 frontend).
 - **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ workspaces.
 - **ESLint**: `npm run lint` $\rightarrow$ 0 errors trên toàn bộ workspaces.
 - **Expo Framework Doctor**: `expo-doctor` $\rightarrow$ 18/18 checks passed 100%.
@@ -173,9 +173,20 @@
       5. **Bổ sung bộ lọc "Kho & Định lượng"**: Hỗ trợ param `category=INVENTORY` trên cả API và giao diện để chủ nhà hàng dễ dàng tách biệt nhật ký kho/BOM với thực đơn hay hủy đơn.
     - *Khóa lỗi bằng Regression Test*: Đã bổ sung 2 test cases trong `backend/test/audit/audit.spec.ts` kiểm chứng chính xác việc lọc theo `category=INVENTORY` và `category=MENU`. 163/163 tests backend và 33/33 tests frontend pass 100%.
 
+30. **Tách biệt Trạng thái Khôi phục Phiên với Đăng nhập & Đảm bảo `await` khi ghi Audit Log (Session Restore Separation & Async Audit Await)**:
+    - *Nguyên nhân gốc rễ (RCA)*:
+      1. Trong `AuthContext.tsx`, `isLoading` được dùng chung cho cả việc khôi phục phiên (`restoreSession`) và quá trình gọi API đăng nhập (`login`). Trong `RootNavigator.tsx`, điều kiện `if (isLoading && !user)` render spinner toàn màn hình, vô tình làm unmount `LoginScreen` khi người dùng bấm Đăng nhập. Khi API trả về lỗi 401, `isLoading` chuyển về false và `LoginScreen` mount lại từ đầu, làm biến mất toàn bộ input `username` người dùng đã nhập.
+      2. Trong `InventoryService` (`inventory.service.ts`), 5 lời gọi `AuditService.log` bị thiếu từ khóa `await`. Dù `AuditService.log` có try-catch an toàn, việc không `await` khiến tác vụ ghi CSDL chạy bất đồng bộ trong background. Khi test hoặc client gửi ngay request tiếp theo để query audit log, bản ghi chưa kịp hoàn tất vào database gây lỗi sai lệch kết quả (race condition).
+    - *Giải pháp triệt để*:
+      1. **Frontend**: Tách riêng trạng thái `isRestoringSession` (chỉ dùng khi khởi động ứng dụng khôi phục token từ AsyncStorage) và `isLoading` (dùng cho nút bấm Đăng nhập). `RootNavigator` chỉ hiển thị spinner splash khi `isRestoringSession && !user`, giúp `LoginScreen` luôn giữ nguyên vẹn trên màn hình và không làm mất state input khi đăng nhập thất bại.
+      2. **Backend**: Thêm `await` trước toàn bộ các lệnh `AuditService.log({...})` trong `inventory.service.ts` để đảm bảo bản ghi audit log được commit an toàn trước khi trả lời phản hồi cho client.
+      3. **Swagger UI & OpenAPI 3.0**: Tích hợp hoàn chỉnh `swagger-ui-express` và định nghĩa tài liệu API trực quan tại `/api-docs`.
+      4. **Web Warnings Guard**: Loại bỏ các style prop deprecated trên React Native Web (`shadow*` sang `boxShadow`, `pointerEvents` prop sang style, và bảo vệ `accessibilityLabel` trên `AppIcon`).
+    - *Khóa lỗi bằng Regression Test*:
+      1. `frontend/src/features/auth/loginInvalidCredentials.test.tsx`: Kiểm chứng `input-username` giữ nguyên giá trị sau phản hồi 401.
+      2. `frontend/src/webWarningGuards.test.ts`: 5 tests kiểm chứng không vi phạm deprecation cảnh báo web.
+      3. `backend/test/audit/audit.spec.ts`: Kiểm chứng ghi và đọc audit log ngay lập tức sau thao tác kho không còn bị race condition.
+    - *Kết quả nghiệm thu*: 163/163 backend tests PASS (100%), 39/39 frontend tests PASS (100%), expo-doctor 18/18 checks PASS.
+
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
-
-
-
-

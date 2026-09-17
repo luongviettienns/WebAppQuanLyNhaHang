@@ -7,6 +7,7 @@ interface AuthContextType {
   user: UserDto | null;
   token: string | null;
   isLoading: boolean;
+  isRestoringSession: boolean;
   sessionExpiredMessage: string | null;
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   demoLogin: (role: Role) => Promise<{ success: boolean; error?: string }>;
@@ -23,7 +24,8 @@ const STORAGE_USER_KEY = 'crispy_user';
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<UserDto | null>(null);
   const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isRestoringSession, setIsRestoringSession] = useState<boolean>(true);
   const [sessionExpiredMessage, setSessionExpiredMessage] = useState<string | null>(null);
 
   /**
@@ -77,7 +79,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       } catch (e) {
         console.warn('Khong the khoi phuc phien dang nhap:', e);
       } finally {
-        setIsLoading(false);
+        setIsRestoringSession(false);
       }
     };
 
@@ -167,6 +169,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         user,
         token,
         isLoading,
+        isRestoringSession,
         sessionExpiredMessage,
         login,
         demoLogin,

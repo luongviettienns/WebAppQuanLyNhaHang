@@ -170,7 +170,7 @@ export class InventoryService {
       });
     }
 
-    AuditService.log({
+    await AuditService.log({
       action: 'INGREDIENT_CREATED',
       targetType: 'Ingredient',
       targetId: created.id,
@@ -215,7 +215,7 @@ export class InventoryService {
       }
     });
 
-    AuditService.log({
+    await AuditService.log({
       action: 'INGREDIENT_UPDATED',
       targetType: 'Ingredient',
       targetId: updated.id,
@@ -285,7 +285,7 @@ export class InventoryService {
         }
       });
 
-      AuditService.log({
+      await AuditService.log({
         action: 'INVENTORY_STOCK_IN',
         targetType: 'Ingredient',
         targetId: ing.id,
@@ -469,7 +469,7 @@ export class InventoryService {
         results.push(updated);
       }
 
-      AuditService.log({
+      await AuditService.log({
         action: 'INVENTORY_EXCEL_IMPORT',
         targetType: 'Ingredient',
         actorId: userId,
@@ -570,7 +570,7 @@ export class InventoryService {
         });
       }
 
-      AuditService.log({
+      await AuditService.log({
         action: 'MENU_RECIPE_UPDATED',
         targetType: 'MenuItem',
         targetId: menuItemId,
