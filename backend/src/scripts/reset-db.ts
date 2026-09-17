@@ -32,6 +32,10 @@ export async function resetDatabase() {
 
     // 2. Xoa sach cac bang du lieu
     const tables = [
+      'InventoryTransaction',
+      'MenuItemIngredient',
+      'Ingredient',
+      'AuditLog',
       'OrderItem',
       'Order',
       'ModifierOption',

@@ -113,6 +113,30 @@ export class ReportsService {
       other: { count: otherCount, total: otherTotal }
     };
 
+    // Tinh tong chi phi gia von (COGS) tu cac giao dich AUTO_DEDUCT va KITCHEN_WASTE trong ngay
+    const inventoryTx = await prisma.inventoryTransaction.findMany({
+      where: {
+        createdAt: {
+          gte: startOfDay,
+          lte: endOfDay
+        },
+        type: {
+          in: ['AUTO_DEDUCT', 'KITCHEN_WASTE']
+        }
+      }
+    });
+
+    const totalCogs = inventoryTx.reduce((sum, tx) => sum + Math.abs(tx.costAmount), 0);
+    const grossProfit = totalRevenue - totalCogs;
+    const grossMargin = totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 1000) / 10 : 0;
+
+    const profitSummary = {
+      totalRevenue,
+      totalCogs,
+      grossProfit,
+      grossMargin
+    };
+
     return {
       report: {
         date: targetDate,
@@ -123,7 +147,8 @@ export class ReportsService {
         averageOrderValue,
         averagePrepTimeSec,
         topSellers,
-        paymentBreakdown
+        paymentBreakdown,
+        profitSummary
       }
     };
   }

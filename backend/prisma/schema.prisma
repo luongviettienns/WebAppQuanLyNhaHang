@@ -104,6 +104,7 @@ model MenuItem {
   category       Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   modifierGroups ModifierGroup[]
   orderItems     OrderItem[]
+  menuItemIngredients MenuItemIngredient[]
 }
 
 model ModifierGroup {
@@ -184,6 +185,7 @@ model Order {
   createdByUser User?        @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
   voidedByUser  User?        @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
   items         OrderItem[]
+  inventoryTransactions InventoryTransaction[]
 
   @@unique([idempotencyScope, idempotencyKey])
 }
@@ -221,3 +223,64 @@ model AuditLog {
   @@index([targetType, targetId])
   @@index([createdAt])
 }
+
+enum InventoryTransactionType {
+  STOCK_IN
+  AUTO_DEDUCT
+  KITCHEN_WASTE
+  MANUAL_ADJUST
+  VOID_RESTORE
+}
+
+model Ingredient {
+  id           Int      @id @default(autoincrement())
+  sku          String   @unique // Ma nguyen lieu (VD: ING-CHICKEN-01)
+  name         String   // Ten nguyen lieu
+  unit         String   // Don vi: gram, ml, piece, can...
+  currentStock Float    @default(0) // Ton kho thuc te
+  minThreshold Float    @default(0) // Nguong canh bao do
+  costPerUnit  Int      @default(0) // Gia von trung binh (VND / don vi tinh)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  menuItemIngredients   MenuItemIngredient[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([sku])
+  @@index([isActive])
+}
+
+model MenuItemIngredient {
+  id               Int      @id @default(autoincrement())
+  menuItemId       Int
+  ingredientId     Int
+  quantityRequired Float    // Dinh luong tieu hao cho 1 phan mon an
+
+  menuItem   MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@unique([menuItemId, ingredientId])
+  @@index([menuItemId])
+  @@index([ingredientId])
+}
+
+model InventoryTransaction {
+  id              Int                      @id @default(autoincrement())
+  ingredientId    Int
+  type            InventoryTransactionType
+  quantity        Float                    // + khi nhap kho, - khi xuat/hao hut
+  costAmount      Int                      @default(0) // Gia tri VND giao dich
+  orderId         Int?                     // Don hang lien quan (khi auto-deduct)
+  note            String?                  // Ghi chu
+  createdByUserId Int?
+  createdAt       DateTime                 @default(now())
+
+  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  order      Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([ingredientId])
+  @@index([type])
+  @@index([createdAt])
+}
+

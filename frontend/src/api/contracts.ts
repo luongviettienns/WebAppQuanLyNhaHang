@@ -224,6 +224,13 @@ export interface PaymentBreakdownDto {
   other: PaymentMethodSummaryDto;
 }
 
+export interface ProfitSummaryDto {
+  totalRevenue: number;
+  totalCogs: number;
+  grossProfit: number;
+  grossMargin: number;
+}
+
 export interface DailyReportDto {
   date: string;
   totalOrders: number;
@@ -234,6 +241,7 @@ export interface DailyReportDto {
   averagePrepTimeSec: number;
   topSellers: TopSellerItemDto[];
   paymentBreakdown?: PaymentBreakdownDto;
+  profitSummary?: ProfitSummaryDto;
 }
 
 // ==========================================
@@ -293,5 +301,80 @@ export interface AuditLogsPageDto {
   total: number;
   page: number;
   totalPages: number;
+}
+
+// ==========================================
+// 10. INVENTORY & BOM DTOs
+// ==========================================
+export type InventoryTransactionType =
+  | 'STOCK_IN'
+  | 'AUTO_DEDUCT'
+  | 'KITCHEN_WASTE'
+  | 'MANUAL_ADJUST'
+  | 'VOID_RESTORE';
+
+export interface IngredientDto {
+  id: number;
+  sku: string;
+  name: string;
+  unit: string;
+  currentStock: number;
+  minThreshold: number;
+  costPerUnit: number;
+  isActive: boolean;
+  isLowStock: boolean;
+  isNegative: boolean;
+  totalValue: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RecipeIngredientDto {
+  id: number;
+  ingredientId: number;
+  sku: string;
+  name: string;
+  unit: string;
+  quantityRequired: number;
+  costPerUnit: number;
+  itemCost: number;
+}
+
+export interface MenuItemRecipeDto {
+  menuItemId: number;
+  menuItemName: string;
+  basePrice: number;
+  totalCost: number;
+  profitMargin: number;
+  ingredients: RecipeIngredientDto[];
+}
+
+export interface ExcelPreviewRowDto {
+  rowNumber: number;
+  sku: string;
+  name: string;
+  unit: string;
+  quantity: number;
+  costPerUnit: number;
+  projectedStock: number;
+  projectedCost: number;
+  note?: string;
+}
+
+export interface ExcelErrorRowDto {
+  rowNumber: number;
+  sku: string;
+  name?: string;
+  unit?: string;
+  quantity: number;
+  costPerUnit: number;
+  error: string;
+}
+
+export interface ExcelPreviewResultDto {
+  fileName: string;
+  totalRows: number;
+  validRows: ExcelPreviewRowDto[];
+  errorRows: ExcelErrorRowDto[];
 }
 

@@ -4,6 +4,7 @@ import { emitToAll, emitToRoom } from '../../lib/socket';
 import { CreateOrderInput, PayOrderInput, VoidOrderInput } from './orders.schemas';
 import { PaymentMethod } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
+import { InventoryService } from '../inventory/inventory.service';
 import { createHash } from 'crypto';
 
 function canonicalize(value: unknown): unknown {
@@ -326,6 +327,9 @@ export class OrdersService {
         },
         include: { items: true }
       });
+
+      // Tu dong tru kho nguyen lieu theo cong thuc dinh luong BOM (Atomic Transaction)
+      await InventoryService.deductInventoryForOrder(tx, order.id, order.items);
 
       let nextTableState: { tableId: number; tableNumber: number; status: 'AVAILABLE' | 'OCCUPIED'; currentOrderId: number | null } | null = null;
       if (order.tableId) {

@@ -13,7 +13,8 @@ import {
   Award,
   BarChart2,
   CreditCard,
-  QrCode
+  QrCode,
+  Coins
 } from 'lucide-react-native';
 import {
   StyleSheet,
@@ -600,6 +601,91 @@ export const DashboardScreen: React.FC = () => {
                   description="Doanh thu tiền mặt và chuyển khoản sẽ hiển thị khi có đơn hoàn tất."
                 />
               )}
+            </Surface>
+
+            {/* 2.5 HIỆU QUẢ GIÁ VỐN & LỢI NHUẬN GỘP (COGS & GROSS PROFIT) */}
+            <Surface level="raised" style={styles.sectionSurface}>
+              <View style={styles.sectionHeaderRow}>
+                <View>
+                  <Text accessibilityRole="header" style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+                    Lợi nhuận gộp & Giá vốn (BOM)
+                  </Text>
+                  <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+                    Bóc tách chi phí nguyên liệu tiêu hao và tiền lời thực tế trong ngày.
+                  </Text>
+                </View>
+                <View style={[styles.rateBadge, { backgroundColor: '#10B98118' }]}>
+                  <Text style={[styles.rateBadgeText, { color: '#10B981' }]}>
+                    {report?.profitSummary ? `${report.profitSummary.grossMargin}% biên lời` : '--'}
+                  </Text>
+                </View>
+              </View>
+
+              <View style={[styles.paymentBoxesRow, isMobile && styles.paymentBoxesRowMobile]}>
+                {/* Hộp Giá vốn COGS */}
+                <View
+                  style={[
+                    styles.paymentBox,
+                    {
+                      backgroundColor: theme.surfaceCanvas,
+                      borderColor: theme.borderSubtle,
+                      borderLeftColor: '#EF4444',
+                      borderLeftWidth: 3
+                    }
+                  ]}
+                >
+                  <View style={styles.paymentBoxHeader}>
+                    <View style={styles.paymentLabelGroup}>
+                      <View style={[styles.paymentIconBadge, { backgroundColor: '#EF444418' }]}>
+                        <AppIcon icon={Coins} color="#EF4444" size={15} />
+                      </View>
+                      <Text style={[styles.paymentBoxTitle, { color: theme.textPrimary }]}>
+                        Giá vốn NVL (COGS)
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.paymentAmountText, { color: '#EF4444' }]}>
+                    {report?.profitSummary ? report.profitSummary.totalCogs.toLocaleString('vi-VN') : 0} đ
+                  </Text>
+                  <View style={styles.paymentMetaRow}>
+                    <Text style={[styles.paymentMetaText, { color: theme.textSecondary }]}>
+                      Tiêu hao tự động theo BOM
+                    </Text>
+                  </View>
+                </View>
+
+                {/* Hộp Lợi nhuận gộp thực tế */}
+                <View
+                  style={[
+                    styles.paymentBox,
+                    {
+                      backgroundColor: theme.surfaceCanvas,
+                      borderColor: theme.borderSubtle,
+                      borderLeftColor: '#10B981',
+                      borderLeftWidth: 3
+                    }
+                  ]}
+                >
+                  <View style={styles.paymentBoxHeader}>
+                    <View style={styles.paymentLabelGroup}>
+                      <View style={[styles.paymentIconBadge, { backgroundColor: '#10B98118' }]}>
+                        <AppIcon icon={TrendingUp} color="#10B981" size={15} />
+                      </View>
+                      <Text style={[styles.paymentBoxTitle, { color: theme.textPrimary }]}>
+                        Tiền lời gộp (Gross Profit)
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.paymentAmountText, { color: '#10B981' }]}>
+                    {report?.profitSummary ? report.profitSummary.grossProfit.toLocaleString('vi-VN') : 0} đ
+                  </Text>
+                  <View style={styles.paymentMetaRow}>
+                    <Text style={[styles.paymentMetaText, { color: theme.textSecondary }]}>
+                      Doanh thu thuần trừ giá vốn
+                    </Text>
+                  </View>
+                </View>
+              </View>
             </Surface>
 
             {/* 3. ĐỐI SOÁT HÓA ĐƠN TRONG PHIÊN */}
