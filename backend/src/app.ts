@@ -15,7 +15,7 @@ export const app = express();
 
 app.use(
   cors({
-    origin: env.CORS_ORIGIN === '*' ? '*' : env.CORS_ORIGIN.split(','),
+    origin: true,
     credentials: true
   })
 );

@@ -10,13 +10,15 @@ import {
   View,
   useWindowDimensions
 } from 'react-native';
-import { ChefHat, Moon, ShieldCheck, Sun, UserRound } from 'lucide-react-native';
+import { ChefHat, Moon, ShieldCheck, Sun, UserRound, Wifi } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { Role } from '../../api/contracts';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon, BrandMark, Button, Field, InlineAlert, Surface } from '../../ui';
+import { ServerConfigModal } from '../../components/ServerConfigModal';
+import { getApiBaseUrl } from '../../api/config';
 
 const demoRoles: Array<{ role: Role; label: string; description: string; icon: LucideIcon; testID: string }> = [
   { role: 'CASHIER', label: 'Thu ngân', description: 'Bán hàng và quản lý bàn', icon: UserRound, testID: 'demo-btn-cashier' },
@@ -25,13 +27,16 @@ const demoRoles: Array<{ role: Role; label: string; description: string; icon: L
 ];
 
 export const LoginScreen: React.FC = () => {
-  const { login, demoLogin, isLoading } = useAuth();
+  const { login, demoLogin, isLoading, sessionExpiredMessage, clearSessionExpiredMessage } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [isServerModalOpen, setIsServerModalOpen] = useState(false);
+
+  const currentServerUrl = getApiBaseUrl();
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
@@ -40,6 +45,7 @@ export const LoginScreen: React.FC = () => {
     }
 
     setErrorMessage(null);
+    clearSessionExpiredMessage();
     const result = await login(username.trim(), password);
     if (!result.success) {
       setErrorMessage(result.error || 'Đăng nhập không thành công. Vui lòng thử lại.');
@@ -48,6 +54,7 @@ export const LoginScreen: React.FC = () => {
 
   const handleDemoLogin = async (role: Role) => {
     setErrorMessage(null);
+    clearSessionExpiredMessage();
     const result = await demoLogin(role);
     if (!result.success) {
       setErrorMessage(result.error || 'Không thể mở tài khoản dùng thử. Vui lòng thử lại.');
@@ -85,15 +92,50 @@ export const LoginScreen: React.FC = () => {
                   <Text accessibilityRole="header" style={[styles.title, { color: theme.textPrimary }]}>Đăng nhập</Text>
                   <Text style={[styles.description, { color: theme.textSecondary }]}>Dùng tài khoản được cấp cho ca làm việc của bạn.</Text>
                 </View>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={isDark ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}
-                  onPress={toggleTheme}
-                  style={({ pressed }) => [styles.themeButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet, borderColor: theme.borderSubtle }]}
-                >
-                  <AppIcon icon={isDark ? Sun : Moon} color={theme.textPrimary} size={18} />
-                </Pressable>
+                <View style={styles.headerActions}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Cấu hình kết nối Wi-Fi máy chủ"
+                    onPress={() => setIsServerModalOpen(true)}
+                    style={({ pressed }) => [styles.themeButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet, borderColor: theme.borderSubtle }]}
+                  >
+                    <AppIcon icon={Wifi} color={theme.interactivePrimary} size={18} />
+                  </Pressable>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={isDark ? 'Chuyển sang giao diện sáng' : 'Chuyển sang giao diện tối'}
+                    onPress={toggleTheme}
+                    style={({ pressed }) => [styles.themeButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet, borderColor: theme.borderSubtle }]}
+                  >
+                    <AppIcon icon={isDark ? Sun : Moon} color={theme.textPrimary} size={18} />
+                  </Pressable>
+                </View>
               </View>
+
+              {/* Server Connection Indicator Banner */}
+              <Pressable
+                onPress={() => setIsServerModalOpen(true)}
+                style={({ pressed }) => [
+                  styles.serverBanner,
+                  { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle, opacity: pressed ? 0.8 : 1 }
+                ]}
+              >
+                <View style={styles.serverBannerLeft}>
+                  <AppIcon icon={Wifi} size={14} color={theme.success} />
+                  <Text style={[styles.serverBannerText, { color: theme.textSecondary }]}>
+                    Máy chủ: <Text style={{ color: theme.textPrimary, fontWeight: '600' }}>{currentServerUrl}</Text>
+                  </Text>
+                </View>
+                <Text style={[styles.serverBannerChange, { color: theme.interactivePrimary }]}>Cấu hình Wi-Fi</Text>
+              </Pressable>
+
+              {sessionExpiredMessage && (
+                <InlineAlert
+                  tone="warning"
+                  title="Phiên đăng nhập"
+                  message={sessionExpiredMessage}
+                />
+              )}
 
               {errorMessage && <InlineAlert title="Chưa thể đăng nhập" message={errorMessage} />}
 
@@ -103,7 +145,10 @@ export const LoginScreen: React.FC = () => {
                   label="Tên đăng nhập"
                   placeholder="Ví dụ: cashier"
                   value={username}
-                  onChangeText={setUsername}
+                  onChangeText={(val) => {
+                    setUsername(val);
+                    if (sessionExpiredMessage) clearSessionExpiredMessage();
+                  }}
                   autoCapitalize="none"
                   autoCorrect={false}
                   editable={!isLoading}
@@ -114,7 +159,10 @@ export const LoginScreen: React.FC = () => {
                   label="Mật khẩu"
                   placeholder="Nhập mật khẩu"
                   value={password}
-                  onChangeText={setPassword}
+                  onChangeText={(val) => {
+                    setPassword(val);
+                    if (sessionExpiredMessage) clearSessionExpiredMessage();
+                  }}
                   secureTextEntry
                   editable={!isLoading}
                   returnKeyType="done"
@@ -162,6 +210,11 @@ export const LoginScreen: React.FC = () => {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <ServerConfigModal
+        visible={isServerModalOpen}
+        onClose={() => setIsServerModalOpen(false)}
+      />
     </SafeAreaView>
   );
 };
@@ -185,10 +238,35 @@ const styles = StyleSheet.create({
   formPanel: { gap: spacing.lg, marginTop: spacing.md, padding: spacing.xl },
   formPanelDesktop: { borderBottomLeftRadius: 0, borderLeftWidth: 0, borderTopLeftRadius: 0, justifyContent: 'center', marginTop: 0, paddingHorizontal: 56, width: '60%' },
   formHeader: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between' },
+  headerActions: { flexDirection: 'row', gap: spacing.xs },
   titleGroup: { flex: 1, gap: spacing.xs },
   title: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xxl, lineHeight: typography.lineHeights.xxl },
   description: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm, maxWidth: 440 },
   themeButton: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, height: 44, justifyContent: 'center', width: 44 },
+  serverBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radii.sm,
+    borderWidth: 1
+  },
+  serverBannerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+    flex: 1
+  },
+  serverBannerText: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.body
+  },
+  serverBannerChange: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.bodyMedium,
+    fontWeight: '600'
+  },
   fields: { gap: spacing.md },
   demoSection: { gap: spacing.md, marginTop: spacing.xs },
   dividerRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
