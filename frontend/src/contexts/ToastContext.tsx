@@ -66,7 +66,7 @@ export const ToastProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   return (
     <ToastContext.Provider value={{ showToast, hideToast }}>
       {children}
-      <View pointerEvents="box-none" style={styles.toastContainer}>
+      <View style={styles.toastContainer}>
         {toasts.map((toast) => (
           <ToastCard key={toast.id} toast={toast} onDismiss={() => hideToast(toast.id)} />
         ))}
@@ -161,6 +161,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     zIndex: 99999,
     elevation: 1000,
+    pointerEvents: 'box-none',
     gap: spacing.sm,
     paddingHorizontal: spacing.md
   },
@@ -173,10 +174,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderRadius: radii.lg,
     borderWidth: 1.5,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
+    boxShadow: '0 4px 10px rgba(0, 0, 0, 0.15)',
     elevation: 8,
     gap: 12
   },

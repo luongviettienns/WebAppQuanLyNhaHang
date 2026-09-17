@@ -13,12 +13,17 @@ export const AppIcon: React.FC<AppIconProps> = ({
   color,
   size = 20,
   accessibilityLabel
-}) => (
-  <Icon
-    color={color}
-    size={size}
-    strokeWidth={2.25}
-    accessibilityLabel={accessibilityLabel}
-    accessible={Boolean(accessibilityLabel)}
-  />
-);
+}) => {
+  const accessibilityProps = accessibilityLabel
+    ? { accessibilityLabel, accessible: true }
+    : {};
+
+  return (
+    <Icon
+      color={color}
+      size={size}
+      strokeWidth={2.25}
+      {...accessibilityProps}
+    />
+  );
+};

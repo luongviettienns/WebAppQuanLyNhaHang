@@ -1,0 +1,160 @@
+import React from 'react';
+import { act, create } from 'react-test-renderer';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { AuthProvider } from '../../contexts/AuthContext';
+import { ThemeProvider } from '../../contexts/ThemeContext';
+import { RootNavigator } from '../../navigation/RootNavigator';
+
+const { createNativeComponent } = vi.hoisted(() => ({
+  createNativeComponent: (name: string) => {
+    const Component = (props: any) => React.createElement(name, props, props.children);
+    Component.displayName = name;
+    return Component;
+  }
+}));
+
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+vi.mock('react-native', () => ({
+  ActivityIndicator: createNativeComponent('ActivityIndicator'),
+  KeyboardAvoidingView: createNativeComponent('KeyboardAvoidingView'),
+  Modal: createNativeComponent('Modal'),
+  Platform: { OS: 'web', select: (values: Record<string, any>) => values.web ?? values.default },
+  Pressable: createNativeComponent('Pressable'),
+  SafeAreaView: createNativeComponent('SafeAreaView'),
+  ScrollView: createNativeComponent('ScrollView'),
+  StyleSheet: { create: (styles: any) => styles, flatten: (styles: any) => styles },
+  Text: createNativeComponent('Text'),
+  TextInput: createNativeComponent('TextInput'),
+  View: createNativeComponent('View'),
+  useWindowDimensions: () => ({ width: 1024, height: 768 })
+}));
+
+vi.mock('expo-constants', () => ({
+  default: { expoConfig: {} }
+}));
+
+vi.mock('lucide-react-native', () => {
+  const Icon = createNativeComponent('Icon');
+  return {
+    ChefHat: Icon,
+    Check: Icon,
+    Moon: Icon,
+    Radio: Icon,
+    RefreshCw: Icon,
+    Server: Icon,
+    ShieldCheck: Icon,
+    Sun: Icon,
+    UserRound: Icon,
+    Wifi: Icon,
+    X: Icon
+  };
+});
+
+vi.mock('@react-native-async-storage/async-storage', () => {
+  const values = new Map<string, string>();
+
+  return {
+    default: {
+      getItem: vi.fn(async (key: string) => values.get(key) ?? null),
+      setItem: vi.fn(async (key: string, value: string) => {
+        values.set(key, value);
+      }),
+      removeItem: vi.fn(async (key: string) => {
+        values.delete(key);
+      })
+    }
+  };
+});
+
+vi.mock('../../features/customer/TableOrderScreen', () => ({
+  TableOrderScreen: () => null
+}));
+
+vi.mock('../../navigation/RoleTabs', () => ({
+  RoleTabs: () => null
+}));
+
+describe('login with invalid credentials', () => {
+  let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
+      if (typeof args[0] === 'string' && args[0].includes('react-test-renderer is deprecated')) {
+        return;
+      }
+      process.stderr.write(`${args.join(' ')}\n`);
+    });
+  });
+
+  afterEach(() => {
+    consoleErrorSpy.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps the login screen mounted and shows the server error', async () => {
+    let resolveLogin!: (value: {
+      ok: boolean;
+      status: number;
+      json: () => Promise<unknown>;
+    }) => void;
+    const loginResponse = new Promise<{
+      ok: boolean;
+      status: number;
+      json: () => Promise<unknown>;
+    }>((resolve) => {
+      resolveLogin = resolve;
+    });
+
+    vi.stubGlobal('fetch', vi.fn(() => loginResponse));
+
+    let screen: ReturnType<typeof create>;
+
+    await act(async () => {
+      screen = create(
+        <ThemeProvider>
+          <AuthProvider>
+            <RootNavigator />
+          </AuthProvider>
+        </ThemeProvider>
+      );
+    });
+
+    const inputs = screen!.root.findAllByType('TextInput');
+    await act(async () => {
+      inputs[0].props.onChangeText('not-a-user');
+      inputs[1].props.onChangeText('wrong-password');
+    });
+
+    await act(async () => {
+      screen!.root.findByProps({ testID: 'btn-login' }).props.onPress();
+      await Promise.resolve();
+    });
+
+    expect(screen!.root.findByProps({ testID: 'input-username' }).props.value).toBe('not-a-user');
+
+    await act(async () => {
+      resolveLogin({
+        ok: false,
+        status: 401,
+        json: async () => ({
+          error: {
+            code: 'INVALID_CREDENTIALS',
+            message: 'Tên đăng nhập hoặc mật khẩu không chính xác'
+          }
+        })
+      });
+      await loginResponse;
+    });
+
+    expect(screen!.root.findByProps({ testID: 'input-username' }).props.value).toBe('not-a-user');
+    expect(screen!.root.findByProps({ accessibilityRole: 'alert' })).toBeTruthy();
+    expect(screen!.root.findByProps({ accessibilityRole: 'alert' }).props.children).toContainEqual(
+      expect.objectContaining({
+        props: expect.objectContaining({
+          children: 'Tên đăng nhập hoặc mật khẩu không chính xác'
+        })
+      })
+    );
+  });
+});

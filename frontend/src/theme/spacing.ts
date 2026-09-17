@@ -22,17 +22,11 @@ export const radii = {
 
 export const elevation = {
   modal: {
-    shadowColor: '#24211F',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.24,
-    shadowRadius: 24,
+    boxShadow: '0 12px 24px rgba(36, 33, 31, 0.24)',
     elevation: 8
   },
   floatingAction: {
-    shadowColor: '#24211F',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.2,
-    shadowRadius: 12,
+    boxShadow: '0 6px 12px rgba(36, 33, 31, 0.2)',
     elevation: 6
   }
 } as const;

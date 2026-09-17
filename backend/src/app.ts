@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './config/swagger';
 import { env } from './config/env';
 import { systemRouter } from './modules/system/system.routes';
 import { authRouter } from './modules/auth/auth.routes';
@@ -21,6 +23,9 @@ app.use(
 );
 
 app.use(express.json());
+
+// Swagger UI Documentation Endpoint
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // Health Check Endpoint theo Foundation Contract
 app.get('/health', (_req: Request, res: Response) => {
@@ -60,7 +65,7 @@ const frontendDist = possibleFrontendPaths.find((p) => fs.existsSync(p));
 if (process.env.NODE_ENV !== 'test' && frontendDist) {
   app.use(express.static(frontendDist));
   app.get('*', (req: Request, res: Response, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+    if (req.path.startsWith('/api') || req.path.startsWith('/health') || req.path.startsWith('/api-docs')) {
       return next();
     }
     res.sendFile(path.join(frontendDist, 'index.html'));

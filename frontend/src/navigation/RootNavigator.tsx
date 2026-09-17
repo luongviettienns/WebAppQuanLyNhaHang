@@ -7,7 +7,7 @@ import { TableOrderScreen } from '../features/customer/TableOrderScreen';
 import { RoleTabs } from './RoleTabs';
 
 export const RootNavigator: React.FC = () => {
-  const { user, isLoading } = useAuth();
+  const { user, isRestoringSession } = useAuth();
   const { theme } = useTheme();
 
   // Tu dong phat hien QR token/so ban khi khach quet ma QR
@@ -43,7 +43,7 @@ export const RootNavigator: React.FC = () => {
     );
   }
 
-  if (isLoading && !user) {
+  if (isRestoringSession && !user) {
     return (
       <View style={[styles.loadingContainer, { backgroundColor: theme.surfaceCanvas }]}>
         <ActivityIndicator size="large" color={theme.primary} />
