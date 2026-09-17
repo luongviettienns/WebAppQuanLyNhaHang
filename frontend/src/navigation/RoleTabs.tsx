@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
   ChefHat,
@@ -37,10 +37,8 @@ const tabsByRole = {
     { key: 'kds', label: 'Bếp', icon: ChefHat, component: KDSScreen }
   ],
   ADMIN: [
-    { key: 'pos', label: 'Bán hàng', icon: ShoppingCart, component: POSScreen },
-    { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
-    { key: 'kds', label: 'Bếp', icon: ChefHat, component: KDSScreen },
-    { key: 'admin', label: 'Quản trị', icon: ShieldCheck, component: AdminScreen }
+    { key: 'admin', label: 'Quản trị', icon: ShieldCheck, component: AdminScreen },
+    { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen }
   ]
 } satisfies Record<string, TabItem[]>;
 
@@ -94,7 +92,14 @@ export const RoleTabs: React.FC = () => {
   const isDesktop = width >= 1200;
   const isMobile = width < 768;
   const tabs = useMemo(() => tabsByRole[user?.role || 'ADMIN'], [user?.role]);
-  const [activeTab, setActiveTab] = useState<TabKey>(tabs[0]?.key || 'pos');
+  const [activeTab, setActiveTab] = useState<TabKey>(() => tabsByRole[user?.role || 'ADMIN'][0]?.key || 'admin');
+
+  useEffect(() => {
+    if (tabs.length > 0 && !tabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(tabs[0].key);
+    }
+  }, [tabs, activeTab]);
+
   const selected = tabs.find((tab) => tab.key === activeTab) || tabs[0];
   const ActiveComponent = selected.component;
   const roleLabel = roleLabels[user?.role || 'ADMIN'];
