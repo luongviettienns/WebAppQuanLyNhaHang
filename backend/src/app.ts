@@ -11,6 +11,8 @@ import { ordersRouter } from './modules/orders/orders.routes';
 import { reportsRouter } from './modules/reports/reports.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
+import { getUploadsDir } from './lib/uploads';
+
 export const app = express();
 
 app.use(
@@ -20,7 +22,11 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Phục vụ ảnh tải lên tĩnh
+const uploadsDir = getUploadsDir();
+app.use('/uploads', express.static(uploadsDir));
 
 // Health Check Endpoint theo Foundation Contract
 app.get('/health', (_req: Request, res: Response) => {

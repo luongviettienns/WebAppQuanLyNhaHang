@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Check, ImageIcon, Pencil, Plus, Search, Trash2, X } from 'lucide-react-native';
+import React, { useState, useMemo, useRef } from 'react';
+import { Check, ImageIcon, Pencil, Plus, Search, Trash2, Upload, X } from 'lucide-react-native';
 import {
   StyleSheet,
   Text,
@@ -17,7 +17,9 @@ import {
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
+import { useAuth } from '../../contexts/AuthContext';
 import { MenuItemDto, MenuItemUpsertDto } from '../../api/contracts';
+import { getApiBaseUrl, resolveImageUrl } from '../../api/config';
 import { elevation, radii, spacing, statusColors, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, Field, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import {
@@ -56,6 +58,7 @@ interface MenuItemForm {
 export const MenuManagementScreen: React.FC = () => {
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
+  const { token } = useAuth();
   const {
     categories,
     allMenuItems,
@@ -74,7 +77,9 @@ export const MenuManagementScreen: React.FC = () => {
   const [editingItem, setEditingItem] = useState<MenuItemDto | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
   const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isMobile = width < 768;
   const switchAppearance = {
     style: styles.switchTarget,
@@ -181,6 +186,47 @@ export const MenuManagementScreen: React.FC = () => {
       }))
     });
     setIsModalOpen(true);
+  };
+
+  const handlePickFile = () => {
+    if (Platform.OS !== 'web') return;
+    // Tao the input an, click de mo hop thoai chon file
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp,image/gif';
+    input.onchange = async (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      // Doc file thanh base64 data URL
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const dataUrl = ev.target?.result as string;
+        if (!dataUrl) return;
+        setIsUploadingImage(true);
+        try {
+          const res = await fetch(`${getApiBaseUrl()}/api/menu/upload-image`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token ?? ''}`
+            },
+            body: JSON.stringify({ dataUrl })
+          });
+          const json = await res.json();
+          if (res.ok && json.data?.imageUrl) {
+            setForm((prev) => ({ ...prev, imageUrl: json.data.imageUrl }));
+          } else {
+            Alert.alert('Lỗi tải ảnh', json.message || 'Không thể tải ảnh lên máy chủ.');
+          }
+        } catch {
+          Alert.alert('Lỗi mạng', 'Không thể kết nối đến máy chủ để tải ảnh.');
+        } finally {
+          setIsUploadingImage(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
   };
 
   const handleToggleSoldOut = async (item: MenuItemDto) => {
@@ -560,7 +606,7 @@ export const MenuManagementScreen: React.FC = () => {
                     <View style={styles.mobileItemHeader}>
                       {renderCheckbox(selected, () => toggleItemSelection(item.id), `Chọn món ${item.name}`)}
                       <View style={[styles.thumbnailContainer, { backgroundColor: theme.surfaceSunken }]}>
-                        {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={22} />}
+                        {item.imageUrl ? <Image source={{ uri: resolveImageUrl(item.imageUrl) || '' }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={22} />}
                       </View>
                       <View style={styles.itemInfo}>
                         <Text style={[styles.itemCode, { color: theme.textSecondary }]}>{formatMenuItemCode(item.id)}</Text>
@@ -623,7 +669,7 @@ export const MenuManagementScreen: React.FC = () => {
                       <View style={styles.selectColumn}>{renderCheckbox(selected, () => toggleItemSelection(item.id), `Chọn món ${item.name}`)}</View>
                       <View style={[styles.codeColumn, styles.codeCell]}>
                         <View style={[styles.thumbnailContainer, { backgroundColor: theme.surfaceSunken }]}>
-                          {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={20} />}
+                          {item.imageUrl ? <Image source={{ uri: resolveImageUrl(item.imageUrl) || '' }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={20} />}
                         </View>
                         <Text style={[styles.itemCode, { color: theme.textPrimary }]}>{formatMenuItemCode(item.id)}</Text>
                       </View>
@@ -705,7 +751,62 @@ export const MenuManagementScreen: React.FC = () => {
                   </ScrollView>
                 </View>
                 <Field label="Mô tả" placeholder="Thành phần hoặc đặc điểm của món" multiline numberOfLines={3} style={styles.textArea} value={form.description} onChangeText={(value) => setForm((previous) => ({ ...previous, description: value }))} />
-                <Field label="Đường dẫn ảnh" placeholder="https://..." autoCapitalize="none" value={form.imageUrl} onChangeText={(value) => setForm((previous) => ({ ...previous, imageUrl: value }))} />
+                {/* === Image Upload Section === */}
+                <View style={styles.imageSection}>
+                  <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Ảnh món</Text>
+                  {/* Preview */}
+                  {form.imageUrl ? (
+                    <View style={[styles.imagePreviewBox, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                      <Image
+                        source={{ uri: resolveImageUrl(form.imageUrl) || '' }}
+                        style={styles.imagePreview}
+                        resizeMode="cover"
+                      />
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Xóa ảnh"
+                        onPress={() => setForm((prev) => ({ ...prev, imageUrl: '' }))}
+                        style={[styles.imageRemoveBtn, { backgroundColor: theme.danger }]}
+                      >
+                        <AppIcon icon={Trash2} color={theme.textInverse} size={14} />
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  {/* Upload button (web only) */}
+                  {Platform.OS === 'web' && (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Tải ảnh từ máy tính"
+                      disabled={isUploadingImage}
+                      onPress={handlePickFile}
+                      style={({ pressed }) => [
+                        styles.uploadButton,
+                        {
+                          backgroundColor: pressed ? theme.interactiveQuiet : theme.surfaceSunken,
+                          borderColor: theme.borderSubtle,
+                          opacity: isUploadingImage ? 0.6 : 1
+                        }
+                      ]}
+                    >
+                      {isUploadingImage ? (
+                        <ActivityIndicator size="small" color={theme.primary} />
+                      ) : (
+                        <AppIcon icon={Upload} color={theme.textSecondary} size={18} />
+                      )}
+                      <Text style={[styles.uploadButtonText, { color: theme.textSecondary }]}>
+                        {isUploadingImage ? 'Đang tải lên…' : 'Tải ảnh từ máy tính'}
+                      </Text>
+                    </Pressable>
+                  )}
+                  {/* Manual URL input */}
+                  <Field
+                    label={Platform.OS === 'web' ? 'Hoặc dán liên kết ảnh (URL)' : 'Đường dẫn ảnh (URL)'}
+                    placeholder="https://example.com/image.jpg"
+                    autoCapitalize="none"
+                    value={form.imageUrl}
+                    onChangeText={(value) => setForm((previous) => ({ ...previous, imageUrl: value }))}
+                  />
+                </View>
               </View>
 
               <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
@@ -886,5 +987,11 @@ const styles = StyleSheet.create({
   optionPrice: { flex: 1, minWidth: 120 },
   modalFooter: { borderTopWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end', padding: spacing.md },
   footerButton: { minWidth: 104 },
-  footerButtonPrimary: { minWidth: 152 }
+  footerButtonPrimary: { minWidth: 152 },
+  imageSection: { gap: spacing.sm },
+  imagePreviewBox: { borderRadius: radii.md, borderWidth: 1, height: 160, overflow: 'hidden', position: 'relative' },
+  imagePreview: { height: '100%', width: '100%' },
+  imageRemoveBtn: { alignItems: 'center', borderRadius: radii.sm, bottom: spacing.sm, height: 28, justifyContent: 'center', position: 'absolute', right: spacing.sm, width: 28 },
+  uploadButton: { alignItems: 'center', borderRadius: radii.md, borderStyle: 'dashed', borderWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', minHeight: spacing.touchTargetMobile, paddingHorizontal: spacing.md },
+  uploadButtonText: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm }
 });

@@ -11,6 +11,9 @@ menuRouter.get('/', MenuController.getMenu);
 // POST /api/menu (Chi ADMIN duoc phep them mon moi)
 menuRouter.post('/', authenticate, authorize('ADMIN'), MenuController.createMenuItem);
 
+// POST /api/menu/upload-image (Chi ADMIN duoc phep tai anh mon tu may len)
+menuRouter.post('/upload-image', authenticate, authorize('ADMIN'), MenuController.uploadImage);
+
 // PATCH /api/menu/:id (Chi ADMIN duoc phep cap nhat thong tin mon)
 menuRouter.patch('/:id', authenticate, authorize('ADMIN'), MenuController.updateMenuItem);
 

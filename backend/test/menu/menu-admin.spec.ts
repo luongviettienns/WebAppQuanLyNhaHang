@@ -270,4 +270,36 @@ describe('Admin Menu Management API (Task 12 - Module M7)', () => {
       expect(updated?.name).toBe('Burger Gà Giòn Sốt Phô Mai Đặc Biệt');
     });
   });
+
+  describe('POST /api/menu/upload-image (Admin Upload Image)', () => {
+    it('rejects unauthenticated user with 401 UNAUTHORIZED', async () => {
+      const res = await request(app)
+        .post('/api/menu/upload-image')
+        .send({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('rejects CASHIER and KITCHEN with 403 FORBIDDEN', async () => {
+      const res = await request(app)
+        .post('/api/menu/upload-image')
+        .set('Authorization', `Bearer ${cashierToken}`)
+        .send({ dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==' });
+
+      expect(res.status).toBe(403);
+    });
+
+    it('allows ADMIN to upload base64 image and returns saved static /uploads URL', async () => {
+      const res = await request(app)
+        .post('/api/menu/upload-image')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          dataUrl: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==',
+          fileName: 'test-dot.png'
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.imageUrl).toMatch(/^\/uploads\/menu_\d+_[a-z0-9]+\.png$/);
+    });
+  });
 });
