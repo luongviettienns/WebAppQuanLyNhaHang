@@ -193,7 +193,7 @@
       
       <div class="ip-bar">
         <span>🌐 Địa chỉ IP máy chủ:</span>
-        <input type="text" id="hostIp" value="172.16.18.80" />
+        <input type="text" id="hostIp" value="192.168.137.100" />
         <span>Cổng Web:</span>
         <select id="webPort">
           <option value="8081" selected>8081 (Metro Dev Web)</option>
@@ -240,7 +240,7 @@
     }
 
     async function trySyncFromBackend() {
-      const ip = document.getElementById('hostIp').value.trim() || '172.16.18.80';
+      const ip = document.getElementById('hostIp').value.trim() || '192.168.137.100';
       const statusEl = document.getElementById('syncStatus');
       try {
         const res = await fetch(`http://${ip}:4000/api/tables/public`);
@@ -269,7 +269,7 @@
     }
 
     function renderTables() {
-      const ip = document.getElementById('hostIp').value.trim() || '172.16.18.80';
+      const ip = document.getElementById('hostIp').value.trim() || '192.168.137.100';
       const port = document.getElementById('webPort').value || '8081';
       const grid = document.getElementById('tablesGrid');
       grid.innerHTML = '';
