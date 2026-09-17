@@ -20,10 +20,11 @@ frontend/node_modules/
 agent/
 .worktrees/
 
-# Documentation & internal planning files (keep only README.md)
+# Documentation & internal planning files (keep only README.md and PROJECT_PROGRESS.md)
 docs/
 *.md
 !README.md
+!PROJECT_PROGRESS.md
 
 # Build artifacts & outputs
 dist/
