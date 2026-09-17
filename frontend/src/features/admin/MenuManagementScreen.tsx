@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ImageIcon, Pencil, Plus, Search, Trash2, X } from 'lucide-react-native';
+import { Check, ImageIcon, Pencil, Plus, Search, Trash2, X } from 'lucide-react-native';
 import {
   StyleSheet,
   Text,
@@ -20,6 +20,12 @@ import { useRestaurant } from '../../contexts/RestaurantContext';
 import { MenuItemDto, MenuItemUpsertDto } from '../../api/contracts';
 import { elevation, radii, spacing, statusColors, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, Field, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
+import {
+  filterMenuManagementItems,
+  formatMenuItemCode,
+  MenuAvailabilityFilter,
+  MenuOptionPresenceFilter
+} from './menuManagementFilters';
 
 interface ModifierOptionForm {
   id?: number;
@@ -61,6 +67,9 @@ export const MenuManagementScreen: React.FC = () => {
 
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [availabilityFilter, setAvailabilityFilter] = useState<MenuAvailabilityFilter>('all');
+  const [optionPresenceFilter, setOptionPresenceFilter] = useState<MenuOptionPresenceFilter>('all');
+  const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<MenuItemDto | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -86,20 +95,51 @@ export const MenuManagementScreen: React.FC = () => {
 
   // Filter items by category & search query
   const filteredItems = useMemo(() => {
-    let items = allMenuItems;
-    if (selectedCategoryId !== null) {
-      items = items.filter((item) => item.categoryId === selectedCategoryId);
-    }
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      items = items.filter(
-        (item) =>
-          item.name.toLowerCase().includes(q) ||
-          (item.description && item.description.toLowerCase().includes(q))
-      );
-    }
-    return items;
-  }, [allMenuItems, selectedCategoryId, searchQuery]);
+    return filterMenuManagementItems(allMenuItems, categories, {
+      searchQuery,
+      categoryId: selectedCategoryId,
+      availability: availabilityFilter,
+      optionPresence: optionPresenceFilter
+    });
+  }, [allMenuItems, categories, selectedCategoryId, searchQuery, availabilityFilter, optionPresenceFilter]);
+
+  const categoryFilters = useMemo(
+    () => [
+      { id: null, name: 'Tất cả nhóm', count: allMenuItems.length },
+      ...categories.map((category) => ({
+        id: category.id,
+        name: category.name,
+        count: allMenuItems.filter((item) => item.categoryId === category.id).length
+      }))
+    ],
+    [allMenuItems, categories]
+  );
+
+  const selectedVisibleIds = filteredItems.map((item) => item.id);
+  const allVisibleSelected =
+    selectedVisibleIds.length > 0 && selectedVisibleIds.every((id) => selectedItemIds.includes(id));
+
+  const toggleItemSelection = (itemId: number) => {
+    setSelectedItemIds((previous) =>
+      previous.includes(itemId) ? previous.filter((id) => id !== itemId) : [...previous, itemId]
+    );
+  };
+
+  const toggleVisibleSelection = () => {
+    setSelectedItemIds((previous) => {
+      if (allVisibleSelected) {
+        return previous.filter((id) => !selectedVisibleIds.includes(id));
+      }
+      return Array.from(new Set([...previous, ...selectedVisibleIds]));
+    });
+  };
+
+  const clearFilters = () => {
+    setSelectedCategoryId(null);
+    setSearchQuery('');
+    setAvailabilityFilter('all');
+    setOptionPresenceFilter('all');
+  };
 
   const openCreateModal = () => {
     setEditingItem(null);
@@ -329,137 +369,305 @@ export const MenuManagementScreen: React.FC = () => {
     return categories.find((c) => c.id === catId)?.name || 'Khác';
   };
 
+  const getModifierSummary = (item: MenuItemDto) => {
+    const groups = item.modifierGroups || [];
+    if (groups.length === 0) {
+      return 'Không có tùy chọn';
+    }
+    const optionCount = groups.reduce((total, group) => total + group.options.length, 0);
+    return `${groups.length} nhóm · ${optionCount} lựa chọn`;
+  };
+
+  const renderCheckbox = (checked: boolean, onPress: () => void, label: string) => (
+    <Pressable
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.checkbox,
+        {
+          backgroundColor: checked ? theme.interactivePrimary : theme.surfaceBase,
+          borderColor: checked ? theme.interactivePrimary : theme.borderStrong,
+          opacity: pressed ? 0.76 : 1
+        }
+      ]}
+    >
+      {checked && <AppIcon icon={Check} color={theme.textInverse} size={14} />}
+    </Pressable>
+  );
+
   return (
     <View style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
       <View style={[styles.toolbar, isMobile && styles.toolbarMobile, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
         <ScreenHeader
-          title="Quản lý thực đơn"
-          description={`${filteredItems.length} món đang hiển thị`}
-          actions={<Button testID="admin-btn-add-item" variant="primary" label="Thêm món" icon={Plus} onPress={openCreateModal} />}
+          title="Món"
+          description={`${filteredItems.length} / ${allMenuItems.length} món đang hiển thị${selectedItemIds.length > 0 ? ` · đã chọn ${selectedItemIds.length}` : ''}`}
+          actions={<Button testID="admin-btn-add-item" variant="primary" label="Món mới" icon={Plus} onPress={openCreateModal} />}
         />
-        <View style={[styles.searchBox, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
-          <AppIcon icon={Search} color={theme.textSecondary} size={18} />
-          <TextInput
-            accessibilityLabel="Tìm món"
-            style={[styles.searchInput, { color: theme.textPrimary }]}
-            placeholder="Tìm món theo tên hoặc mô tả"
-            placeholderTextColor={theme.textSecondary}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <Pressable accessibilityRole="button" accessibilityLabel="Xóa tìm kiếm" onPress={() => setSearchQuery('')} style={styles.iconButton}>
-              <AppIcon icon={X} color={theme.textSecondary} size={18} />
-            </Pressable>
-          )}
-        </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPills}>
-          {[{ id: null, name: 'Tất cả', count: allMenuItems.length }, ...categories.map((category) => ({
-            id: category.id,
-            name: category.name,
-            count: allMenuItems.filter((item) => item.categoryId === category.id).length
-          }))].map((category) => {
-            const selected = selectedCategoryId === category.id;
-            return (
-              <Pressable
-                key={category.id ?? 'all'}
-                accessibilityRole="button"
-                accessibilityState={{ selected }}
-                onPress={() => setSelectedCategoryId(category.id)}
-                style={[styles.pill, { backgroundColor: selected ? theme.interactivePrimary : theme.interactiveQuiet }]}
-              >
-                <Text style={[styles.pillText, { color: selected ? theme.textInverse : theme.textPrimary }]}>{category.name} ({category.count})</Text>
+        <View style={[styles.commandBar, isMobile && styles.commandBarMobile]}>
+          <View style={[styles.searchBox, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+            <AppIcon icon={Search} color={theme.textSecondary} size={18} />
+            <TextInput
+              accessibilityLabel="Tìm món"
+              style={[styles.searchInput, { color: theme.textPrimary }]}
+              placeholder="Theo mã hoặc tên món"
+              placeholderTextColor={theme.textSecondary}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <Pressable accessibilityRole="button" accessibilityLabel="Xóa tìm kiếm" onPress={() => setSearchQuery('')} style={styles.iconButton}>
+                <AppIcon icon={X} color={theme.textSecondary} size={18} />
               </Pressable>
-            );
-          })}
-        </ScrollView>
+            )}
+          </View>
+          <View style={styles.toolbarActions}>
+            <Button variant="secondary" label="Xóa lọc" onPress={clearFilters} />
+          </View>
+        </View>
       </View>
 
-      {isLoadingMenu ? (
-        <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={theme.primary} />
-          <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Đang tải thực đơn…</Text>
-        </View>
-      ) : filteredItems.length === 0 ? (
-        <EmptyState
-          title="Không có món phù hợp"
-          description="Thử từ khóa hoặc danh mục khác, hoặc thêm món mới vào thực đơn."
-          action={<Button variant="secondary" label="Thêm món" icon={Plus} onPress={openCreateModal} />}
-        />
-      ) : (
-        <ScrollView contentContainerStyle={styles.itemsList}>
-          <Surface level="raised" style={styles.menuTable}>
-            {!isMobile && (
-              <View style={[styles.tableHeader, { backgroundColor: theme.surfaceSunken, borderBottomColor: theme.borderSubtle }]}>
-                <Text style={[styles.headerItem, styles.productColumn, { color: theme.textSecondary }]}>Món ăn</Text>
-                <Text style={[styles.headerItem, styles.priceColumn, { color: theme.textSecondary }]}>Giá bán</Text>
-                <Text style={[styles.headerItem, styles.statusColumn, { color: theme.textSecondary }]}>Tình trạng</Text>
-                <Text style={[styles.headerItem, styles.actionColumn, { color: theme.textSecondary }]}>Thao tác</Text>
-              </View>
-            )}
-
-            {filteredItems.map((item, index) => {
-              const isToggling = togglingItemId === item.id;
-              const modGroupCount = item.modifierGroups?.length || 0;
-              return (
-                <View
-                  key={item.id}
-                  style={[
-                    styles.itemRow,
-                    isMobile && styles.itemRowMobile,
-                    index < filteredItems.length - 1 && { borderBottomColor: theme.borderSubtle, borderBottomWidth: 1 },
-                    !item.isAvailable && styles.itemUnavailable
-                  ]}
-                >
-                  <View style={[styles.productCell, !isMobile && styles.productColumn]}>
-                    <View style={[styles.thumbnailContainer, { backgroundColor: theme.surfaceSunken }]}>
-                      {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={22} />}
-                    </View>
-                    <View style={styles.itemInfo}>
-                      <Text style={[styles.itemName, { color: theme.textPrimary }]} numberOfLines={1}>{item.name}</Text>
-                      <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={2}>
-                        {getCategoryName(item.categoryId)}{modGroupCount > 0 ? ` · ${modGroupCount} nhóm tùy chọn` : ''}
-                      </Text>
-                      {item.description ? <Text style={[styles.itemDescription, { color: theme.textSecondary }]} numberOfLines={2}>{item.description}</Text> : null}
-                    </View>
-                  </View>
-
-                  <Text style={[styles.itemPrice, !isMobile && styles.priceColumn, { color: theme.textPrimary }]}>{item.basePrice.toLocaleString('vi-VN')} đ</Text>
-
-                  <View style={[styles.availabilityCell, !isMobile && styles.statusColumn]}>
-                    <StatusBadge tone={item.isAvailable ? 'success' : 'danger'} label={item.isAvailable ? 'Còn hàng' : 'Hết món'} />
-                    {isToggling ? (
-                      <ActivityIndicator size="small" color={theme.primary} />
-                    ) : (
-                      <Switch
-                        {...switchAppearance}
-                        testID={`menu-item-switch-${item.id}`}
-                        accessibilityLabel={`${item.isAvailable ? 'Đánh dấu hết món' : 'Mở bán lại'} ${item.name}`}
-                        value={item.isAvailable}
-                        onValueChange={() => void handleToggleSoldOut(item)}
-                        trackColor={{ false: statusColors.danger.border, true: statusColors.success.border }}
-                        thumbColor={theme.surfaceBase}
-                      />
-                    )}
-                  </View>
-
-                  <View style={[styles.actionCell, !isMobile && styles.actionColumn]}>
+      <View style={[styles.managementBody, isMobile && styles.managementBodyMobile]}>
+        {!isMobile && (
+          <Surface level="raised" style={styles.filterSidebar}>
+            <ScrollView contentContainerStyle={styles.filterContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.filterSection}>
+                <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Nhóm món</Text>
+                {categoryFilters.map((category) => {
+                  const selected = selectedCategoryId === category.id;
+                  return (
                     <Pressable
+                      key={category.id ?? 'all'}
                       accessibilityRole="button"
-                      accessibilityLabel={`Chỉnh sửa món ${item.name}`}
-                      onPress={() => openEditModal(item)}
-                      style={({ pressed }) => [styles.editButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}
+                      accessibilityState={{ selected }}
+                      onPress={() => setSelectedCategoryId(category.id)}
+                      style={({ pressed }) => [
+                        styles.filterOption,
+                        {
+                          backgroundColor: selected ? theme.interactiveQuiet : 'transparent',
+                          opacity: pressed ? 0.76 : 1
+                        }
+                      ]}
                     >
-                      <AppIcon icon={Pencil} color={theme.textPrimary} size={17} />
-                      <Text style={[styles.editButtonText, { color: theme.textPrimary }]}>Chỉnh sửa</Text>
+                      <Text style={[styles.filterOptionText, { color: selected ? theme.primary : theme.textPrimary }]} numberOfLines={1}>{category.name}</Text>
+                      <Text style={[styles.filterCount, { color: theme.textSecondary }]}>{category.count}</Text>
                     </Pressable>
-                  </View>
-                </View>
-              );
-            })}
+                  );
+                })}
+              </View>
+
+              <View style={styles.filterSection}>
+                <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Cho phép bán</Text>
+                {[
+                  { value: 'all', label: 'Tất cả' },
+                  { value: 'available', label: 'Có' },
+                  { value: 'unavailable', label: 'Không' }
+                ].map((option) => {
+                  const selected = availabilityFilter === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      onPress={() => setAvailabilityFilter(option.value as MenuAvailabilityFilter)}
+                      style={styles.radioRow}
+                    >
+                      <View style={[styles.radioDot, { borderColor: selected ? theme.interactivePrimary : theme.borderStrong }]}>
+                        {selected && <View style={[styles.radioDotInner, { backgroundColor: theme.interactivePrimary }]} />}
+                      </View>
+                      <Text style={[styles.filterOptionText, { color: theme.textPrimary }]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.filterSection}>
+                <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Thuộc tính</Text>
+                {[
+                  { value: 'all', label: 'Tất cả' },
+                  { value: 'withOptions', label: 'Có tùy chọn' },
+                  { value: 'withoutOptions', label: 'Không tùy chọn' }
+                ].map((option) => {
+                  const selected = optionPresenceFilter === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      onPress={() => setOptionPresenceFilter(option.value as MenuOptionPresenceFilter)}
+                      style={styles.radioRow}
+                    >
+                      <View style={[styles.radioDot, { borderColor: selected ? theme.interactivePrimary : theme.borderStrong }]}>
+                        {selected && <View style={[styles.radioDotInner, { backgroundColor: theme.interactivePrimary }]} />}
+                      </View>
+                      <Text style={[styles.filterOptionText, { color: theme.textPrimary }]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
           </Surface>
-        </ScrollView>
-      )}
+        )}
+
+        <View style={styles.managementMain}>
+          {isMobile && (
+            <Surface level="raised" style={styles.mobileFilters}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPills}>
+                {categoryFilters.map((category) => {
+                  const selected = selectedCategoryId === category.id;
+                  return (
+                    <Pressable
+                      key={category.id ?? 'all'}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      onPress={() => setSelectedCategoryId(category.id)}
+                      style={[styles.pill, { backgroundColor: selected ? theme.interactivePrimary : theme.interactiveQuiet }]}
+                    >
+                      <Text style={[styles.pillText, { color: selected ? theme.textInverse : theme.textPrimary }]}>{category.name} ({category.count})</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </Surface>
+          )}
+
+          <View style={[styles.noticeBar, { backgroundColor: theme.interactiveQuiet }]}>
+            <Text style={[styles.noticeBadge, { backgroundColor: theme.interactivePrimary, color: theme.textInverse }]}>Tính năng mới</Text>
+            <Text style={[styles.noticeText, { color: theme.textPrimary }]} numberOfLines={2}>
+              Quản lý nhóm tùy chọn, trạng thái bán và giá món trong một bảng thao tác nhanh.
+            </Text>
+          </View>
+
+          {isLoadingMenu ? (
+            <View style={styles.centerContainer}>
+              <ActivityIndicator size="large" color={theme.primary} />
+              <Text style={[styles.loadingText, { color: theme.textSecondary }]}>Đang tải thực đơn…</Text>
+            </View>
+          ) : filteredItems.length === 0 ? (
+            <EmptyState
+              title="Không có món phù hợp"
+              description="Thử từ khóa hoặc bộ lọc khác, hoặc thêm món mới vào thực đơn."
+              action={<Button variant="secondary" label="Thêm món" icon={Plus} onPress={openCreateModal} />}
+            />
+          ) : isMobile ? (
+            <ScrollView contentContainerStyle={styles.mobileList}>
+              {filteredItems.map((item) => {
+                const isToggling = togglingItemId === item.id;
+                const selected = selectedItemIds.includes(item.id);
+                return (
+                  <Surface key={item.id} level="raised" style={[styles.mobileItemCard, !item.isAvailable && styles.itemUnavailable]}>
+                    <View style={styles.mobileItemHeader}>
+                      {renderCheckbox(selected, () => toggleItemSelection(item.id), `Chọn món ${item.name}`)}
+                      <View style={[styles.thumbnailContainer, { backgroundColor: theme.surfaceSunken }]}>
+                        {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={22} />}
+                      </View>
+                      <View style={styles.itemInfo}>
+                        <Text style={[styles.itemCode, { color: theme.textSecondary }]}>{formatMenuItemCode(item.id)}</Text>
+                        <Text style={[styles.itemName, { color: theme.textPrimary }]} numberOfLines={2}>{item.name}</Text>
+                        <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>{getCategoryName(item.categoryId)}</Text>
+                      </View>
+                    </View>
+                    {item.description ? <Text style={[styles.itemDescription, { color: theme.textSecondary }]} numberOfLines={2}>{item.description}</Text> : null}
+                    <View style={styles.mobileItemFooter}>
+                      <Text style={[styles.itemPrice, { color: theme.textPrimary }]}>{item.basePrice.toLocaleString('vi-VN')} đ</Text>
+                      <StatusBadge tone={item.isAvailable ? 'success' : 'danger'} label={item.isAvailable ? 'Đang bán' : 'Ngừng bán'} />
+                    </View>
+                    <View style={styles.mobileItemFooter}>
+                      <Text style={[styles.itemMeta, { color: theme.textSecondary }]}>{getModifierSummary(item)}</Text>
+                      {isToggling ? (
+                        <ActivityIndicator size="small" color={theme.primary} />
+                      ) : (
+                        <Switch
+                          {...switchAppearance}
+                          testID={`menu-item-switch-${item.id}`}
+                          accessibilityLabel={`${item.isAvailable ? 'Đánh dấu hết món' : 'Mở bán lại'} ${item.name}`}
+                          value={item.isAvailable}
+                          onValueChange={() => void handleToggleSoldOut(item)}
+                          trackColor={{ false: statusColors.danger.border, true: statusColors.success.border }}
+                          thumbColor={theme.surfaceBase}
+                        />
+                      )}
+                    </View>
+                    <Button variant="secondary" label="Chỉnh sửa" icon={Pencil} onPress={() => openEditModal(item)} />
+                  </Surface>
+                );
+              })}
+            </ScrollView>
+          ) : (
+            <Surface level="raised" style={styles.menuTable}>
+              <View style={[styles.tableHeader, { backgroundColor: theme.surfaceSunken, borderBottomColor: theme.borderSubtle }]}>
+                <View style={styles.selectColumn}>{renderCheckbox(allVisibleSelected, toggleVisibleSelection, 'Chọn tất cả món đang hiển thị')}</View>
+                <Text style={[styles.headerItem, styles.codeColumn, { color: theme.textSecondary }]}>Mã món</Text>
+                <Text style={[styles.headerItem, styles.nameColumn, { color: theme.textSecondary }]}>Tên món</Text>
+                <Text style={[styles.headerItem, styles.groupColumn, { color: theme.textSecondary }]}>Nhóm món</Text>
+                <Text style={[styles.headerItem, styles.optionColumn, { color: theme.textSecondary }]}>Tùy chọn</Text>
+                <Text style={[styles.headerItem, styles.statusColumn, { color: theme.textSecondary }]}>Trạng thái</Text>
+                <Text style={[styles.headerItem, styles.priceColumn, { color: theme.textSecondary }]}>Giá bán</Text>
+                <Text style={[styles.headerItem, styles.actionHeaderColumn, { color: theme.textSecondary }]}>Thao tác</Text>
+              </View>
+
+              <ScrollView style={styles.tableScroller} showsVerticalScrollIndicator>
+                {filteredItems.map((item, index) => {
+                  const isToggling = togglingItemId === item.id;
+                  const selected = selectedItemIds.includes(item.id);
+                  return (
+                    <View
+                      key={item.id}
+                      style={[
+                        styles.itemRow,
+                        index < filteredItems.length - 1 && { borderBottomColor: theme.borderSubtle, borderBottomWidth: 1 },
+                        !item.isAvailable && styles.itemUnavailable
+                      ]}
+                    >
+                      <View style={styles.selectColumn}>{renderCheckbox(selected, () => toggleItemSelection(item.id), `Chọn món ${item.name}`)}</View>
+                      <View style={[styles.codeColumn, styles.codeCell]}>
+                        <View style={[styles.thumbnailContainer, { backgroundColor: theme.surfaceSunken }]}>
+                          {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={20} />}
+                        </View>
+                        <Text style={[styles.itemCode, { color: theme.textPrimary }]}>{formatMenuItemCode(item.id)}</Text>
+                      </View>
+                      <View style={styles.nameColumn}>
+                        <Text style={[styles.itemName, { color: theme.textPrimary }]} numberOfLines={1}>{item.name}</Text>
+                        {item.description ? <Text style={[styles.itemDescription, { color: theme.textSecondary }]} numberOfLines={1}>{item.description}</Text> : null}
+                      </View>
+                      <Text style={[styles.groupColumn, styles.tableText, { color: theme.textPrimary }]} numberOfLines={1}>{getCategoryName(item.categoryId)}</Text>
+                      <Text style={[styles.optionColumn, styles.tableText, { color: theme.textSecondary }]} numberOfLines={1}>{getModifierSummary(item)}</Text>
+                      <View style={styles.statusColumn}>
+                        <StatusBadge tone={item.isAvailable ? 'success' : 'danger'} label={item.isAvailable ? 'Đang bán' : 'Ngừng bán'} />
+                      </View>
+                      <Text style={[styles.itemPrice, styles.priceColumn, { color: theme.textPrimary }]}>{item.basePrice.toLocaleString('vi-VN')}</Text>
+                      <View style={styles.actionColumn}>
+                        {isToggling ? (
+                          <ActivityIndicator size="small" color={theme.primary} />
+                        ) : (
+                          <Switch
+                            {...switchAppearance}
+                            testID={`menu-item-switch-${item.id}`}
+                            accessibilityLabel={`${item.isAvailable ? 'Đánh dấu hết món' : 'Mở bán lại'} ${item.name}`}
+                            value={item.isAvailable}
+                            onValueChange={() => void handleToggleSoldOut(item)}
+                            trackColor={{ false: statusColors.danger.border, true: statusColors.success.border }}
+                            thumbColor={theme.surfaceBase}
+                          />
+                        )}
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Chỉnh sửa món ${item.name}`}
+                          onPress={() => openEditModal(item)}
+                          style={({ pressed }) => [styles.iconEditButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}
+                        >
+                          <AppIcon icon={Pencil} color={theme.textPrimary} size={17} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            </Surface>
+          )}
+        </View>
+      </View>
 
       <Modal visible={isModalOpen} animationType="slide" transparent onRequestClose={() => setIsModalOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
@@ -584,40 +792,68 @@ export const MenuManagementScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  toolbar: { borderBottomWidth: 1, gap: spacing.md, padding: spacing.lg },
+  toolbar: { borderBottomWidth: 1, gap: spacing.md, padding: spacing.lg, paddingBottom: spacing.md },
   toolbarMobile: { padding: spacing.md },
-  searchBox: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: spacing.touchTargetMobile, paddingLeft: spacing.md, paddingRight: spacing.xs },
+  commandBar: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },
+  commandBarMobile: { alignItems: 'stretch', flexDirection: 'column' },
+  searchBox: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.sm, minHeight: spacing.touchTargetMobile, maxWidth: 560, paddingLeft: spacing.md, paddingRight: spacing.xs },
   searchInput: { flex: 1, fontFamily: typography.families.body, fontSize: typography.sizes.sm, minHeight: spacing.touchTargetMobile },
   iconButton: { alignItems: 'center', borderRadius: radii.md, height: spacing.touchTargetMobile, justifyContent: 'center', width: spacing.touchTargetMobile },
+  toolbarActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  managementBody: { flex: 1, flexDirection: 'row', gap: spacing.md, padding: spacing.md },
+  managementBodyMobile: { flexDirection: 'column', padding: spacing.sm },
+  filterSidebar: { flexShrink: 0, overflow: 'hidden', width: 252 },
+  filterContent: { gap: spacing.lg, padding: spacing.md },
+  filterSection: { gap: spacing.sm },
+  filterTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  filterOption: { alignItems: 'center', borderRadius: radii.sm, flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', minHeight: 36, paddingHorizontal: spacing.sm },
+  filterOptionText: { flex: 1, fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
+  filterCount: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, fontVariant: ['tabular-nums'] },
+  radioRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, minHeight: 32 },
+  radioDot: { alignItems: 'center', borderRadius: 8, borderWidth: 1.5, height: 16, justifyContent: 'center', width: 16 },
+  radioDotInner: { borderRadius: 4, height: 8, width: 8 },
+  managementMain: { flex: 1, gap: spacing.md, minWidth: 0 },
+  mobileFilters: { padding: spacing.sm },
   categoryPills: { flexDirection: 'row', gap: spacing.sm },
   pill: { borderRadius: radii.pill, justifyContent: 'center', minHeight: spacing.touchTargetMobile, paddingHorizontal: spacing.md },
   pillText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  noticeBar: { alignItems: 'center', borderRadius: radii.md, flexDirection: 'row', gap: spacing.sm, minHeight: 52, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
+  noticeBadge: { borderRadius: radii.pill, flexShrink: 0, fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs, overflow: 'hidden', paddingHorizontal: spacing.sm, paddingVertical: 4 },
+  noticeText: { flex: 1, fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
   centerContainer: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.xl },
   loadingText: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, marginTop: spacing.md },
-  itemsList: { padding: spacing.lg },
-  menuTable: { overflow: 'hidden' },
-  tableHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', minHeight: spacing.touchTargetMobile, paddingHorizontal: spacing.lg },
+  menuTable: { flex: 1, overflow: 'hidden' },
+  tableScroller: { flex: 1 },
+  tableHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', minHeight: 44, paddingHorizontal: spacing.sm },
   headerItem: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
-  itemRow: { alignItems: 'center', flexDirection: 'row', minHeight: 96, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
-  itemRowMobile: { alignItems: 'stretch', flexDirection: 'column', gap: spacing.md, paddingHorizontal: spacing.md },
+  itemRow: { alignItems: 'center', flexDirection: 'row', minHeight: 72, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
   itemUnavailable: { opacity: 0.72 },
-  productColumn: { flex: 4 },
-  priceColumn: { flex: 1.2 },
-  statusColumn: { alignItems: 'flex-start', flex: 1.8 },
-  actionColumn: { alignItems: 'flex-end', width: 128 },
-  productCell: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },
-  thumbnailContainer: { alignItems: 'center', borderRadius: radii.md, height: 64, justifyContent: 'center', overflow: 'hidden', width: 64 },
+  selectColumn: { alignItems: 'center', flexShrink: 0, justifyContent: 'center', width: 30 },
+  codeColumn: { flexShrink: 0, width: 112 },
+  nameColumn: { flex: 1.4, minWidth: 0, paddingRight: spacing.xs },
+  groupColumn: { flexShrink: 0, paddingRight: spacing.xs, width: 102 },
+  optionColumn: { flexShrink: 0, paddingRight: spacing.xs, width: 104 },
+  statusColumn: { alignItems: 'flex-start', flexShrink: 0, width: 92 },
+  priceColumn: { flexShrink: 0, textAlign: 'right', width: 82 },
+  actionHeaderColumn: { flexShrink: 0, textAlign: 'center', width: 104 },
+  actionColumn: { alignItems: 'center', flexDirection: 'row', flexShrink: 0, gap: 2, justifyContent: 'flex-end', width: 104 },
+  codeCell: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  thumbnailContainer: { alignItems: 'center', borderRadius: radii.sm, height: 36, justifyContent: 'center', overflow: 'hidden', width: 36 },
   thumbnail: { height: '100%', width: '100%' },
   itemInfo: { flex: 1, gap: 2 },
+  itemCode: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs, fontVariant: ['tabular-nums'] },
   itemName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md, lineHeight: typography.lineHeights.md },
   itemMeta: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
   itemDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
-  itemPrice: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg, fontVariant: ['tabular-nums'] },
-  availabilityCell: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  tableText: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
+  itemPrice: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.sm, fontVariant: ['tabular-nums'] },
   switchTarget: { justifyContent: 'center', minHeight: spacing.touchTargetMobile, minWidth: spacing.touchTargetMobile },
-  actionCell: { justifyContent: 'center' },
-  editButton: { alignItems: 'center', borderRadius: radii.md, flexDirection: 'row', gap: spacing.xs, justifyContent: 'center', minHeight: spacing.touchTargetMobile, paddingHorizontal: spacing.md },
-  editButtonText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  checkbox: { alignItems: 'center', borderRadius: radii.xs, borderWidth: 1.5, height: 18, justifyContent: 'center', width: 18 },
+  iconEditButton: { alignItems: 'center', borderRadius: radii.md, height: spacing.touchTargetMobile, justifyContent: 'center', width: spacing.touchTargetMobile },
+  mobileList: { gap: spacing.md, paddingBottom: spacing.lg },
+  mobileItemCard: { gap: spacing.md, padding: spacing.md },
+  mobileItemHeader: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  mobileItemFooter: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between' },
   modalOverlay: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.md },
   modalCard: { borderRadius: radii.md, borderWidth: 1, maxHeight: '94%', maxWidth: 760, overflow: 'hidden', width: '100%' },
   modalHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
