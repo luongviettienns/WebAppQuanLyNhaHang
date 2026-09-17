@@ -323,4 +323,22 @@ describe('Inventory & BOM API Endpoints & Auto-Deduct (Integration Test)', () =>
     expect(txGa?.quantity).toBe(-400);
     expect(txGa?.costAmount).toBe(400 * 80); // 32.000d
   });
+
+  it('REGRESSION: cho phep tai file mau Excel /excel/template ma khong can Bearer Token', async () => {
+    const res = await request(app).get('/api/inventory/excel/template');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-disposition']).toContain('crispy_bite_stock_in_template.xlsx');
+    expect(res.body).toBeDefined();
+  });
+
+  it('REGRESSION: cho phep xuat ton kho /excel/export bang token truyen qua query param ?token=', async () => {
+    // 1. Khong co token -> 401
+    const resNoToken = await request(app).get('/api/inventory/excel/export');
+    expect(resNoToken.status).toBe(401);
+
+    // 2. Co token qua query param -> 200 OK
+    const resWithQueryToken = await request(app).get(`/api/inventory/excel/export?token=${adminToken}`);
+    expect(resWithQueryToken.status).toBe(200);
+    expect(resWithQueryToken.headers['content-disposition']).toContain('crispy_bite_inventory_');
+  });
 });

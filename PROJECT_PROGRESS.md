@@ -14,10 +14,10 @@
 ```
 
 ### 🧪 Bằng chứng kiểm chứng chất lượng (Verification Metrics)
-- **Backend Test Suite (Vitest)**: 22/22 test files passed (157/157 tests pass 100% - bao gồm Inventory Math, Excel Parsing/Export, Inventory Service, Inventory API & BOM Deduct on Paid).
+- **Backend Test Suite (Vitest)**: 22/22 test files passed (159/159 tests pass 100% - bao gồm Inventory Math, Excel Parsing/Export, Inventory Service, Inventory API, BOM Deduct on Paid & Download Auth Regressions).
 - **Frontend Test Suite (Vitest)**: 7/7 test files passed (33/33 tests pass 100% - bao gồm menu management filters, notification helper & theme coordinator).
 - **Playwright E2E Suite**: 3/3 spec files (`cashier-kitchen-flow`, `admin-operations-flow`, `ui-consistency`).
-- **Tổng Unit / Integration Tests**: 190/190 tests passed 100% (157 backend + 33 frontend).
+- **Tổng Unit / Integration Tests**: 192/192 tests passed 100% (159 backend + 33 frontend).
 - **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ workspaces.
 - **ESLint**: `npm run lint` $\rightarrow$ 0 errors trên toàn bộ workspaces.
 - **Expo Framework Doctor**: `expo-doctor` $\rightarrow$ 18/18 checks passed 100%.
@@ -151,9 +151,15 @@
 24. **Trừ kho đồng bộ trong Giao dịch thanh toán (Transactional Stock Deduction)**: Trừ kho nguyên liệu theo BOM được kích hoạt tự động ngay khi đơn hàng chuyển sang trạng thái `PAID`. Thao tác này bắt buộc đặt trong cùng một Interactive Transaction (`prisma.$transaction`) với lệnh thanh toán, sử dụng `increment: -qty` để tránh race condition khi nhiều thu ngân thanh toán đồng thời. Đồng thời ghi log giao dịch kho loại `ORDER_DEDUCT` kèm theo `orderId` đối soát.
 25. **Quy trình Nhập Excel An Toàn (Non-blocking Partial Import & Preview Modal)**: Người dùng bắt buộc được xem trước bản phân tích dữ liệu (Preview Modal) hiển thị chi tiết số dòng hợp lệ, số dòng lỗi và số lượng NVL mới sẽ tạo. Áp dụng cơ chế nhập từng phần (Partial Import) để các dòng hợp lệ vẫn được nhập kho thành công mà không bị chặn đứng bởi 1 dòng lỗi chính tả, mang lại trải nghiệm mượt mà và thực tế.
 26. **Giải phóng File Lock trên Windows khi Prisma Generate**: Khi dev server backend (`ts-node-dev`) đang chạy, tiến trình Node giữ file lock trên `query_engine-windows.dll.node`. Phải tạm dừng dev server trước khi thực thi `prisma generate` hoặc migrate schema để tránh lỗi `EPERM / EBUSY`.
+27. **Tải tệp đính kèm & Xác thực Trình duyệt (File Downloads & Dual Authentication Strategy)**:
+    - *Nguyên nhân gốc rễ (RCA)*: Trình duyệt mở liên kết trực tiếp (qua `window.open`, thẻ `<a>`, hoặc thanh URL) không đính kèm header `Authorization: Bearer <token>` từ bộ nhớ ứng dụng.
+    - *Khóa lỗi bằng Regression Test*: Đã bổ sung 2 regression test cases trong `test/inventory/inventory.api.spec.ts` kiểm chứng: (1) Route template tải về `200 OK` không cần token; (2) Route export tải về `200 OK` khi truyền `?token=...` qua query param và chặn `401` khi thiếu token.
+    - *Quét phòng ngừa toàn diện (Horizontal Scan)*: Rà soát toàn bộ dự án, xác nhận `/uploads` đã cấu hình static public đúng chuẩn; `/excel/template` chuyển public; `/excel/export` bảo vệ chặt chẽ bằng Dual-Channel Authentication (Header + Query).
+    - *Quy tắc phòng ngừa lâu dài*: (1) File mẫu không dữ liệu nhạy cảm phải mở public; (2) File xuất dữ liệu nhạy cảm hỗ trợ song song Header và `?token=`; (3) Frontend tải file qua `fetch` Blob in-memory để không mở tab trắng rỗng.
 
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
+
 
 
 
