@@ -10,28 +10,41 @@ envFile.split('\n').forEach(line => {
 const { PrismaClient } = require('@prisma/client');
 
 async function applyToDb(name, url) {
-  console.log(`Applying migration to ${name}...`);
+  console.log(`Applying migrations to ${name}...`);
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   try {
-    const sql = fs.readFileSync(
-      path.resolve(__dirname, '../backend/prisma/migrations/20260830030000_atomic_order_idempotency/migration.sql'),
-      'utf8'
-    );
-    // Split SQL statements by ';'
-    const statements = sql
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s.length > 0);
+    const migrationsDir = path.resolve(__dirname, '../backend/prisma/migrations');
+    const entries = fs.readdirSync(migrationsDir, { withFileTypes: true })
+      .filter(d => d.isDirectory())
+      .map(d => d.name)
+      .sort();
 
-    for (const stmt of statements) {
-      try {
-        await prisma.$executeRawUnsafe(stmt);
-      } catch (e) {
-        // If index already dropped or column already exists, log and proceed
-        console.log(`  Statement warning on: ${stmt.substring(0, 40)}... -> ${e.message}`);
+    for (const dirName of entries) {
+      const sqlFile = path.join(migrationsDir, dirName, 'migration.sql');
+      if (!fs.existsSync(sqlFile)) continue;
+      console.log(`  -> Running migration: ${dirName}`);
+      const sql = fs.readFileSync(sqlFile, 'utf8');
+      const statements = sql
+        .split(';')
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+
+      for (const stmt of statements) {
+        try {
+          await prisma.$executeRawUnsafe(stmt);
+        } catch (e) {
+          // Ignore if table/column/index already exists
+          if (
+            !e.message.includes('already exists') &&
+            !e.message.includes('Duplicate column') &&
+            !e.message.includes('Duplicate key')
+          ) {
+            console.log(`     Warning: ${stmt.substring(0, 45)}... -> ${e.message}`);
+          }
+        }
       }
     }
-    console.log(`✅ Applied migration to ${name}`);
+    console.log(`✅ Applied all migrations to ${name}`);
   } finally {
     await prisma.$disconnect();
   }
