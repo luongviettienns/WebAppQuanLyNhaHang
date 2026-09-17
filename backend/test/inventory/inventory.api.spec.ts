@@ -341,4 +341,107 @@ describe('Inventory & BOM API Endpoints & Auto-Deduct (Integration Test)', () =>
     expect(resWithQueryToken.status).toBe(200);
     expect(resWithQueryToken.headers['content-disposition']).toContain('crispy_bite_inventory_');
   });
+
+  it('tu dong tru kho nguyen tu (atomic decrement) khi don hang gom nhieu mon dung chung nguyen lieu', async () => {
+    // 1. Tao 2 nguyen lieu
+    const ingChicken = await prismaTest.ingredient.create({
+      data: {
+        sku: 'ING-MULTI-CHICKEN',
+        name: 'Gà tươi chia sẻ',
+        unit: 'gram',
+        currentStock: 1000,
+        costPerUnit: 100
+      }
+    });
+
+    const ingOil = await prismaTest.ingredient.create({
+      data: {
+        sku: 'ING-MULTI-OIL',
+        name: 'Dầu chiên chia sẻ',
+        unit: 'ml',
+        currentStock: 1000,
+        costPerUnit: 50
+      }
+    });
+
+    // 2. Tao 2 mon an
+    const cat = await prismaTest.category.findFirst();
+    const dishA = await prismaTest.menuItem.create({
+      data: {
+        categoryId: cat!.id,
+        sku: 'SP-DISH-A',
+        name: 'Món Gà A',
+        basePrice: 50000
+      }
+    });
+    const dishB = await prismaTest.menuItem.create({
+      data: {
+        categoryId: cat!.id,
+        sku: 'SP-DISH-B',
+        name: 'Món Combo B',
+        basePrice: 80000
+      }
+    });
+
+    // 3. Map BOM
+    // Dish A: 200g ga, 20ml dau
+    await prismaTest.menuItemIngredient.createMany({
+      data: [
+        { menuItemId: dishA.id, ingredientId: ingChicken.id, quantityRequired: 200 },
+        { menuItemId: dishA.id, ingredientId: ingOil.id, quantityRequired: 20 }
+      ]
+    });
+    // Dish B: 300g ga, 30ml dau
+    await prismaTest.menuItemIngredient.createMany({
+      data: [
+        { menuItemId: dishB.id, ingredientId: ingChicken.id, quantityRequired: 300 },
+        { menuItemId: dishB.id, ingredientId: ingOil.id, quantityRequired: 30 }
+      ]
+    });
+
+    // 4. Tao don hang: 2 phan Dish A + 1 phan Dish B
+    // Tong tieu hao ga: 2 * 200 + 1 * 300 = 700g -> con 1000 - 700 = 300g
+    // Tong tieu hao dau: 2 * 20 + 1 * 30 = 70ml -> con 1000 - 70 = 930ml
+    const order = await prismaTest.order.create({
+      data: {
+        code: `CRISPY-SHARED-${Date.now()}`,
+        tableId: testTableId,
+        orderType: 'DINE_IN',
+        status: 'READY',
+        paymentStatus: 'UNPAID',
+        totalAmount: 180000,
+        vatAmount: 14400,
+        finalAmount: 194400,
+        items: {
+          create: [
+            { menuItemId: dishA.id, quantity: 2, unitPrice: 50000, subtotal: 100000 },
+            { menuItemId: dishB.id, quantity: 1, unitPrice: 80000, subtotal: 80000 }
+          ]
+        }
+      }
+    });
+
+    // 5. Thanh toan
+    const resPay = await request(app)
+      .post(`/api/orders/${order.id}/pay`)
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({ paymentMethod: 'CASH', cashReceived: 200000 });
+
+    expect(resPay.status).toBe(200);
+
+    // 6. Kiem tra ton kho cap nhat chinh xac
+    const finalChicken = await prismaTest.ingredient.findUnique({ where: { id: ingChicken.id } });
+    expect(finalChicken?.currentStock).toBe(300);
+
+    const finalOil = await prismaTest.ingredient.findUnique({ where: { id: ingOil.id } });
+    expect(finalOil?.currentStock).toBe(930);
+
+    // 7. Kiem tra cac ban ghi giao dich kho
+    const chickenTxs = await prismaTest.inventoryTransaction.findMany({
+      where: { ingredientId: ingChicken.id, orderId: order.id }
+    });
+    expect(chickenTxs).toHaveLength(2);
+    const totalChickenDeducted = chickenTxs.reduce((sum, tx) => sum + tx.quantity, 0);
+    expect(totalChickenDeducted).toBe(-700);
+  });
 });

@@ -14,10 +14,10 @@
 ```
 
 ### 🧪 Bằng chứng kiểm chứng chất lượng (Verification Metrics)
-- **Backend Test Suite (Vitest)**: 22/22 test files passed (159/159 tests pass 100% - bao gồm Inventory Math, Excel Parsing/Export, Inventory Service, Inventory API, BOM Deduct on Paid & Download Auth Regressions).
+- **Backend Test Suite (Vitest)**: 22/22 test files passed (161/161 tests pass 100% - bao gồm Inventory Math, Excel Parsing/Export, Inventory Service, Inventory API, BOM Deduct on Paid, Shared Ingredient Atomic Decrement & Seed BOM Verification).
 - **Frontend Test Suite (Vitest)**: 7/7 test files passed (33/33 tests pass 100% - bao gồm menu management filters, notification helper & theme coordinator).
 - **Playwright E2E Suite**: 3/3 spec files (`cashier-kitchen-flow`, `admin-operations-flow`, `ui-consistency`).
-- **Tổng Unit / Integration Tests**: 192/192 tests passed 100% (159 backend + 33 frontend).
+- **Tổng Unit / Integration Tests**: 194/194 tests passed 100% (161 backend + 33 frontend).
 - **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ workspaces.
 - **ESLint**: `npm run lint` $\rightarrow$ 0 errors trên toàn bộ workspaces.
 - **Expo Framework Doctor**: `expo-doctor` $\rightarrow$ 18/18 checks passed 100%.
@@ -155,7 +155,13 @@
     - *Nguyên nhân gốc rễ (RCA)*: Trình duyệt mở liên kết trực tiếp (qua `window.open`, thẻ `<a>`, hoặc thanh URL) không đính kèm header `Authorization: Bearer <token>` từ bộ nhớ ứng dụng.
     - *Khóa lỗi bằng Regression Test*: Đã bổ sung 2 regression test cases trong `test/inventory/inventory.api.spec.ts` kiểm chứng: (1) Route template tải về `200 OK` không cần token; (2) Route export tải về `200 OK` khi truyền `?token=...` qua query param và chặn `401` khi thiếu token.
     - *Quét phòng ngừa toàn diện (Horizontal Scan)*: Rà soát toàn bộ dự án, xác nhận `/uploads` đã cấu hình static public đúng chuẩn; `/excel/template` chuyển public; `/excel/export` bảo vệ chặt chẽ bằng Dual-Channel Authentication (Header + Query).
-    - *Quy tắc phòng ngừa lâu dài*: (1) File mẫu không dữ liệu nhạy cảm phải mở public; (2) File xuất dữ liệu nhạy cảm hỗ trợ song song Header và `?token=`; (3) Frontend tải file qua `fetch` Blob in-memory để không mở tab trắng rỗng.
+28. **Đồng bộ Dữ liệu Danh mục Thực đơn với Định lượng BOM (BOM Recipe Synchronization & Atomic Decrement)**:
+    - *Nguyên nhân gốc rễ (RCA)*: Trong tệp seed hoặc cấu hình BOM ban đầu, nếu định nghĩa công thức dựa theo chuỗi tên món (`menuItemByName.get(name)`) mà không có cảnh báo nghiêm ngặt khi không tìm thấy món, các sai khác nhỏ (viết hoa/thường 'miếng' vs 'Miếng', hoặc thiếu chữ 'Nướng') sẽ làm CSDL bỏ qua âm thầm việc gắn BOM. Khi khách gọi nhiều món cùng dùng 1 nguyên liệu (ví dụ Combo gà + Gà miếng cùng dùng gà và dầu), việc trừ kho nếu lấy `ing.currentStock - qty` theo biến bộ nhớ sẽ bị ghi đè giá trị cũ (stale read overwrite).
+    - *Giải pháp triệt để*:
+      1. Rà soát và chuẩn hóa 100% định nghĩa BOM khớp chính xác 20/20 món ăn có nguyên liệu tiêu hao trong thực đơn, bổ sung cảnh báo `console.warn` nếu phát hiện bất kỳ tên món nào không khớp.
+      2. Trước khi seed lại BOM, thực hiện dọn dẹp sạch `menuItemIngredient.deleteMany()` để không bị tồn lưu dữ liệu rác từ các lần chạy thử nghiệm trước.
+      3. Nâng cấp hàm `deductInventoryForOrder` sang toán tử nguyên tử của CSDL: `data: { currentStock: { decrement: qtyNeeded } }` để triệt tiêu hoàn toàn nguy cơ race condition và ghi đè giá trị cũ khi nhiều món cùng trừ 1 nguyên liệu trong 1 giao dịch.
+    - *Khóa lỗi bằng Regression Test*: Đã bổ sung 2 test cases trong `seed.spec.ts` và `inventory.api.spec.ts`: (1) Kiểm chứng 20/20 món ăn có BOM đầy đủ; (2) Kiểm chứng đơn hàng nhiều món dùng chung nguyên liệu được trừ kho nguyên tử chính xác tuyệt đối.
 
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*

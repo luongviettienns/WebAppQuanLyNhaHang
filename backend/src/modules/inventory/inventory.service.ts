@@ -601,14 +601,17 @@ export class InventoryService {
         const qtyNeeded = bom.quantityRequired * orderItem.quantity;
         const ing = bom.ingredient;
 
-        // Cho phep ban am (Q3 Rule)
-        const newStock = Math.round((ing.currentStock - qtyNeeded) * 1000) / 1000;
+        // Cho phep ban am (Q3 Rule) bang thao tac nguyen tu decrement
         const itemCogs = Math.round(qtyNeeded * ing.costPerUnit);
         totalOrderCogs += itemCogs;
 
         await tx.ingredient.update({
           where: { id: ing.id },
-          data: { currentStock: newStock }
+          data: {
+            currentStock: {
+              decrement: qtyNeeded
+            }
+          }
         });
 
         await tx.inventoryTransaction.create({

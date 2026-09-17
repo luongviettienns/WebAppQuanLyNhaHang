@@ -579,63 +579,185 @@ export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
     }
   }
 
-  // 5. Cai dat BOM cho mot so mon an tieu bieu
+  // 5. Cai dat BOM cho tat ca cac mon an trong thuc don
   const allMenuItems = await prisma.menuItem.findMany();
-  const menuItemByName = new Map(allMenuItems.map(m => [m.name, m.id]));
+  const menuItemByName = new Map(allMenuItems.map((m) => [m.name, m.id]));
 
   const recipeDefinitions: Array<{
     menuItemName: string;
     ingredients: Array<{ sku: string; qty: number }>;
   }> = [
+    // 1. Combo Tiet Kiem
     {
-      menuItemName: 'Gà Rán Giòn Cay (1 miếng)',
+      menuItemName: 'Combo 1 Người: Gà Giòn + Khoai + Nước',
       ingredients: [
         { sku: 'ING-CHICKEN-01', qty: 180 }, // 180g gà
-        { sku: 'ING-OIL-01', qty: 25 }       // 25ml dầu
+        { sku: 'ING-POTATO-01', qty: 120 },  // 120g khoai
+        { sku: 'ING-OIL-01', qty: 35 },      // 35ml dầu
+        { sku: 'ING-COCA-01', qty: 1 }       // 1 lon nước ngọt
       ]
     },
     {
-      menuItemName: 'Gà Rán Truyền Thống (1 miếng)',
+      menuItemName: 'Combo 2 Người: Siêu No Đậm Vị',
+      ingredients: [
+        { sku: 'ING-CHICKEN-01', qty: 540 }, // 3 miếng gà (540g)
+        { sku: 'ING-OIL-01', qty: 75 },      // 75ml dầu
+        { sku: 'ING-BUN-01', qty: 1 },       // 1 vỏ burger
+        { sku: 'ING-BEEF-01', qty: 1 },      // 1 miếng bò
+        { sku: 'ING-CHEESE-01', qty: 1 },    // 1 lát phô mai
+        { sku: 'ING-COCA-01', qty: 2 }       // 2 lon nước
+      ]
+    },
+    {
+      menuItemName: 'Combo Gia Đình Vui Vẻ',
+      ingredients: [
+        { sku: 'ING-CHICKEN-01', qty: 1230 }, // 6 miếng gà + 1 phần popcorn (1.230g)
+        { sku: 'ING-POTATO-01', qty: 200 },   // 1 phần khoai tây lớn (200g)
+        { sku: 'ING-OIL-01', qty: 160 },      // 160ml dầu
+        { sku: 'ING-COCA-01', qty: 4 }        // 4 lon nước
+      ]
+    },
+
+    // 2. Ga Ran Gion Rum
+    {
+      menuItemName: 'Gà Rán Giòn Cay (1 Miếng)',
       ingredients: [
         { sku: 'ING-CHICKEN-01', qty: 180 },
         { sku: 'ING-OIL-01', qty: 25 }
       ]
     },
     {
-      menuItemName: 'Burger Bò Phô Mai',
+      menuItemName: 'Gà Rán Giòn Cay (2 Miếng)',
       ingredients: [
-        { sku: 'ING-BUN-01', qty: 1 },       // 1 vỏ bánh
-        { sku: 'ING-BEEF-01', qty: 1 },      // 1 miếng bò
-        { sku: 'ING-CHEESE-01', qty: 1 }     // 1 lát phô mai
+        { sku: 'ING-CHICKEN-01', qty: 360 },
+        { sku: 'ING-OIL-01', qty: 50 }
       ]
     },
     {
-      menuItemName: 'Khoai Tây Chiên (Vừa)',
+      menuItemName: 'Gà Rán Giòn Cay (3 Miếng)',
       ingredients: [
-        { sku: 'ING-POTATO-01', qty: 150 },  // 150g khoai
-        { sku: 'ING-OIL-01', qty: 20 }       // 20ml dầu
+        { sku: 'ING-CHICKEN-01', qty: 540 },
+        { sku: 'ING-OIL-01', qty: 75 }
       ]
     },
     {
-      menuItemName: 'Coca-Cola Tươi (Ly Vừa)',
+      menuItemName: 'Gà Rán Sốt Phô Mai Cay (2 Miếng)',
       ingredients: [
-        { sku: 'ING-COCA-01', qty: 1 }       // 1 lon
+        { sku: 'ING-CHICKEN-01', qty: 360 },
+        { sku: 'ING-CHEESE-01', qty: 1 },
+        { sku: 'ING-OIL-01', qty: 50 }
       ]
     },
     {
-      menuItemName: 'Combo 1 Người: Gà Giòn Tiết Kiệm',
+      menuItemName: 'Gà Popcorn Lắc Phô Mai',
       ingredients: [
-        { sku: 'ING-CHICKEN-01', qty: 200 }, // 200g gà
-        { sku: 'ING-POTATO-01', qty: 100 },  // 100g khoai
-        { sku: 'ING-OIL-01', qty: 35 },      // 35ml dầu
-        { sku: 'ING-COCA-01', qty: 1 }       // 1 lon nước
+        { sku: 'ING-CHICKEN-01', qty: 150 },
+        { sku: 'ING-CHEESE-01', qty: 1 },
+        { sku: 'ING-OIL-01', qty: 20 }
+      ]
+    },
+
+    // 3. Burger & Com
+    {
+      menuItemName: 'Burger Bò Nướng Phô Mai',
+      ingredients: [
+        { sku: 'ING-BUN-01', qty: 1 },
+        { sku: 'ING-BEEF-01', qty: 1 },
+        { sku: 'ING-CHEESE-01', qty: 1 }
+      ]
+    },
+    {
+      menuItemName: 'Burger Gà Giòn Cay Đặc Biệt',
+      ingredients: [
+        { sku: 'ING-BUN-01', qty: 1 },
+        { sku: 'ING-CHICKEN-01', qty: 140 },
+        { sku: 'ING-CHEESE-01', qty: 1 },
+        { sku: 'ING-OIL-01', qty: 20 }
+      ]
+    },
+    {
+      menuItemName: 'Burger Tôm Hoàng Gia',
+      ingredients: [
+        { sku: 'ING-BUN-01', qty: 1 },
+        { sku: 'ING-CHEESE-01', qty: 1 }
+      ]
+    },
+    {
+      menuItemName: 'Cơm Gà Rán Sốt Tiêu Đen',
+      ingredients: [
+        { sku: 'ING-CHICKEN-01', qty: 180 },
+        { sku: 'ING-OIL-01', qty: 25 }
+      ]
+    },
+    {
+      menuItemName: 'Cơm Gà Giòn Sốt Teriyaki',
+      ingredients: [
+        { sku: 'ING-CHICKEN-01', qty: 180 },
+        { sku: 'ING-OIL-01', qty: 25 }
+      ]
+    },
+
+    // 4. Mon An Kem & Snack
+    {
+      menuItemName: 'Khoai Tây Chiên Giòn (Vừa)',
+      ingredients: [
+        { sku: 'ING-POTATO-01', qty: 120 },
+        { sku: 'ING-OIL-01', qty: 15 }
+      ]
+    },
+    {
+      menuItemName: 'Khoai Tây Chiên Giòn (Lớn)',
+      ingredients: [
+        { sku: 'ING-POTATO-01', qty: 200 },
+        { sku: 'ING-OIL-01', qty: 25 }
+      ]
+    },
+    {
+      menuItemName: 'Phô Mai Que Mozzarella (3 Cây)',
+      ingredients: [
+        { sku: 'ING-CHEESE-01', qty: 2 },
+        { sku: 'ING-OIL-01', qty: 15 }
+      ]
+    },
+    {
+      menuItemName: 'Mực Vòng Chiên Giòn Calamari',
+      ingredients: [
+        { sku: 'ING-OIL-01', qty: 25 }
+      ]
+    },
+
+    // 5. Do Uong
+    {
+      menuItemName: 'Pepsi Tươi Mát Lạnh',
+      ingredients: [
+        { sku: 'ING-COCA-01', qty: 1 }
+      ]
+    },
+    {
+      menuItemName: '7Up Vị Chanh Tươi',
+      ingredients: [
+        { sku: 'ING-COCA-01', qty: 1 }
+      ]
+    },
+    {
+      menuItemName: 'Mirinda Cam Sủi Bọt',
+      ingredients: [
+        { sku: 'ING-COCA-01', qty: 1 }
       ]
     }
   ];
 
+  // Xoa sach dinh luong cu de dong bo dinh luong chuan xac 100%
+  await prisma.menuItemIngredient.deleteMany();
+
+  let matchedRecipesCount = 0;
   for (const def of recipeDefinitions) {
     const menuItemId = menuItemByName.get(def.menuItemName);
-    if (!menuItemId) continue;
+    if (!menuItemId) {
+      console.warn(`⚠️ Canh bao: Khong tim thay mon an co ten "${def.menuItemName}" de map BOM`);
+      continue;
+    }
+    matchedRecipesCount++;
 
     for (const item of def.ingredients) {
       const ingId = ingredientMap.get(item.sku);
@@ -660,7 +782,7 @@ export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
     }
   }
 
-  console.log('✅ Da seed 8 Nguyen lieu va Dinh luong BOM mau thanh cong');
+  console.log(`✅ Da seed 8 Nguyen lieu va Dinh luong BOM cho ${matchedRecipesCount}/${recipeDefinitions.length} mon an thanh cong`);
   console.log('🎉 SEED DATABASE HOAN TAT 100%!');
 }
 
