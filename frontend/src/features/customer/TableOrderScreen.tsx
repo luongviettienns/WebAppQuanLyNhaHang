@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -10,7 +11,7 @@ import {
   Text,
   View
 } from 'react-native';
-import { Bell, Check, ChefHat, ChevronLeft, CreditCard, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
+import { Bell, Check, ChefHat, ChevronLeft, ChevronRight, CreditCard, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
 import { DiningTableDto, MenuItemDto, OrderDto, OrderStatus } from '../../api/contracts';
 import { getApiBaseUrl } from '../../api/config';
 import { useRestaurant } from '../../contexts/RestaurantContext';
@@ -128,6 +129,25 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     allTableOrders.length > 0
       ? allTableOrders.reduce((sum, o) => sum + (o.finalAmount || 0), 0)
       : liveOrder?.finalAmount || 0;
+
+  const batchScrollRef = useRef<ScrollView>(null);
+
+  const scrollBatches = useCallback((offset: number) => {
+    if (batchScrollRef.current) {
+      if (Platform.OS === 'web') {
+        const node = (batchScrollRef.current as any)?.getScrollableNode?.() || batchScrollRef.current;
+        if (node && typeof node.scrollLeft === 'number') {
+          if (typeof node.scrollBy === 'function') {
+            node.scrollBy({ left: offset, behavior: 'smooth' });
+          } else {
+            node.scrollLeft += offset;
+          }
+          return;
+        }
+      }
+      batchScrollRef.current?.scrollTo({ x: offset > 0 ? 300 : 0, animated: true });
+    }
+  }, []);
 
   // Luu vet status da thong bao de chan triet de viec spam chuong / rung / toast
   const lastNotifiedStatusKeyRef = useRef<string | null>(null);
@@ -387,67 +407,123 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
           {allTableOrders.length > 1 && (
             <View style={styles.batchSelectorContainer}>
               <View style={styles.batchSelectorHeader}>
-                <Text style={[styles.batchSelectorLabel, { color: theme.textSecondary }]}>
-                  Chọn đợt để xem tiến độ nấu:
-                </Text>
-                <Text style={[styles.batchTotalHint, { color: theme.primary }]}>
-                  Tổng bàn: {formatVND(totalTableAmount)}
-                </Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.batchList}>
-                {allTableOrders.map((order, idx) => {
-                  const isSelected = order.id === liveOrder?.id;
-                  const batchNumber = allTableOrders.length - idx;
-                  const statusCfg = orderStatusConfig(order.status);
-                  return (
+                <View style={styles.batchSelectorTitleRow}>
+                  <Text style={[styles.batchSelectorLabel, { color: theme.textSecondary }]}>
+                    Chọn đợt để xem tiến độ nấu:
+                  </Text>
+                  <Text style={[styles.batchTotalHint, { color: theme.primary }]}>
+                    Tổng bàn: {formatVND(totalTableAmount)}
+                  </Text>
+                </View>
+                {allTableOrders.length > 2 && (
+                  <View style={styles.batchNavControls}>
                     <Pressable
-                      key={order.id}
-                      onPress={() => {
-                        setSelectedOrderId(order.id);
-                        setCurrentOrder(order);
-                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cuộn đợt sang trái"
+                      onPress={() => scrollBatches(-180)}
                       style={({ pressed }) => [
-                        styles.batchChip,
+                        styles.batchNavBtn,
                         {
-                          backgroundColor: isSelected ? theme.interactivePrimary : theme.surfaceRaised,
-                          borderColor: isSelected ? theme.interactivePrimary : theme.borderSubtle,
-                          opacity: pressed ? 0.85 : 1
+                          backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase,
+                          borderColor: theme.borderSubtle
                         }
                       ]}
                     >
-                      <Text
-                        style={[
-                          styles.batchChipTitle,
-                          { color: isSelected ? theme.textInverse : theme.textPrimary }
-                        ]}
-                      >
-                        Đợt {batchNumber} (#{order.code})
-                      </Text>
-                      <View
-                        style={[
-                          styles.batchChipBadge,
+                      <AppIcon icon={ChevronLeft} color={theme.textPrimary} size={15} />
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Cuộn đợt sang phải"
+                      onPress={() => scrollBatches(180)}
+                      style={({ pressed }) => [
+                        styles.batchNavBtn,
+                        {
+                          backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase,
+                          borderColor: theme.borderSubtle
+                        }
+                      ]}
+                    >
+                      <AppIcon icon={ChevronRight} color={theme.textPrimary} size={15} />
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+              <View
+                style={styles.batchListWrapper}
+                {...(Platform.OS === 'web'
+                  ? {
+                      onWheel: (e: any) => {
+                        const delta = e.deltaY || e.deltaX;
+                        if (delta && batchScrollRef.current) {
+                          const node = (batchScrollRef.current as any)?.getScrollableNode?.() || batchScrollRef.current;
+                          if (node && typeof node.scrollLeft === 'number') {
+                            node.scrollLeft += delta;
+                          }
+                        }
+                      }
+                    }
+                  : {})}
+              >
+                <ScrollView
+                  ref={batchScrollRef}
+                  horizontal
+                  showsHorizontalScrollIndicator={true}
+                  contentContainerStyle={styles.batchList}
+                >
+                  {allTableOrders.map((order, idx) => {
+                    const isSelected = order.id === liveOrder?.id;
+                    const batchNumber = allTableOrders.length - idx;
+                    const statusCfg = orderStatusConfig(order.status);
+                    return (
+                      <Pressable
+                        key={order.id}
+                        onPress={() => {
+                          setSelectedOrderId(order.id);
+                          setCurrentOrder(order);
+                        }}
+                        style={({ pressed }) => [
+                          styles.batchChip,
                           {
-                            backgroundColor: isSelected
-                              ? 'rgba(255,255,255,0.25)'
-                              : statusColors.order[order.status]?.background || theme.surfaceSunken
+                            backgroundColor: isSelected ? theme.interactivePrimary : theme.surfaceRaised,
+                            borderColor: isSelected ? theme.interactivePrimary : theme.borderSubtle,
+                            opacity: pressed ? 0.85 : 1
                           }
                         ]}
                       >
                         <Text
                           style={[
-                            styles.batchChipStatus,
+                            styles.batchChipTitle,
+                            { color: isSelected ? theme.textInverse : theme.textPrimary }
+                          ]}
+                        >
+                          Đợt {batchNumber} (#{order.code})
+                        </Text>
+                        <View
+                          style={[
+                            styles.batchChipBadge,
                             {
-                              color: isSelected ? theme.textInverse : statusColors.order[order.status]?.text || theme.textSecondary
+                              backgroundColor: isSelected
+                                ? 'rgba(255,255,255,0.25)'
+                                : statusColors.order[order.status]?.background || theme.surfaceSunken
                             }
                           ]}
                         >
-                          {statusCfg.label}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+                          <Text
+                            style={[
+                              styles.batchChipStatus,
+                              {
+                                color: isSelected ? theme.textInverse : statusColors.order[order.status]?.text || theme.textSecondary
+                              }
+                            ]}
+                          >
+                            {statusCfg.label}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
             </View>
           )}
 
@@ -1138,7 +1214,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: spacing.xs,
     paddingHorizontal: 2
+  },
+  batchSelectorTitleRow: {
+    flex: 1,
+    gap: 2
   },
   batchSelectorLabel: {
     fontFamily: typography.families.bodySemibold,
@@ -1148,8 +1229,28 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.operationalBold,
     fontSize: typography.sizes.xs
   },
+  batchNavControls: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginLeft: spacing.sm
+  },
+  batchNavBtn: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: 'center',
+    width: 28
+  },
+  batchListWrapper: {
+    width: '100%'
+  },
   batchList: {
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xs
   },
   batchChip: {
@@ -1157,6 +1258,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 1.5,
     flexDirection: 'row',
+    flexShrink: 0,
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs
