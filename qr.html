@@ -192,18 +192,22 @@
       <p class="subtitle">Khách hàng dùng Camera điện thoại quét mã QR tại bàn để vào thẳng thực đơn chọn món</p>
       
       <div class="ip-bar">
-        <span>🌐 Địa chỉ IP máy chủ:</span>
-        <input type="text" id="hostIp" value="192.168.137.100" />
+        <span>🌐 Chọn Card Mạng / Wi-Fi:</span>
+        <select id="adapterSelect" onchange="handleAdapterSelectChange()">
+          <option value="">🔄 Đang tự động dò IP Wi-Fi...</option>
+        </select>
+        <span>Hoặc nhập IP:</span>
+        <input type="text" id="hostIp" value="192.168.137.100" oninput="renderTables()" />
         <span>Cổng Web:</span>
-        <select id="webPort">
+        <select id="webPort" onchange="renderTables()">
           <option value="8081" selected>8081 (Metro Dev Web)</option>
           <option value="4000">4000 (Backend Production)</option>
         </select>
-        <button onclick="updateQRCodes()">Cập nhật QR</button>
+        <button onclick="autoDetectServerIp(true)">🔍 Dò lại IP</button>
       </div>
 
       <div>
-        <span id="syncStatus" class="sync-status sync-ok">🔄 Đang kiểm tra token bảo mật...</span>
+        <span id="syncStatus" class="sync-status sync-ok">🔄 Đang tự động nhận diện IP máy chủ...</span>
       </div>
 
       <div class="instruction-card">
@@ -234,16 +238,118 @@
       { id: 12, tableNumber: 12, name: "Bàn 12", cap: "Bàn nhóm 8 người", qrCodeToken: "QR-TABLE-12" },
     ];
 
-    // Tự động nhận diện IP nếu đang mở qua trình duyệt
+    // Tự động nhận diện IP nếu đang mở trực tiếp qua URL trình duyệt chứa IP
     if (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
       document.getElementById('hostIp').value = window.location.hostname;
+    }
+
+    async function autoDetectServerIp(forceRefresh = false) {
+      const statusEl = document.getElementById('syncStatus');
+      const hostInput = document.getElementById('hostIp');
+      const adapterSelect = document.getElementById('adapterSelect');
+
+      if (forceRefresh) {
+        statusEl.className = 'sync-status sync-ok';
+        statusEl.innerHTML = '🔄 Đang quét danh sách card mạng máy chủ...';
+      }
+
+      // 1. Dò tìm qua Backend Network Info API
+      const candidateHosts = [
+        window.location.hostname || 'localhost',
+        'localhost',
+        '127.0.0.1',
+        hostInput.value
+      ].filter((v, i, arr) => v && arr.indexOf(v) === i);
+
+      let netInfo = null;
+      for (const h of candidateHosts) {
+        try {
+          const res = await fetch(`http://${h}:4000/api/system/network-info`, { cache: 'no-store' });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.data && Array.isArray(json.data.addresses) && json.data.addresses.length > 0) {
+              netInfo = json.data;
+              break;
+            }
+          }
+        } catch (e) {
+          // tiep tuc thu host khac
+        }
+      }
+
+      if (netInfo && netInfo.addresses && netInfo.addresses.length > 0) {
+        adapterSelect.innerHTML = '';
+
+        // Chấm điểm card mạng để tự động chọn Wi-Fi thật của máy tính:
+        // - Ưu tiên card có tên Wi-Fi, Wireless, WLAN (+60 điểm)
+        // - Ưu tiên dải mạng chuẩn Router: 192.168.x.x (+35 điểm), 10.x.x.x (+20 điểm), 172.16-31.x.x (+15 điểm)
+        // - Trừ điểm các mạng ảo VPN: Radmin, VMware, VirtualBox, vEthernet, Tailscale (-50 điểm)
+        const scored = netInfo.addresses.map(item => {
+          let score = 0;
+          const lowerName = item.name.toLowerCase();
+          if (lowerName.includes('wi-fi') || lowerName.includes('wireless') || lowerName.includes('wlan')) {
+            score += 60;
+          } else if (lowerName.includes('ethernet') || lowerName.includes('lan')) {
+            score += 25;
+          }
+
+          if (item.ip.startsWith('192.168.')) {
+            score += 35;
+          } else if (item.ip.startsWith('10.')) {
+            score += 20;
+          } else if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(item.ip)) {
+            score += 15;
+          }
+
+          if (lowerName.includes('radmin') || lowerName.includes('vmware') || lowerName.includes('virtual') || lowerName.includes('tailscale') || lowerName.includes('vethernet')) {
+            score -= 50;
+          }
+
+          return { ...item, score };
+        });
+
+        scored.sort((a, b) => b.score - a.score);
+
+        scored.forEach((item, idx) => {
+          const opt = document.createElement('option');
+          opt.value = item.ip;
+          const isBest = idx === 0;
+          opt.textContent = `${item.name} (${item.ip})${isBest ? ' ⭐ [Tự động chọn cho Wi-Fi]' : ''}`;
+          adapterSelect.appendChild(opt);
+        });
+
+        const best = scored[0];
+        if (best && (forceRefresh || !hostInput.value || hostInput.value === '192.168.137.100' || hostInput.value === 'localhost')) {
+          hostInput.value = best.ip;
+          adapterSelect.value = best.ip;
+        }
+
+        statusEl.className = 'sync-status sync-ok';
+        statusEl.innerHTML = `🟢 Đã tự động cập nhật IP Wi-Fi máy chủ: <b>${hostInput.value}</b> (${best ? best.name : 'Mạng LAN'})`;
+      } else {
+        adapterSelect.innerHTML = `<option value="${hostInput.value}">${hostInput.value} (Không lấy được danh sách card mạng)</option>`;
+        statusEl.className = 'sync-status sync-ok';
+        statusEl.innerHTML = `🌐 Đang sử dụng IP máy chủ: <b>${hostInput.value}</b>`;
+      }
+
+      renderTables();
+      await trySyncFromBackend();
+    }
+
+    function handleAdapterSelectChange() {
+      const select = document.getElementById('adapterSelect');
+      if (select.value) {
+        document.getElementById('hostIp').value = select.value;
+        renderTables();
+        trySyncFromBackend();
+      }
     }
 
     async function trySyncFromBackend() {
       const ip = document.getElementById('hostIp').value.trim() || '192.168.137.100';
       const statusEl = document.getElementById('syncStatus');
       try {
-        const res = await fetch(`http://${ip}:4000/api/tables/public`);
+        const res = await fetch(`http://${ip}:4000/api/tables/public`, { cache: 'no-store' });
         if (res.ok) {
           const json = await res.json();
           if (json.data && Array.isArray(json.data.tables) && json.data.tables.length > 0) {
@@ -255,7 +361,7 @@
               qrCodeToken: t.qrCodeToken
             }));
             statusEl.className = 'sync-status sync-ok';
-            statusEl.innerHTML = '✅ Đã đồng bộ mã QR xác thực trực tiếp từ Máy chủ Cơ sở Dữ liệu';
+            statusEl.innerHTML = `✅ Đã đồng bộ 12 bàn & token bảo mật CSDL (IP: <b>${ip}</b>)`;
             renderTables();
             return;
           }
@@ -263,8 +369,6 @@
       } catch (e) {
         // Backend chua bat hoac cross-origin
       }
-      statusEl.className = 'sync-status sync-ok';
-      statusEl.innerHTML = '🔒 Mã QR tích hợp Token bảo mật chuẩn (QR-TABLE-XX)';
       renderTables();
     }
 
@@ -295,11 +399,11 @@
     }
 
     function updateQRCodes() {
-      trySyncFromBackend();
+      autoDetectServerIp(true);
     }
 
     renderTables();
-    trySyncFromBackend();
+    autoDetectServerIp();
   </script>
 </body>
 </html>
