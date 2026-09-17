@@ -94,8 +94,12 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1024, height: 768 
 
 test('QR menu cards contain price and status at 390x844', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await login(page, 'cashier');
-  await page.getByTestId('tab-qr_table').click();
+  await page.goto('/?table=4&token=QR-TABLE-04');
+  await page.waitForLoadState('networkidle');
+  const addMoreBtn = page.getByRole('button', { name: 'Gọi thêm món' });
+  if (await addMoreBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await addMoreBtn.click();
+  }
   const cards = page.locator('[data-testid^="menu-item-"]');
   await expect(cards.first()).toBeVisible();
   await expectContentContained(cards);
@@ -139,8 +143,12 @@ test('font request failure still renders a usable login form', async ({ page }, 
 
 test('QR payment does not instruct customers to scan an illustrative icon', async ({ page, request }, testInfo) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await login(page, 'cashier');
-  await page.getByTestId('tab-qr_table').click();
+  await page.goto('/?table=4&token=QR-TABLE-04');
+  await page.waitForLoadState('networkidle');
+  const addMoreBtn = page.getByRole('button', { name: 'Gọi thêm món' });
+  if (await addMoreBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+    await addMoreBtn.click();
+  }
   const menuItem = page.getByText('Gà Rán Giòn Cay (3 Miếng)', { exact: true });
   await expect(menuItem).toBeVisible();
   await menuItem.click();
