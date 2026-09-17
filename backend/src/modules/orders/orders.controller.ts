@@ -66,8 +66,9 @@ export class OrdersController {
       const orderId = parseInt(req.params.id, 10);
       const input = voidOrderSchema.parse(req.body);
       const voidedByUserId = req.user?.id;
+      const voidedByName = req.user?.name;
 
-      const result = await OrdersService.voidOrder(orderId, input, voidedByUserId);
+      const result = await OrdersService.voidOrder(orderId, input, voidedByUserId, voidedByName);
 
       res.status(200).json({
         data: {

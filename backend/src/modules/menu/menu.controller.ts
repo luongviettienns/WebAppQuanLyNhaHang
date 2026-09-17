@@ -5,6 +5,7 @@ import { MenuService } from './menu.service';
 import { updateSoldOutSchema, createMenuItemSchema, updateMenuItemSchema } from './menu.schemas';
 import { ApiError } from '../../lib/api-error';
 import { getUploadsDir } from '../../lib/uploads';
+import { AuditService } from '../audit/audit.service';
 
 export class MenuController {
   static async getMenu(_req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -19,7 +20,7 @@ export class MenuController {
   static async createMenuItem(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const validated = createMenuItemSchema.parse(req.body);
-      const data = await MenuService.createMenuItem(validated);
+      const data = await MenuService.createMenuItem(validated, req.user?.id, req.user?.name);
       res.status(201).json({ data });
     } catch (error) {
       next(error);
@@ -33,7 +34,7 @@ export class MenuController {
         throw ApiError.badRequest('ID món ăn không hợp lệ');
       }
       const validated = updateMenuItemSchema.parse(req.body);
-      const data = await MenuService.updateMenuItem(menuItemId, validated);
+      const data = await MenuService.updateMenuItem(menuItemId, validated, req.user?.id, req.user?.name);
       res.status(200).json({ data });
     } catch (error) {
       next(error);
@@ -45,7 +46,7 @@ export class MenuController {
       const menuItemId = parseInt(req.params.id, 10);
       const { isAvailable } = updateSoldOutSchema.parse(req.body);
 
-      const data = await MenuService.updateSoldOut(menuItemId, isAvailable);
+      const data = await MenuService.updateSoldOut(menuItemId, isAvailable, req.user?.id, req.user?.name);
       res.status(200).json({ data });
     } catch (error) {
       next(error);
@@ -88,6 +89,20 @@ export class MenuController {
       fs.writeFileSync(filePath, buffer);
 
       const imageUrl = `/uploads/${savedFileName}`;
+
+      await AuditService.log({
+        action: 'MENU_IMAGE_UPLOADED',
+        targetType: 'MenuItem',
+        targetId: null,
+        actorId: req.user?.id,
+        actorName: req.user?.name,
+        metadata: {
+          fileName: fileName || savedFileName,
+          imageUrl,
+          fileSize: buffer.length
+        }
+      });
+
       res.status(200).json({
         data: {
           imageUrl,

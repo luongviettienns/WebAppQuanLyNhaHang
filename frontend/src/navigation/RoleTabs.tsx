@@ -3,6 +3,7 @@ import { Pressable, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } 
 import {
   BarChart3,
   ChefHat,
+  ClipboardList,
   LayoutGrid,
   LogOut,
   Moon,
@@ -20,8 +21,9 @@ import { TableScreen } from '../features/tables/TableScreen';
 import { KDSScreen } from '../features/kds/KDSScreen';
 import { DashboardScreen } from '../features/reports/DashboardScreen';
 import { MenuManagementScreen } from '../features/admin/MenuManagementScreen';
+import { AuditLogScreen } from '../features/admin/AuditLogScreen';
 
-type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu';
+type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'audit';
 
 interface TabItem {
   key: TabKey;
@@ -41,7 +43,8 @@ const tabsByRole = {
   ADMIN: [
     { key: 'reports', label: 'Báo cáo', icon: BarChart3, component: DashboardScreen },
     { key: 'menu', label: 'Thực đơn', icon: Utensils, component: MenuManagementScreen },
-    { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen }
+    { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
+    { key: 'audit', label: 'Nhật ký', icon: ClipboardList, component: AuditLogScreen }
   ]
 } satisfies Record<string, TabItem[]>;
 

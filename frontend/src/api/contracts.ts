@@ -254,3 +254,32 @@ export interface SocketTableStatusChangedPayload {
   status: TableStatus;
   currentOrderId?: number | null;
 }
+
+// ==========================================
+// 9. AUDIT LOG DTOs
+// ==========================================
+export type AuditAction =
+  | 'MENU_ITEM_CREATED'
+  | 'MENU_ITEM_UPDATED'
+  | 'MENU_ITEM_AVAILABILITY_CHANGED'
+  | 'MENU_IMAGE_UPLOADED'
+  | 'ORDER_VOIDED';
+
+export interface AuditLogDto {
+  id: number;
+  action: AuditAction;
+  targetType: string;
+  targetId?: number | null;
+  actorId?: number | null;
+  actorName?: string | null;
+  metadata?: Record<string, any> | null;
+  createdAt: string;
+}
+
+export interface AuditLogsPageDto {
+  logs: AuditLogDto[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+

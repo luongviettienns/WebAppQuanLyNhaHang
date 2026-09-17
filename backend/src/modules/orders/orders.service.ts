@@ -3,6 +3,7 @@ import { ApiError } from '../../lib/api-error';
 import { emitToAll, emitToRoom } from '../../lib/socket';
 import { CreateOrderInput, PayOrderInput, VoidOrderInput } from './orders.schemas';
 import { PaymentMethod } from '@prisma/client';
+import { AuditService } from '../audit/audit.service';
 import { createHash } from 'crypto';
 
 function canonicalize(value: unknown): unknown {
@@ -475,7 +476,7 @@ export class OrdersService {
     return orderDto;
   }
 
-  static async voidOrder(orderId: number, input: VoidOrderInput, voidedByUserId?: number) {
+  static async voidOrder(orderId: number, input: VoidOrderInput, voidedByUserId?: number, actorName?: string) {
     const existingOrder = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
@@ -566,6 +567,20 @@ export class OrdersService {
     if (tableState) {
       emitToAll('table:statusChanged', tableState);
     }
+
+    await AuditService.log({
+      action: 'ORDER_VOIDED',
+      targetType: 'Order',
+      targetId: orderDto.id,
+      actorId: voidedByUserId,
+      actorName,
+      metadata: {
+        code: orderDto.code,
+        reason: input.reason,
+        totalAmount: orderDto.totalAmount,
+        tableNumber: orderDto.tableNumber
+      }
+    });
 
     return { order: orderDto };
   }

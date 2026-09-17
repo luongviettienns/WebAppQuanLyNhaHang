@@ -29,7 +29,7 @@ export async function truncateAllTables() {
   validateTestEnvironment();
   // Xoa du lieu theo thu tu khoa ngoai
   await prismaTest.$executeRawUnsafe(`SET FOREIGN_KEY_CHECKS = 0;`);
-  const tables = ['OrderItem', 'Order', 'ModifierOption', 'ModifierGroup', 'MenuItem', 'Category', 'DiningTable', 'User'];
+  const tables = ['AuditLog', 'OrderItem', 'Order', 'ModifierOption', 'ModifierGroup', 'MenuItem', 'Category', 'DiningTable', 'User'];
   for (const table of tables) {
     try {
       await prismaTest.$executeRawUnsafe(`TRUNCATE TABLE \`${table}\`;`);
