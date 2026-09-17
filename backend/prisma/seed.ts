@@ -1,4 +1,4 @@
-import { PrismaClient, Role, TableStatus } from '@prisma/client';
+import { MenuItemType, MenuType, PrismaClient, Role, TableStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import dotenv from 'dotenv';
@@ -23,6 +23,24 @@ function generateQrCodeToken() {
 
 function isLegacyQrCodeToken(token?: string | null) {
   return /^QR-TABLE-\d{2}$/.test(token ?? '');
+}
+
+function formatMenuSku(sequence: number) {
+  return `SP${sequence.toString().padStart(6, '0')}`;
+}
+
+function inferMenuType(categoryName: string): MenuType {
+  if (categoryName.includes('Đồ Uống')) {
+    return MenuType.DRINK;
+  }
+  return MenuType.FOOD;
+}
+
+function inferMenuItemType(categoryName: string): MenuItemType {
+  if (categoryName.includes('Combo')) {
+    return MenuItemType.COMBO;
+  }
+  return MenuItemType.REGULAR;
 }
 
 export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
@@ -354,6 +372,21 @@ export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
     }
   ];
 
+  const usedMenuSkus = new Set(
+    (await prisma.menuItem.findMany({ select: { sku: true } })).map((item) => item.sku)
+  );
+  let nextMenuSkuNumber = 1;
+  const reserveNextMenuSku = () => {
+    let sku = formatMenuSku(nextMenuSkuNumber);
+    while (usedMenuSkus.has(sku)) {
+      nextMenuSkuNumber += 1;
+      sku = formatMenuSku(nextMenuSkuNumber);
+    }
+    usedMenuSkus.add(sku);
+    nextMenuSkuNumber += 1;
+    return sku;
+  };
+
   for (const catData of categoriesData) {
     let category = await prisma.category.findFirst({
       where: { name: catData.name }
@@ -378,11 +411,17 @@ export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
         menuItem = await prisma.menuItem.create({
           data: {
             categoryId: category.id,
+            sku: reserveNextMenuSku(),
             name: itemData.name,
             description: itemData.description,
             basePrice: itemData.basePrice,
             displayOrder: idx + 1,
-            isAvailable: true
+            isAvailable: true,
+            menuType: inferMenuType(catData.name),
+            itemType: inferMenuItemType(catData.name),
+            trackStock: false,
+            stockQuantity: 0,
+            position: null
           }
         });
       }

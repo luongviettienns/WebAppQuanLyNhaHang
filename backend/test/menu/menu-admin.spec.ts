@@ -179,10 +179,12 @@ describe('Admin Menu Management API (Task 12 - Module M7)', () => {
       const res = await request(app)
         .post('/api/menu')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ ...validItemPayload, categoryId: validCategoryId });
+        .send({ ...validItemPayload, categoryId: validCategoryId, sku: 'CUSTOM001' });
 
       expect(res.status).toBe(201);
       expect(res.body.data.menuItem).toBeDefined();
+      expect(res.body.data.menuItem.sku).toMatch(/^SP\d{6}$/);
+      expect(res.body.data.menuItem.sku).not.toBe('CUSTOM001');
       expect(res.body.data.menuItem.name).toBe('Burger Siêu Cay Crispy');
       expect(res.body.data.menuItem.basePrice).toBe(75000);
       expect(res.body.data.menuItem.categoryId).toBe(validCategoryId);
@@ -195,6 +197,7 @@ describe('Admin Menu Management API (Task 12 - Module M7)', () => {
         include: { modifierGroups: { include: { options: true } } }
       });
       expect(dbItem).not.toBeNull();
+      expect(dbItem?.sku).toBe(res.body.data.menuItem.sku);
       expect(dbItem?.name).toBe('Burger Siêu Cay Crispy');
     });
   });

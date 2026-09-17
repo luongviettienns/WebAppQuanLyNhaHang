@@ -76,4 +76,33 @@ describe('Database Seed & Schema Verification (Task 5)', () => {
       expect(token).not.toMatch(/^QR-TABLE-\d{2}$/);
     });
   });
+
+  it('tao menu item voi SKU he thong duy nhat va metadata quan tri mac dinh', async () => {
+    await seedDatabase(prismaTest);
+
+    const menuItems = await prismaTest.$queryRaw<
+      Array<{
+        id: number;
+        sku: string;
+        menuType: string;
+        itemType: string;
+        trackStock: number | boolean;
+        stockQuantity: number;
+        position: string | null;
+      }>
+    >`SELECT id, sku, menuType, itemType, trackStock, stockQuantity, position FROM MenuItem ORDER BY id ASC`;
+
+    expect(menuItems.length).toBeGreaterThanOrEqual(20);
+
+    const skus = menuItems.map((item) => item.sku);
+    expect(new Set(skus).size).toBe(skus.length);
+
+    menuItems.forEach((item) => {
+      expect(item.sku).toMatch(/^SP\d{6}$/);
+      expect(item.menuType).toMatch(/^(FOOD|DRINK|SERVICE|OTHER)$/);
+      expect(item.itemType).toMatch(/^(REGULAR|TOPPING|COMBO|SERVICE)$/);
+      expect(item.stockQuantity).toBeGreaterThanOrEqual(0);
+      expect(item.position === null || item.position.length > 0).toBe(true);
+    });
+  });
 });

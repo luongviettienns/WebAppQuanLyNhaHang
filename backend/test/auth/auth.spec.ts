@@ -4,6 +4,10 @@ import { app } from '../../src/app';
 import { prismaTest, validateTestEnvironment } from '../helpers/database';
 import { seedDatabase } from '../../prisma/seed';
 
+const adminPassword = process.env.SEED_ADMIN_PASSWORD || 'admin123';
+const cashierPassword = process.env.SEED_CASHIER_PASSWORD || 'cashier123';
+const kitchenPassword = process.env.SEED_KITCHEN_PASSWORD || 'kitchen123';
+
 describe('Auth & RBAC End-to-End (Task 7)', () => {
   beforeAll(async () => {
     validateTestEnvironment();
@@ -17,7 +21,7 @@ describe('Auth & RBAC End-to-End (Task 7)', () => {
   it('dang nhap thanh cong voi tai khoan cashier va tra ve JWT hop le', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'cashier', password: 'cashier123' });
+      .send({ username: 'cashier', password: cashierPassword });
 
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('data');
@@ -33,13 +37,13 @@ describe('Auth & RBAC End-to-End (Task 7)', () => {
   it('dang nhap thanh cong voi tai khoan kitchen va admin', async () => {
     const kitchenRes = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'kitchen', password: 'kitchen123' });
+      .send({ username: 'kitchen', password: kitchenPassword });
     expect(kitchenRes.status).toBe(200);
     expect(kitchenRes.body.data.user.role).toBe('KITCHEN');
 
     const adminRes = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'admin', password: 'admin123' });
+      .send({ username: 'admin', password: adminPassword });
     expect(adminRes.status).toBe(200);
     expect(adminRes.body.data.user.role).toBe('ADMIN');
   });
@@ -61,7 +65,7 @@ describe('Auth & RBAC End-to-End (Task 7)', () => {
   it('lay thong tin nguoi dung hien tai GET /api/auth/me voi Bearer token', async () => {
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ username: 'admin', password: 'admin123' });
+      .send({ username: 'admin', password: adminPassword });
     const token = loginRes.body.data.token;
 
     const meRes = await request(app)

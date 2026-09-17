@@ -1,7 +1,35 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { CreateMenuItemInput, UpdateMenuItemInput } from './menu.schemas';
+
+const MENU_SKU_PREFIX = 'SP';
+const MENU_SKU_MAX_RETRIES = 3;
+
+type MenuSkuClient = Pick<Prisma.TransactionClient, '$queryRaw'>;
+
+function formatMenuSku(sequence: number) {
+  return `${MENU_SKU_PREFIX}${sequence.toString().padStart(6, '0')}`;
+}
+
+async function generateNextMenuSku(client: MenuSkuClient) {
+  const rows = await client.$queryRaw<Array<{ nextSkuNumber: bigint | number | string | null }>>`
+    SELECT COALESCE(MAX(CAST(SUBSTRING(sku, 3) AS UNSIGNED)), 0) + 1 AS nextSkuNumber
+    FROM MenuItem
+    WHERE sku REGEXP '^SP[0-9]+$'
+  `;
+  const nextSkuNumber = Number(rows[0]?.nextSkuNumber ?? 1);
+  return formatMenuSku(Number.isFinite(nextSkuNumber) && nextSkuNumber > 0 ? nextSkuNumber : 1);
+}
+
+function isSkuUniqueConstraintError(error: unknown) {
+  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    return false;
+  }
+  const target = error.meta?.target;
+  return Array.isArray(target) ? target.includes('sku') : target === 'sku';
+}
 
 export class MenuService {
   /**
@@ -38,44 +66,60 @@ export class MenuService {
       throw ApiError.badRequest(`Danh mục với ID ${input.categoryId} không tồn tại`);
     }
 
-    const menuItem = await prisma.$transaction(async (tx) => {
-      const created = await tx.menuItem.create({
-        data: {
-          categoryId: input.categoryId,
-          name: input.name,
-          description: input.description,
-          basePrice: input.basePrice,
-          imageUrl: input.imageUrl,
-          isAvailable: input.isAvailable ?? true,
-          displayOrder: input.displayOrder ?? 0,
-          modifierGroups: input.modifierGroups && input.modifierGroups.length > 0 ? {
-            create: input.modifierGroups.map(group => ({
-              name: group.name,
-              isRequired: group.isRequired ?? false,
-              minSelect: group.minSelect ?? 0,
-              maxSelect: group.maxSelect ?? 1,
-              options: {
-                create: group.options.map(opt => ({
-                  name: opt.name,
-                  priceDelta: opt.priceDelta ?? 0,
-                  isAvailable: opt.isAvailable ?? true
+    for (let attempt = 1; attempt <= MENU_SKU_MAX_RETRIES; attempt += 1) {
+      try {
+        const menuItem = await prisma.$transaction(async (tx) => {
+          const sku = await generateNextMenuSku(tx);
+          const created = await tx.menuItem.create({
+            data: {
+              sku,
+              categoryId: input.categoryId,
+              name: input.name,
+              description: input.description,
+              basePrice: input.basePrice,
+              imageUrl: input.imageUrl,
+              isAvailable: input.isAvailable ?? true,
+              displayOrder: input.displayOrder ?? 0,
+              modifierGroups: input.modifierGroups && input.modifierGroups.length > 0 ? {
+                create: input.modifierGroups.map(group => ({
+                  name: group.name,
+                  isRequired: group.isRequired ?? false,
+                  minSelect: group.minSelect ?? 0,
+                  maxSelect: group.maxSelect ?? 1,
+                  options: {
+                    create: group.options.map(opt => ({
+                      name: opt.name,
+                      priceDelta: opt.priceDelta ?? 0,
+                      isAvailable: opt.isAvailable ?? true
+                    }))
+                  }
                 }))
-              }
-            }))
-          } : undefined
-        },
-        include: {
-          modifierGroups: {
+              } : undefined
+            },
             include: {
-              options: true
+              modifierGroups: {
+                include: {
+                  options: true
+                }
+              }
             }
-          }
-        }
-      });
-      return created;
-    });
+          });
+          return created;
+        });
 
-    return { menuItem };
+        return { menuItem };
+      } catch (error) {
+        if (attempt < MENU_SKU_MAX_RETRIES && isSkuUniqueConstraintError(error)) {
+          continue;
+        }
+        if (isSkuUniqueConstraintError(error)) {
+          throw ApiError.conflict('Không thể tạo SKU duy nhất cho món mới. Vui lòng thử lại.');
+        }
+        throw error;
+      }
+    }
+
+    throw ApiError.conflict('Không thể tạo SKU duy nhất cho món mới. Vui lòng thử lại.');
   }
 
   /**
