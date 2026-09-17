@@ -34,6 +34,7 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
     const created = await OrdersService.createOrder({
       orderType: 'DINE_IN',
       tableId: table.id,
+      qrCodeToken: table.qrCodeToken,
       items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
     });
 
@@ -71,6 +72,7 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
     const created = await OrdersService.createOrder({
       orderType: 'DINE_IN',
       tableId: table.id,
+      qrCodeToken: table.qrCodeToken,
       items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
     });
 
@@ -96,6 +98,7 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
     const order1 = await OrdersService.createOrder({
       orderType: 'DINE_IN',
       tableId: table.id,
+      qrCodeToken: table.qrCodeToken,
       items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
     });
     await OrdersService.updateOrderStatus(order1.order.id, 'PREPARING');
@@ -137,6 +140,7 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
     const orderA = await OrdersService.createOrder({
       orderType: 'DINE_IN',
       tableId: table.id,
+      qrCodeToken: table.qrCodeToken,
       items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
     });
     const pastDate = new Date(Date.now() - 65 * 60 * 1000);
@@ -149,6 +153,7 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
     const orderB = await OrdersService.createOrder({
       orderType: 'DINE_IN',
       tableId: table.id,
+      qrCodeToken: table.qrCodeToken,
       items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
     });
 

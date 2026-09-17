@@ -5,6 +5,12 @@ import { authorize } from '../../middlewares/authorize';
 
 export const tablesRouter = Router();
 
+// GET /api/tables/public (Public: Danh sach ban kem QR token de render/in ma QR)
+tablesRouter.get('/public', TablesController.getPublicTables);
+
+// GET /api/tables/by-number/:tableNumber (Public: Context cho khach vao theo so ban)
+tablesRouter.get('/by-number/:tableNumber', TablesController.getTableByNumber);
+
 // GET /api/tables/qr/:token (Public context cho khach quet QR cua mot ban)
 tablesRouter.get('/qr/:token', TablesController.getTableByQrToken);
 

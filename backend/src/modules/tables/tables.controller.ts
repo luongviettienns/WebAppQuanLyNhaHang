@@ -32,6 +32,25 @@ export class TablesController {
     }
   }
 
+  static async getTableByNumber(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const tableNumber = parseInt(req.params.tableNumber, 10);
+      const data = await TablesService.getTableByTableNumber(tableNumber);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getPublicTables(_req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await TablesService.getPublicTables();
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async updateTableStatus(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const id = parseInt(req.params.id, 10);

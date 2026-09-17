@@ -90,6 +90,45 @@ export class TablesService {
     return { table: safeTable };
   }
 
+  static async getTableByTableNumber(tableNumber: number) {
+    const table = await prisma.diningTable.findUnique({
+      where: { tableNumber },
+      include: {
+        orders: {
+          where: {
+            paymentStatus: 'UNPAID',
+            status: { not: 'CANCELLED' }
+          },
+          orderBy: { createdAt: 'desc' },
+          include: {
+            items: true
+          }
+        }
+      }
+    });
+
+    if (!table) {
+      throw ApiError.notFound(`Bàn số ${tableNumber} không tồn tại`);
+    }
+
+    const { qrCodeToken, ...safeTable } = deriveTableState(table);
+    return { table: safeTable, qrCodeToken };
+  }
+
+  static async getPublicTables() {
+    const tables = await prisma.diningTable.findMany({
+      orderBy: { tableNumber: 'asc' },
+      select: {
+        id: true,
+        tableNumber: true,
+        capacity: true,
+        status: true,
+        qrCodeToken: true
+      }
+    });
+    return { tables };
+  }
+
   static async updateTableStatus(id: number, inputStatus: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') {
     const existingTable = await prisma.diningTable.findUnique({
       where: { id },

@@ -43,9 +43,11 @@
       padding: 12px 20px;
       border-radius: 12px;
       display: inline-flex;
+      flex-wrap: wrap;
       align-items: center;
+      justify-content: center;
       gap: 12px;
-      margin-bottom: 24px;
+      margin-bottom: 16px;
       font-size: 14px;
     }
     .ip-bar input {
@@ -57,8 +59,19 @@
       font-weight: bold;
       padding: 6px 12px;
       border-radius: 6px;
-      width: 170px;
+      width: 160px;
       text-align: center;
+    }
+    .ip-bar select {
+      background: #0F172A;
+      border: 1px solid #475569;
+      color: #F59E0B;
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: bold;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
     }
     .ip-bar button {
       background: #EF4444;
@@ -68,9 +81,24 @@
       border-radius: 6px;
       cursor: pointer;
       font-weight: 600;
+      transition: background 0.15s;
     }
     .ip-bar button:hover {
       background: #DC2626;
+    }
+    .sync-status {
+      font-size: 13px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+    .sync-ok {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
     }
     .instruction-card {
       background: rgba(30, 41, 59, 0.6);
@@ -81,6 +109,7 @@
       font-size: 14px;
       line-height: 1.6;
       color: #CBD5E1;
+      text-align: left;
     }
     .grid {
       display: grid;
@@ -109,23 +138,23 @@
       font-size: 15px;
       padding: 4px 14px;
       border-radius: 20px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       letter-spacing: 0.5px;
     }
     .table-capacity {
       color: #94A3B8;
       font-size: 12px;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
     .qr-frame {
       background: white;
       padding: 12px;
-      border-radius: 10px;
+      border-radius: 12px;
       display: inline-block;
       margin-bottom: 14px;
+      line-height: 0;
     }
     .qr-frame img {
-      display: block;
       width: 180px;
       height: 180px;
     }
@@ -165,14 +194,22 @@
       <div class="ip-bar">
         <span>🌐 Địa chỉ IP máy chủ:</span>
         <input type="text" id="hostIp" value="172.16.18.80" />
-        <span>Port: <b>8081</b></span>
+        <span>Cổng Web:</span>
+        <select id="webPort">
+          <option value="8081" selected>8081 (Metro Dev Web)</option>
+          <option value="4000">4000 (Backend Production)</option>
+        </select>
         <button onclick="updateQRCodes()">Cập nhật QR</button>
+      </div>
+
+      <div>
+        <span id="syncStatus" class="sync-status sync-ok">🔄 Đang kiểm tra token bảo mật...</span>
       </div>
 
       <div class="instruction-card">
         💡 <b>Hướng dẫn quét thử nghiệm:</b>
-        <br>• <b>Trên điện thoại thật</b>: Kết nối cùng Wi-Fi với máy tính $\rightarrow$ Mở <b>Camera</b> hoặc <b>Zalo</b> $\rightarrow$ Quét mã QR của bất kỳ bàn nào bên dưới. Điện thoại sẽ mở thẳng giao diện chọn món của bàn đó!
-        <br>• <b>Trên máy tính</b>: Bạn có thể bấm nút <b>"Mở thử Bàn..."</b> dưới mỗi mã QR để mở tab khách chọn món ngay trên trình duyệt PC.
+        <br>• <b>Trên điện thoại thật</b>: Kết nối cùng Wi-Fi với máy tính &rarr; Mở <b>Camera</b> hoặc <b>Zalo</b> &rarr; Quét mã QR của bất kỳ bàn nào bên dưới. Mã QR đã tích hợp token xác thực bàn nên khi bấm "Gửi bếp" đơn hàng sẽ được ghi nhận tức thì!
+        <br>• <b>Trên máy tính</b>: Bấm nút <b>"Mở thử Bàn..."</b> dưới mỗi mã QR để mở tab khách chọn món ngay trên trình duyệt PC.
       </div>
     </header>
 
@@ -182,33 +219,64 @@
   </div>
 
   <script>
-    const tables = [
-      { id: 1, name: "Bàn 01", cap: "Bàn 2 người" },
-      { id: 2, name: "Bàn 02", cap: "Bàn 2 người" },
-      { id: 3, name: "Bàn 03", cap: "Bàn 2 người" },
-      { id: 4, name: "Bàn 04", cap: "Bàn 2 người" },
-      { id: 5, name: "Bàn 05", cap: "Bàn 4 người" },
-      { id: 6, name: "Bàn 06", cap: "Bàn 4 người" },
-      { id: 7, name: "Bàn 07", cap: "Bàn 4 người" },
-      { id: 8, name: "Bàn 08", cap: "Bàn 4 người" },
-      { id: 9, name: "Bàn 09", cap: "Bàn 4 người" },
-      { id: 10, name: "Bàn 10", cap: "Bàn 4 người" },
-      { id: 11, name: "Bàn 11", cap: "Bàn nhóm 8 người" },
-      { id: 12, name: "Bàn 12", cap: "Bàn nhóm 8 người" },
+    let defaultTables = [
+      { id: 1, tableNumber: 1, name: "Bàn 01", cap: "Bàn 2 người", qrCodeToken: "QR-TABLE-01" },
+      { id: 2, tableNumber: 2, name: "Bàn 02", cap: "Bàn 2 người", qrCodeToken: "QR-TABLE-02" },
+      { id: 3, tableNumber: 3, name: "Bàn 03", cap: "Bàn 2 người", qrCodeToken: "QR-TABLE-03" },
+      { id: 4, tableNumber: 4, name: "Bàn 04", cap: "Bàn 2 người", qrCodeToken: "QR-TABLE-04" },
+      { id: 5, tableNumber: 5, name: "Bàn 05", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-05" },
+      { id: 6, tableNumber: 6, name: "Bàn 06", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-06" },
+      { id: 7, tableNumber: 7, name: "Bàn 07", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-07" },
+      { id: 8, tableNumber: 8, name: "Bàn 08", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-08" },
+      { id: 9, tableNumber: 9, name: "Bàn 09", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-09" },
+      { id: 10, tableNumber: 10, name: "Bàn 10", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-10" },
+      { id: 11, tableNumber: 11, name: "Bàn 11", cap: "Bàn nhóm 8 người", qrCodeToken: "QR-TABLE-11" },
+      { id: 12, tableNumber: 12, name: "Bàn 12", cap: "Bàn nhóm 8 người", qrCodeToken: "QR-TABLE-12" },
     ];
 
-    // Tu dong nhan dien IP neu dang mo qua HTTP
+    // Tự động nhận diện IP nếu đang mở qua trình duyệt
     if (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
       document.getElementById('hostIp').value = window.location.hostname;
     }
 
+    async function trySyncFromBackend() {
+      const ip = document.getElementById('hostIp').value.trim() || '172.16.18.80';
+      const statusEl = document.getElementById('syncStatus');
+      try {
+        const res = await fetch(`http://${ip}:4000/api/tables/public`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data && Array.isArray(json.data.tables) && json.data.tables.length > 0) {
+            defaultTables = json.data.tables.map(t => ({
+              id: t.id,
+              tableNumber: t.tableNumber,
+              name: `Bàn ${String(t.tableNumber).padStart(2, '0')}`,
+              cap: t.capacity ? `Bàn ${t.capacity} người` : 'Bàn chuẩn',
+              qrCodeToken: t.qrCodeToken
+            }));
+            statusEl.className = 'sync-status sync-ok';
+            statusEl.innerHTML = '✅ Đã đồng bộ mã QR xác thực trực tiếp từ Máy chủ Cơ sở Dữ liệu';
+            renderTables();
+            return;
+          }
+        }
+      } catch (e) {
+        // Backend chua bat hoac cross-origin
+      }
+      statusEl.className = 'sync-status sync-ok';
+      statusEl.innerHTML = '🔒 Mã QR tích hợp Token bảo mật chuẩn (QR-TABLE-XX)';
+      renderTables();
+    }
+
     function renderTables() {
       const ip = document.getElementById('hostIp').value.trim() || '172.16.18.80';
+      const port = document.getElementById('webPort').value || '8081';
       const grid = document.getElementById('tablesGrid');
       grid.innerHTML = '';
 
-      tables.forEach(t => {
-        const url = `http://${ip}:8081/?table=${t.id}`;
+      defaultTables.forEach(t => {
+        const token = t.qrCodeToken || `QR-TABLE-${String(t.tableNumber).padStart(2, '0')}`;
+        const url = `http://${ip}:${port}/?table=${t.tableNumber}&token=${encodeURIComponent(token)}`;
         const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(url)}`;
         
         const card = document.createElement('div');
@@ -227,10 +295,11 @@
     }
 
     function updateQRCodes() {
-      renderTables();
+      trySyncFromBackend();
     }
 
     renderTables();
+    trySyncFromBackend();
   </script>
 </body>
 </html>

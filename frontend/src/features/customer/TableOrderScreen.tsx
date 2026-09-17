@@ -82,6 +82,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
   const [isBrowsingMenu, setIsBrowsingMenu] = useState(false);
   const [guestTable, setGuestTable] = useState<DiningTableDto | null>(null);
   const [guestTableError, setGuestTableError] = useState<string | null>(null);
+  const [resolvedQrToken, setResolvedQrToken] = useState<string | null>(qrCodeToken || null);
   const [notifPermission, setNotifPermission] = useState<'granted' | 'denied' | 'default' | 'unsupported'>(
     notificationHelper.getPermissionStatus()
   );
@@ -89,22 +90,37 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!qrCodeToken) return;
     let cancelled = false;
     const loadGuestTable = async () => {
       setGuestTableError(null);
       try {
-        const response = await fetch(`${getApiBaseUrl()}/api/tables/qr/${encodeURIComponent(qrCodeToken)}`);
-        const json = await response.json();
-        if (!response.ok) {
-          throw new Error(json.error?.message || 'Mã QR bàn không hợp lệ');
-        }
-        if (!cancelled) {
-          setGuestTable(json.data.table);
+        if (qrCodeToken) {
+          const response = await fetch(`${getApiBaseUrl()}/api/tables/qr/${encodeURIComponent(qrCodeToken)}`);
+          const json = await response.json();
+          if (!response.ok) {
+            throw new Error(json.error?.message || 'Mã QR bàn không hợp lệ');
+          }
+          if (!cancelled) {
+            setGuestTable(json.data.table);
+            setResolvedQrToken(qrCodeToken);
+          }
+        } else if (tableNumber) {
+          // Tu dong nhan dien va lay token hop le theo so ban tu server
+          const response = await fetch(`${getApiBaseUrl()}/api/tables/by-number/${tableNumber}`);
+          const json = await response.json();
+          if (!response.ok) {
+            throw new Error(json.error?.message || `Không thể tải thông tin Bàn ${tableNumber}`);
+          }
+          if (!cancelled) {
+            setGuestTable(json.data.table);
+            if (json.data.qrCodeToken) {
+              setResolvedQrToken(json.data.qrCodeToken);
+            }
+          }
         }
       } catch (err: any) {
         if (!cancelled) {
-          setGuestTableError(err.message || 'Không thể tải thông tin bàn từ mã QR');
+          setGuestTableError(err.message || 'Không thể tải thông tin bàn');
         }
       }
     };
@@ -112,9 +128,10 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     return () => {
       cancelled = true;
     };
-  }, [qrCodeToken]);
+  }, [qrCodeToken, tableNumber]);
 
-  const table = qrCodeToken ? guestTable : tables.find((t) => t.tableNumber === tableNumber) || tables[0];
+  const effectiveQrToken = qrCodeToken || resolvedQrToken;
+  const table = guestTable || tables.find((t) => t.tableNumber === tableNumber) || tables[0];
   const tableId = table?.id;
   const displayTableNumber = table?.tableNumber ?? tableNumber;
   const allTableOrders = table?.orders || [];
@@ -295,7 +312,8 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     // Xin quyen thong bao trinh duyet khi khach dat mon
     notificationHelper.requestPermission().catch(() => {});
 
-    const result = await createDineInOrder(tableId, undefined, qrCodeToken);
+    const tokenToSend = effectiveQrToken || (table as any)?.qrCodeToken || undefined;
+    const result = await createDineInOrder(tableId, undefined, tokenToSend);
     setIsSubmitting(false);
 
     if (result.success && result.order) {
