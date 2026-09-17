@@ -9,10 +9,10 @@ export const tablesRouter = Router();
 tablesRouter.get('/qr/:token', TablesController.getTableByQrToken);
 
 // GET /api/tables (Chi nhan vien xem so do toan bo ban)
-tablesRouter.get('/', authenticate, authorize('CASHIER', 'ADMIN'), TablesController.getTables);
+tablesRouter.get('/', authenticate, authorize('CASHIER', 'KITCHEN', 'ADMIN'), TablesController.getTables);
 
 // GET /api/tables/:id (Chi nhan vien xem chi tiet ban)
-tablesRouter.get('/:id', authenticate, authorize('CASHIER', 'ADMIN'), TablesController.getTableById);
+tablesRouter.get('/:id', authenticate, authorize('CASHIER', 'KITCHEN', 'ADMIN'), TablesController.getTableById);
 
 // PATCH /api/tables/:id/status (Chuyen trang thai don dep ban: CASHIER va ADMIN)
 tablesRouter.patch('/:id/status', authenticate, authorize('CASHIER', 'ADMIN'), TablesController.updateTableStatus);

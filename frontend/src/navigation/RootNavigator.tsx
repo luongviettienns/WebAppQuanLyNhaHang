@@ -14,7 +14,7 @@ export const RootNavigator: React.FC = () => {
   const [guestQrContext] = useState<{ tableNumber: number | null; qrCodeToken: string | null }>(() => {
     if (typeof window !== 'undefined' && window.location) {
       const searchParams = new URLSearchParams(window.location.search);
-      const qrCodeToken = searchParams.get('token') || searchParams.get('qr') || searchParams.get('tableToken');
+      const rawToken = searchParams.get('token') || searchParams.get('qr') || searchParams.get('tableToken');
       const tableParam = searchParams.get('table');
       let tableNumber: number | null = null;
       if (tableParam && !isNaN(Number(tableParam))) {
@@ -26,19 +26,23 @@ export const RootNavigator: React.FC = () => {
         tableNumber = Number(tableMatch[1]);
       }
       const tokenMatch = hash.match(/(?:token|qr|tableToken)[=/]([^&]+)/i);
+      const parsedToken = rawToken || (tokenMatch?.[1] ? decodeURIComponent(tokenMatch[1]) : null);
+      const validToken = parsedToken && parsedToken !== 'undefined' && parsedToken !== 'null' ? parsedToken : null;
       return {
         tableNumber,
-        qrCodeToken: qrCodeToken || (tokenMatch?.[1] ? decodeURIComponent(tokenMatch[1]) : null)
+        qrCodeToken: validToken
       };
     }
     return { tableNumber: null, qrCodeToken: null };
   });
 
   if ((guestQrContext.qrCodeToken || guestQrContext.tableNumber) && !user) {
+    const finalToken = guestQrContext.qrCodeToken || (guestQrContext.tableNumber ? String(guestQrContext.tableNumber) : '1');
+    const finalTableNum = guestQrContext.tableNumber ?? 1;
     return (
       <TableOrderScreen
-        tableNumber={guestQrContext.tableNumber ?? undefined}
-        qrCodeToken={guestQrContext.qrCodeToken ?? undefined}
+        tableNumber={finalTableNum}
+        qrCodeToken={finalToken}
       />
     );
   }

@@ -113,7 +113,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     };
   }, [qrCodeToken]);
 
-  const table = qrCodeToken ? guestTable : tables.find((t) => t.tableNumber === tableNumber) || tables[0];
+  const table = guestTable || tables.find((t) => t.tableNumber === tableNumber) || (tables.length > 0 ? tables[0] : null);
   const tableId = table?.id;
   const displayTableNumber = table?.tableNumber ?? tableNumber;
   const allTableOrders = table?.orders || [];

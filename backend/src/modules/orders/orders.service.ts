@@ -258,10 +258,11 @@ export class OrdersService {
     }
 
     if (transactionResult.isDuplicate) return transactionResult;
-    const createdOrder = transactionResult.order;
+    const createdOrder = formatOrderDto(transactionResult.order);
 
-    // Phat su kien don hang moi chi vao phong KDS bep
+    // Phat su kien don hang moi chi vao phong KDS bep va toan he thong
     emitToRoom('restaurant:kds', 'order:new', { order: createdOrder });
+    emitToAll('order:new', { order: createdOrder });
 
     if (targetTable) {
       emitToAll('table:statusChanged', {

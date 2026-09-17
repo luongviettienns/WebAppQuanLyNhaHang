@@ -1,0 +1,798 @@
+{
+  "info": {
+    "name": "Crispy Bite Restaurant API",
+    "description": "API Collection đầy đủ cho hệ thống quản lý nhà hàng Crispy Bite\n\n**Roles:**\n- CASHIER: Thu ngân\n- KITCHEN: Bếp/KDS\n- ADMIN: Quản trị viên\n\n**Authentication:**\nSử dụng JWT Bearer Token trong header Authorization",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "_exporter_id": "crispy-bite"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-refresh token nếu cần",
+          ""
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-save token từ login response",
+          "if (pm.response.code === 200 || pm.response.code === 201) {",
+          "    const jsonData = pm.response.json();",
+          "    if (jsonData.data && jsonData.data.token) {",
+          "        pm.environment.set('token', jsonData.data.token);",
+          "        console.log('✓ Token đã được lưu vào environment');",
+          "    }",
+          "    if (jsonData.data && jsonData.data.user) {",
+          "        pm.environment.set('user_id', jsonData.data.user.id);",
+          "        pm.environment.set('username', jsonData.data.user.username);",
+          "        pm.environment.set('role', jsonData.data.user.role);",
+          "        console.log('✓ User info đã được lưu');",
+          "    }",
+          "    if (jsonData.data && jsonData.data.order) {",
+          "        pm.environment.set('order_id', jsonData.data.order.id);",
+          "        console.log('✓ Order ID đã được lưu:', jsonData.data.order.id);",
+          "    }",
+          "    if (jsonData.data && jsonData.data.id && pm.info.requestName.includes('Menu')) {",
+          "        pm.environment.set('menu_item_id', jsonData.data.id);",
+          "        console.log('✓ Menu Item ID đã được lưu:', jsonData.data.id);",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "🏥 Health & System",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Kiểm tra trạng thái server"
+          },
+          "response": []
+        },
+        {
+          "name": "Network Info",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/system/network-info",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "system", "network-info"]
+            },
+            "description": "Lấy thông tin mạng của server (IP addresses, hostname)"
+          },
+          "response": []
+        },
+        {
+          "name": "Test Validation",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Test\",\n  \"age\": 25\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/system/test-validation",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "system", "test-validation"]
+            },
+            "description": "Test endpoint validation (name: string min 1, age: number >= 18)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🔐 Authentication",
+      "item": [
+        {
+          "name": "Login - Admin",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Login thành công', function() {",
+                  "    pm.response.to.have.status(200);",
+                  "    const jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.data.token).to.be.a('string');",
+                  "    pm.expect(jsonData.data.user.role).to.equal('ADMIN');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "auth", "login"]
+            },
+            "description": "Đăng nhập với tài khoản ADMIN (mặc định: admin/admin123)"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Cashier",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"cashier\",\n  \"password\": \"cashier123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "auth", "login"]
+            },
+            "description": "Đăng nhập với tài khoản CASHIER"
+          },
+          "response": []
+        },
+        {
+          "name": "Login - Kitchen",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"kitchen\",\n  \"password\": \"kitchen123\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "auth", "login"]
+            },
+            "description": "Đăng nhập với tài khoản KITCHEN"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/auth/me",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "auth", "me"]
+            },
+            "description": "Lấy thông tin user hiện tại (cần Bearer Token)"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🍽️ Menu Management",
+      "item": [
+        {
+          "name": "Get Full Menu (Public)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/menu",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "menu"]
+            },
+            "description": "Lấy toàn bộ menu (categories + items + modifiers). Endpoint public, không cần auth."
+          },
+          "response": []
+        },
+        {
+          "name": "Create Menu Item",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"categoryId\": {{category_id}},\n  \"name\": \"Phở Bò Tái\",\n  \"description\": \"Phở bò tái truyền thống với thịt bò tươi\",\n  \"basePrice\": 85000,\n  \"imageUrl\": \"https://example.com/pho-bo-tai.jpg\",\n  \"isAvailable\": true,\n  \"displayOrder\": 1,\n  \"modifierGroups\": [\n    {\n      \"name\": \"Kích cỡ\",\n      \"isRequired\": true,\n      \"minSelect\": 1,\n      \"maxSelect\": 1,\n      \"options\": [\n        {\n          \"name\": \"Nhỏ\",\n          \"priceDelta\": -10000,\n          \"isAvailable\": true\n        },\n        {\n          \"name\": \"Vừa\",\n          \"priceDelta\": 0,\n          \"isAvailable\": true\n        },\n        {\n          \"name\": \"Lớn\",\n          \"priceDelta\": 15000,\n          \"isAvailable\": true\n        }\n      ]\n    },\n    {\n      \"name\": \"Thêm topping\",\n      \"isRequired\": false,\n      \"minSelect\": 0,\n      \"maxSelect\": 3,\n      \"options\": [\n        {\n          \"name\": \"Thêm thịt\",\n          \"priceDelta\": 20000,\n          \"isAvailable\": true\n        },\n        {\n          \"name\": \"Thêm trứng\",\n          \"priceDelta\": 10000,\n          \"isAvailable\": true\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/menu",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "menu"]
+            },
+            "description": "Tạo món ăn mới (ADMIN only)"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Menu Item",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Phở Bò Tái Đặc Biệt\",\n  \"basePrice\": 95000,\n  \"description\": \"Phở bò tái với thịt bò cao cấp\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/menu/{{menu_item_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "menu", "{{menu_item_id}}"]
+            },
+            "description": "Cập nhật thông tin món ăn (ADMIN only). Tất cả fields đều optional."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Item Sold Out (86'd)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isAvailable\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/menu/{{menu_item_id}}/sold-out",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "menu", "{{menu_item_id}}", "sold-out"]
+            },
+            "description": "Đánh dấu món hết hàng (KITCHEN hoặc ADMIN). isAvailable: true = còn, false = hết."
+          },
+          "response": []
+        },
+        {
+          "name": "Mark Item Available",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"isAvailable\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/menu/{{menu_item_id}}/sold-out",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "menu", "{{menu_item_id}}", "sold-out"]
+            },
+            "description": "Đánh dấu món có sẵn trở lại"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "🪑 Tables Management",
+      "item": [
+        {
+          "name": "Get Table by QR Token (Public)",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/tables/qr/{{qr_token}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "tables", "qr", "{{qr_token}}"]
+            },
+            "description": "Khách quét QR code để lấy thông tin bàn (public endpoint)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get All Tables",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/tables",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "tables"]
+            },
+            "description": "Lấy danh sách tất cả bàn (CASHIER hoặc ADMIN)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Table by ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/tables/{{table_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "tables", "{{table_id}}"]
+            },
+            "description": "Lấy thông tin chi tiết 1 bàn (CASHIER hoặc ADMIN)"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Table Status - AVAILABLE",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"AVAILABLE\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/tables/{{table_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "tables", "{{table_id}}", "status"]
+            },
+            "description": "Đặt trạng thái bàn: AVAILABLE (CASHIER hoặc ADMIN)"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Table Status - DIRTY",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DIRTY\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/tables/{{table_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "tables", "{{table_id}}", "status"]
+            },
+            "description": "Đánh dấu bàn cần dọn dẹp"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Table Status - NEED_CLEANING",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"NEED_CLEANING\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/tables/{{table_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "tables", "{{table_id}}", "status"]
+            },
+            "description": "Đánh dấu bàn cần vệ sinh"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📦 Orders",
+      "item": [
+        {
+          "name": "Get All Orders (KDS)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders"]
+            },
+            "description": "Lấy danh sách đơn hàng cho bếp KDS (KITCHEN hoặc ADMIN)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Orders by Status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders?status=PENDING,PREPARING",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING,PREPARING",
+                  "description": "Lọc theo trạng thái (comma-separated)"
+                }
+              ]
+            },
+            "description": "Lọc đơn hàng theo status"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Order - Dine In (POS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderType\": \"DINE_IN\",\n  \"tableId\": {{table_id}},\n  \"notes\": \"Ít cay\",\n  \"items\": [\n    {\n      \"menuItemId\": 1,\n      \"quantity\": 2,\n      \"selectedModifiers\": [\n        {\n          \"modifierGroupId\": 1,\n          \"optionId\": 2\n        }\n      ],\n      \"notes\": \"Không hành\"\n    },\n    {\n      \"menuItemId\": 5,\n      \"quantity\": 1,\n      \"selectedModifiers\": []\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders"]
+            },
+            "description": "Tạo đơn Dine-In từ POS (nhân viên có auth)"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Order - Customer QR",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderType\": \"DINE_IN\",\n  \"qrCodeToken\": \"{{qr_token}}\",\n  \"idempotencyKey\": \"{{$guid}}\",\n  \"notes\": \"Giao nhanh giúp em\",\n  \"items\": [\n    {\n      \"menuItemId\": 2,\n      \"quantity\": 1,\n      \"selectedModifiers\": [\n        {\n          \"modifierGroupId\": 1,\n          \"optionId\": 3\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders"]
+            },
+            "description": "Khách tự gọi món qua QR (không cần auth, bắt buộc qrCodeToken)"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Order - Take Away",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderType\": \"TAKE_AWAY\",\n  \"buzzerNumber\": 25,\n  \"items\": [\n    {\n      \"menuItemId\": 3,\n      \"quantity\": 3\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders"]
+            },
+            "description": "Tạo đơn mang đi với buzzer number"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Order Status - PREPARING",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PREPARING\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders/{{order_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders", "{{order_id}}", "status"]
+            },
+            "description": "Bếp bắt đầu làm món (KITCHEN hoặc ADMIN)"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Order Status - READY",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"READY\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders/{{order_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders", "{{order_id}}", "status"]
+            },
+            "description": "Món đã sẵn sàng phục vụ"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Order Status - COMPLETED",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"COMPLETED\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders/{{order_id}}/status",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders", "{{order_id}}", "status"]
+            },
+            "description": "Hoàn thành đơn hàng"
+          },
+          "response": []
+        },
+        {
+          "name": "Pay Order - CASH",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentMethod\": \"CASH\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders/{{order_id}}/pay",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders", "{{order_id}}", "pay"]
+            },
+            "description": "Thu tiền mặt (CASHIER hoặc ADMIN)"
+          },
+          "response": []
+        },
+        {
+          "name": "Pay Order - BANK_TRANSFER",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentMethod\": \"BANK_TRANSFER\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders/{{order_id}}/pay",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders", "{{order_id}}", "pay"]
+            },
+            "description": "Thanh toán chuyển khoản"
+          },
+          "response": []
+        },
+        {
+          "name": "Pay Order - CREDIT_CARD",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"paymentMethod\": \"CREDIT_CARD\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders/{{order_id}}/pay",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders", "{{order_id}}", "pay"]
+            },
+            "description": "Thanh toán thẻ tín dụng"
+          },
+          "response": []
+        },
+        {
+          "name": "Void Order",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Khách hàng yêu cầu hủy vì đợi quá lâu\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/orders/{{order_id}}/void",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "orders", "{{order_id}}", "void"]
+            },
+            "description": "Hủy đơn hàng (ADMIN only). Reason phải >= 3 ký tự."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "📊 Reports",
+      "item": [
+        {
+          "name": "Get Daily Report - Today",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/reports/daily",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "reports", "daily"]
+            },
+            "description": "Lấy báo cáo doanh thu ngày hiện tại (ADMIN only)"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Daily Report - Specific Date",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}{{api_prefix}}/reports/daily?date=2026-09-15",
+              "host": ["{{base_url}}"],
+              "path": ["{{api_prefix}}", "reports", "daily"],
+              "query": [
+                {
+                  "key": "date",
+                  "value": "2026-09-15",
+                  "description": "Format: YYYY-MM-DD"
+                }
+              ]
+            },
+            "description": "Lấy báo cáo của ngày cụ thể (format: YYYY-MM-DD)"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:4000",
+      "type": "string"
+    },
+    {
+      "key": "api_prefix",
+      "value": "/api",
+      "type": "string"
+    }
+  ]
+}

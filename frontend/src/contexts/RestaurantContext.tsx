@@ -173,6 +173,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         return;
       }
 
+      if (response.status === 403) {
+        // Ignored for roles without table map access
+        return;
+      }
+
       const json = await response.json();
 
       if (!response.ok) {
@@ -369,13 +374,13 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
     // Order New (Xuất hiện đơn mới từ POS hoặc QR khách)
     socket.on('order:new', (payload: SocketOrderNewPayload) => {
-      // Re-fetch tables to sync fresh floor map
       fetchTables();
+      fetchKDSOrders();
       if (payload?.order) {
         setKdsOrders((prev) => {
           const exists = prev.some((o) => o.id === payload.order.id);
           if (exists) return prev;
-          return [...prev, payload.order];
+          return [payload.order, ...prev];
         });
       }
     });
@@ -383,7 +388,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     return () => {
       socket.disconnect();
     };
-  }, [token, fetchTables]);
+  }, [token, fetchTables, fetchKDSOrders]);
 
   // 4. Computed Menu Items
   const allMenuItems = categories.flatMap((cat) => cat.menuItems || []);
@@ -837,7 +842,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 export const useRestaurant = (): RestaurantContextType => {
   const context = useContext(RestaurantContext);
   if (!context) {
-    throw new Error('useRestaurant phai duoc su dung ben trong RestaurantProvider');
+    throw new Error('useRestaurant must be used within a RestaurantProvider');
   }
   return context;
 };
