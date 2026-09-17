@@ -57,6 +57,7 @@
 - **Bảo mật mã QR**: Khách vãng lai gọi món bắt buộc có `qrCodeToken` khớp với bàn vật lý, ngăn chặn đơn ảo từ xa.
 - **Cơ chế phục hồi 2 tầng**: Hỗ trợ mở qua QR có token hoặc gõ số bàn `?table=X`, server tự cấp context an toàn qua `GET /api/tables/by-number/:tableNumber`.
 - **Theo dõi đa đợt gọi món**: Hiển thị thanh chuyển đổi đợt gọi món (`#ORD-001`, `#ORD-002`), hỗ trợ cuộn ngang mượt mà trên Web PC bằng chuột (`onWheel` + nút mũi tên điều hướng).
+- **Chi tiết tùy chọn (Modifier) & Phiếu tạm tính (E-Bill)**: Hiển thị đầy đủ danh sách topping/modifier đã chọn kèm phụ phí, ghi chú món ăn/đợt đơn, và nút mở Modal xem phiếu tính tiền chi tiết cho từng đợt đơn của bàn.
 - **Thẻ rung ảo (Virtual Buzzer)**: Rung điện thoại dồn dập 2.6s kèm chuông báo khi món sẵn sàng (`READY`), hộp thoại xin quyền Web Notification.
 - **Thanh toán VietQR**: Tự động sinh mã QR chuyển khoản ngân hàng chứa đúng số tiền tổng bill cả bàn và nội dung giao dịch.
 
@@ -80,6 +81,7 @@
 | **Vận hành (09/17)** | Mã SKU tự động, Menu KiotViet, Migration Toolchain | SKU tự sinh, bố cục KiotViet, script `apply-migration.js`, 151 tests |
 | **Tối ưu Bàn (09/17)** | Web Horizontal Scroll & Auto-Cancel Timeout 1h | Cuộn chuột `onWheel`, nút mũi tên `<` `>`, hủy đơn quá hạn, 151 tests |
 | **Bảo mật QR (09/17)** | Đồng bộ QR Token & Public Table Endpoint | Endpoint `/by-number/:tableNumber`, nâng cấp `qr.html`, 153 tests |
+| **Chi tiết Đơn Bàn (09/17)** | Topping/Modifier, Ghi chú & Phiếu Bill E-Bill cho Khách | Chi tiết món từng đợt đơn của bàn, Modal ReceiptModal, Typecheck 100% |
 
 ---
 

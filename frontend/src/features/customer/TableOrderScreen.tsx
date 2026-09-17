@@ -11,7 +11,7 @@ import {
   Text,
   View
 } from 'react-native';
-import { Bell, Check, ChefHat, ChevronLeft, ChevronRight, CreditCard, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
+import { Bell, Check, ChefHat, ChevronLeft, ChevronRight, CreditCard, FileText, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
 import { DiningTableDto, MenuItemDto, OrderDto, OrderStatus } from '../../api/contracts';
 import { getApiBaseUrl } from '../../api/config';
 import { useRestaurant } from '../../contexts/RestaurantContext';
@@ -23,6 +23,7 @@ import type { StatusTone } from '../../ui';
 import { MenuCategoryPills } from '../pos/MenuCategoryPills';
 import { MenuItemCard } from '../pos/MenuItemCard';
 import { ModifierModal } from '../pos/ModifierModal';
+import { ReceiptModal } from '../pos/ReceiptModal';
 import { notificationHelper } from '../../lib/notificationHelper';
 
 interface Props {
@@ -80,6 +81,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
   const [isVietQRModalOpen, setIsVietQRModalOpen] = useState(false);
   const [isNotifPromptModalOpen, setIsNotifPromptModalOpen] = useState(false);
   const [isBrowsingMenu, setIsBrowsingMenu] = useState(false);
+  const [receiptOrder, setReceiptOrder] = useState<OrderDto | null>(null);
   const [guestTable, setGuestTable] = useState<DiningTableDto | null>(null);
   const [guestTableError, setGuestTableError] = useState<string | null>(null);
   const [resolvedQrToken, setResolvedQrToken] = useState<string | null>(qrCodeToken || null);
@@ -664,14 +666,34 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                     >
                       <View style={styles.batchOrderHeader}>
                         <View style={styles.batchOrderTitleGroup}>
-                          <Text style={[styles.batchOrderTitle, { color: isCurrentBatch ? theme.primary : theme.textPrimary }]}>
-                            Đợt {batchNumber} · Mã #{batchOrder.code} {isCurrentBatch ? '(Đang xem tiến độ)' : ''}
+                          <View style={styles.batchOrderTitleRow}>
+                            <Text style={[styles.batchOrderTitle, { color: isCurrentBatch ? theme.primary : theme.textPrimary }]}>
+                              Đợt {batchNumber} · Mã #{batchOrder.code} {isCurrentBatch ? '(Đang xem)' : ''}
+                            </Text>
+                            <StatusBadge {...orderStatusConfig(batchOrder.status)} />
+                          </View>
+                          <Text style={[styles.batchOrderTime, { color: theme.textSecondary }]}>
+                            Đặt lúc {new Date(batchOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                           </Text>
-                          <StatusBadge {...orderStatusConfig(batchOrder.status)} />
                         </View>
-                        <Text style={[styles.batchOrderTime, { color: theme.textSecondary }]}>
-                          {new Date(batchOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Xem phiếu tính tiền đợt này"
+                          onPress={(e) => {
+                            e.stopPropagation?.();
+                            setReceiptOrder(batchOrder);
+                          }}
+                          style={({ pressed }) => [
+                            styles.batchReceiptBtn,
+                            {
+                              borderColor: theme.borderSubtle,
+                              backgroundColor: pressed ? theme.surfaceRaised : theme.surfaceSunken
+                            }
+                          ]}
+                        >
+                          <AppIcon icon={FileText} size={13} color={theme.textSecondary} />
+                          <Text style={[styles.batchReceiptBtnText, { color: theme.textSecondary }]}>Phiếu bill</Text>
+                        </Pressable>
                       </View>
 
                       <View style={styles.batchItemsList}>
@@ -680,15 +702,35 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                             key={item.id || String(item.menuItemId) + '-' + iIdx}
                             style={[styles.batchItemRow, iIdx > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 }]}
                           >
-                            <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
-                              {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
-                            </Text>
+                            <View style={styles.itemDetailCol}>
+                              <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
+                                {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
+                              </Text>
+                              {(item.selectedModifiersJson || []).map((mod, mIdx) => (
+                                <Text key={`${mod.optionId}-${mIdx}`} style={[styles.itemModifierText, { color: theme.textSecondary }]}>
+                                  + {mod.groupName}: {mod.optionName}{mod.priceDelta > 0 ? ` (+${formatVND(mod.priceDelta)})` : ''}
+                                </Text>
+                              ))}
+                              {item.notes ? (
+                                <Text style={[styles.itemNotesText, { color: theme.textSecondary }]}>
+                                  📝 Ghi chú: {item.notes}
+                                </Text>
+                              ) : null}
+                            </View>
                             <Text style={[styles.orderItemPrice, { color: theme.textPrimary }]}>
                               {formatVND(item.subtotal)}
                             </Text>
                           </View>
                         ))}
                       </View>
+
+                      {batchOrder.notes ? (
+                        <View style={[styles.batchOrderNotesBadge, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                          <Text style={[styles.batchOrderNotesText, { color: theme.textSecondary }]}>
+                            💬 Ghi chú đợt: {batchOrder.notes}
+                          </Text>
+                        </View>
+                      ) : null}
 
                       <View style={[styles.batchSubtotalRow, { borderTopColor: theme.borderSubtle }]}>
                         <Text style={[styles.batchSubtotalLabel, { color: theme.textSecondary }]}>Tiền đợt {batchNumber}:</Text>
@@ -715,17 +757,69 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
               </View>
             ) : (
               <View style={[styles.orderItems, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+                <View style={styles.singleOrderHeader}>
+                  <View style={styles.singleOrderHeaderLeft}>
+                    <Text style={[styles.singleOrderCode, { color: theme.textPrimary }]}>
+                      Đơn #{liveOrder.code}
+                    </Text>
+                    <Text style={[styles.singleOrderTime, { color: theme.textSecondary }]}>
+                      Đặt lúc {new Date(liveOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                  <View style={styles.singleOrderHeaderRight}>
+                    <StatusBadge {...orderStatusConfig(liveOrder.status)} />
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Xem phiếu tính tiền"
+                      onPress={() => setReceiptOrder(liveOrder)}
+                      style={({ pressed }) => [
+                        styles.batchReceiptBtn,
+                        {
+                          borderColor: theme.borderSubtle,
+                          backgroundColor: pressed ? theme.surfaceRaised : theme.surfaceSunken
+                        }
+                      ]}
+                    >
+                      <AppIcon icon={FileText} size={13} color={theme.textSecondary} />
+                      <Text style={[styles.batchReceiptBtnText, { color: theme.textSecondary }]}>Phiếu bill</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                <View style={styles.singleOrderDivider} />
+
                 {liveOrder.items?.map((item, index) => (
                   <View
                     key={item.id || String(item.menuItemId) + '-' + index}
                     style={[styles.orderItem, index > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 }]}
                   >
-                    <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
-                      {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
-                    </Text>
+                    <View style={styles.itemDetailCol}>
+                      <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
+                        {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
+                      </Text>
+                      {(item.selectedModifiersJson || []).map((mod, mIdx) => (
+                        <Text key={`${mod.optionId}-${mIdx}`} style={[styles.itemModifierText, { color: theme.textSecondary }]}>
+                          + {mod.groupName}: {mod.optionName}{mod.priceDelta > 0 ? ` (+${formatVND(mod.priceDelta)})` : ''}
+                        </Text>
+                      ))}
+                      {item.notes ? (
+                        <Text style={[styles.itemNotesText, { color: theme.textSecondary }]}>
+                          📝 Ghi chú: {item.notes}
+                        </Text>
+                      ) : null}
+                    </View>
                     <Text style={[styles.orderItemPrice, { color: theme.textPrimary }]}>{formatVND(item.subtotal)}</Text>
                   </View>
                 ))}
+
+                {liveOrder.notes ? (
+                  <View style={[styles.batchOrderNotesBadge, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                    <Text style={[styles.batchOrderNotesText, { color: theme.textSecondary }]}>
+                      💬 Ghi chú: {liveOrder.notes}
+                    </Text>
+                  </View>
+                ) : null}
+
                 <View style={[styles.orderTotal, { borderTopColor: theme.borderSubtle }]}>
                   <View>
                     <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Tổng thanh toán</Text>
@@ -925,6 +1019,13 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
           </SafeAreaView>
         </View>
       </Modal>
+
+      {/* Modal xem chi tiet phieu tinh tien hoa don e-bill */}
+      <ReceiptModal
+        visible={Boolean(receiptOrder)}
+        order={receiptOrder}
+        onClose={() => setReceiptOrder(null)}
+      />
     </SafeAreaView>
   );
 };
@@ -1071,7 +1172,7 @@ const styles = StyleSheet.create({
   orderSection: { gap: spacing.sm },
   sectionTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
   orderItems: { borderRadius: radii.md, borderWidth: 1, overflow: 'hidden', paddingHorizontal: spacing.md },
-  orderItem: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
+  orderItem: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
   orderItemName: { flex: 1, fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
   orderItemPrice: {
     fontFamily: typography.families.bodySemibold,
@@ -1337,7 +1438,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs
   },
   batchItemRow: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: spacing.xs
@@ -1373,5 +1474,77 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.operationalBold,
     fontSize: typography.sizes.lg,
     fontVariant: [...typography.numeric.fontVariant]
+  },
+  itemDetailCol: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0
+  },
+  itemModifierText: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs,
+    paddingLeft: spacing.xs
+  },
+  itemNotesText: {
+    fontFamily: typography.families.bodyMedium,
+    fontSize: typography.sizes.xs,
+    fontStyle: 'italic',
+    paddingLeft: spacing.xs
+  },
+  batchOrderNotesBadge: {
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    marginTop: spacing.xs,
+    padding: spacing.xs
+  },
+  batchOrderNotesText: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs
+  },
+  batchReceiptBtn: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 3
+  },
+  batchReceiptBtnText: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: 11
+  },
+  batchOrderTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs
+  },
+  singleOrderHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingBottom: spacing.sm
+  },
+  singleOrderHeaderLeft: {
+    flex: 1,
+    gap: 2
+  },
+  singleOrderHeaderRight: {
+    alignItems: 'flex-end',
+    gap: spacing.xs
+  },
+  singleOrderCode: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.md
+  },
+  singleOrderTime: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs
+  },
+  singleOrderDivider: {
+    borderBottomColor: '#E5E7EB',
+    borderBottomWidth: 1,
+    marginBottom: spacing.xs
   }
 });
