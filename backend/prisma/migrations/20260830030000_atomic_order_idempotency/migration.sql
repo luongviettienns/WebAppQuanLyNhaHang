@@ -25,7 +25,9 @@ DROP TEMPORARY TABLE `DuplicateOrderIdempotencyRows`;
 
 ALTER TABLE `Order` MODIFY `idempotencyScope` VARCHAR(191) NOT NULL DEFAULT 'guest';
 
-DROP INDEX `Order_idempotencyKey_key` ON `Order`;
+CREATE INDEX `Order_createdByUserId_idx` ON `Order`(`createdByUserId`);
+
+DROP INDEX `Order_createdByUserId_idempotencyKey_key` ON `Order`;
 
 CREATE UNIQUE INDEX `Order_idempotencyScope_idempotencyKey_key`
   ON `Order`(`idempotencyScope`, `idempotencyKey`);
