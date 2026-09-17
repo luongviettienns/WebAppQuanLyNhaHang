@@ -11,7 +11,7 @@ import {
   Text,
   View
 } from 'react-native';
-import { Bell, Check, ChefHat, ChevronLeft, ChevronRight, CreditCard, FileText, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
+import { Bell, Check, ChefHat, ChevronLeft, ChevronRight, CreditCard, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
 import { DiningTableDto, MenuItemDto, OrderDto, OrderStatus } from '../../api/contracts';
 import { getApiBaseUrl } from '../../api/config';
 import { useRestaurant } from '../../contexts/RestaurantContext';
@@ -23,7 +23,7 @@ import type { StatusTone } from '../../ui';
 import { MenuCategoryPills } from '../pos/MenuCategoryPills';
 import { MenuItemCard } from '../pos/MenuItemCard';
 import { ModifierModal } from '../pos/ModifierModal';
-import { ReceiptModal } from '../pos/ReceiptModal';
+import { CustomerCartModal } from './CustomerCartModal';
 import { notificationHelper } from '../../lib/notificationHelper';
 
 interface Props {
@@ -65,9 +65,14 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     openModifierModal,
     closeModifierModal,
     cart,
-    cartItemCount,
+    cartSubtotal,
+    cartVat,
     cartTotal,
+    cartItemCount,
     addToCart,
+    updateCartQuantity,
+    removeFromCart,
+    clearCart,
     createDineInOrder,
     tables,
     fetchTables,
@@ -81,7 +86,8 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
   const [isVietQRModalOpen, setIsVietQRModalOpen] = useState(false);
   const [isNotifPromptModalOpen, setIsNotifPromptModalOpen] = useState(false);
   const [isBrowsingMenu, setIsBrowsingMenu] = useState(false);
-  const [receiptOrder, setReceiptOrder] = useState<OrderDto | null>(null);
+  const [isCartModalOpen, setIsCartModalOpen] = useState(false);
+  const [orderNotes, setOrderNotes] = useState('');
   const [guestTable, setGuestTable] = useState<DiningTableDto | null>(null);
   const [guestTableError, setGuestTableError] = useState<string | null>(null);
   const [resolvedQrToken, setResolvedQrToken] = useState<string | null>(qrCodeToken || null);
@@ -315,13 +321,15 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     notificationHelper.requestPermission().catch(() => {});
 
     const tokenToSend = effectiveQrToken || (table as any)?.qrCodeToken || undefined;
-    const result = await createDineInOrder(tableId, undefined, tokenToSend);
+    const result = await createDineInOrder(tableId, orderNotes.trim() || undefined, tokenToSend);
     setIsSubmitting(false);
 
     if (result.success && result.order) {
       setCurrentOrder(result.order);
       setSelectedOrderId(result.order.id);
       setIsBrowsingMenu(false);
+      setIsCartModalOpen(false);
+      setOrderNotes('');
       showToast({
         type: 'success',
         title: 'Đặt món thành công! 🚀',
@@ -407,8 +415,35 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
         )}
       </View>
 
-      {liveOrder && !isBrowsingMenu && cart.length === 0 ? (
+      {liveOrder && !isBrowsingMenu ? (
         <ScrollView contentContainerStyle={styles.progressContent} showsVerticalScrollIndicator={false}>
+          {cartItemCount > 0 && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Bạn đang có ${cartItemCount} món trong giỏ hàng. Chạm để xem và gửi bếp.`}
+              onPress={() => setIsCartModalOpen(true)}
+              style={[
+                styles.pendingCartAlert,
+                { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }
+              ]}
+            >
+              <View style={styles.pendingCartAlertLeft}>
+                <View style={[styles.cartBadge, { backgroundColor: theme.primary }]}>
+                  <AppIcon icon={ShoppingBag} color={theme.textInverse} size={15} />
+                </View>
+                <View style={styles.cartBarCopyText}>
+                  <Text style={[styles.pendingCartAlertTitle, { color: theme.primary }]}>
+                    Giỏ hàng có {cartItemCount} món chưa gửi bếp ({formatVND(cartTotal)})
+                  </Text>
+                  <Text style={[styles.pendingCartAlertSub, { color: theme.textSecondary }]}>
+                    Chạm để xem giỏ hàng hoặc gửi tiếp đợt món mới
+                  </Text>
+                </View>
+              </View>
+              <AppIcon icon={ChevronRight} color={theme.primary} size={18} />
+            </Pressable>
+          )}
+
           <View style={styles.progressHeading}>
             <View style={styles.progressHeadingCopy}>
               <Text accessibilityRole="header" style={[styles.screenTitle, { color: theme.textPrimary }]}>
@@ -676,24 +711,6 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                             Đặt lúc {new Date(batchOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                           </Text>
                         </View>
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="Xem phiếu tính tiền đợt này"
-                          onPress={(e) => {
-                            e.stopPropagation?.();
-                            setReceiptOrder(batchOrder);
-                          }}
-                          style={({ pressed }) => [
-                            styles.batchReceiptBtn,
-                            {
-                              borderColor: theme.borderSubtle,
-                              backgroundColor: pressed ? theme.surfaceRaised : theme.surfaceSunken
-                            }
-                          ]}
-                        >
-                          <AppIcon icon={FileText} size={13} color={theme.textSecondary} />
-                          <Text style={[styles.batchReceiptBtnText, { color: theme.textSecondary }]}>Phiếu bill</Text>
-                        </Pressable>
                       </View>
 
                       <View style={styles.batchItemsList}>
@@ -746,7 +763,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                 <View style={[styles.grandTotalCard, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderStrong }]}>
                   <View>
                     <Text style={[styles.grandTotalLabel, { color: theme.textPrimary }]}>
-                      Tổng hóa đơn cả bàn ({allTableOrders.length} đợt)
+                      Tổng thanh toán cả bàn ({allTableOrders.length} đợt gọi món)
                     </Text>
                     <Text style={[styles.vatNote, { color: theme.textSecondary }]}>Đã gồm thuế VAT 8%</Text>
                   </View>
@@ -766,24 +783,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                       Đặt lúc {new Date(liveOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                     </Text>
                   </View>
-                  <View style={styles.singleOrderHeaderRight}>
-                    <StatusBadge {...orderStatusConfig(liveOrder.status)} />
-                    <Pressable
-                      accessibilityRole="button"
-                      accessibilityLabel="Xem phiếu tính tiền"
-                      onPress={() => setReceiptOrder(liveOrder)}
-                      style={({ pressed }) => [
-                        styles.batchReceiptBtn,
-                        {
-                          borderColor: theme.borderSubtle,
-                          backgroundColor: pressed ? theme.surfaceRaised : theme.surfaceSunken
-                        }
-                      ]}
-                    >
-                      <AppIcon icon={FileText} size={13} color={theme.textSecondary} />
-                      <Text style={[styles.batchReceiptBtnText, { color: theme.textSecondary }]}>Phiếu bill</Text>
-                    </Pressable>
-                  </View>
+                  <StatusBadge {...orderStatusConfig(liveOrder.status)} />
                 </View>
 
                 <View style={styles.singleOrderDivider} />
@@ -889,14 +889,23 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
               testID="customer-cart-summary"
               style={[styles.customerCartBar, elevation.floatingAction, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderSubtle }]}
             >
-              <View style={styles.cartSummaryCopy}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Xem giỏ hàng có ${cartItemCount} món, tổng cộng ${formatVND(cartTotal)}`}
+                onPress={() => setIsCartModalOpen(true)}
+                style={styles.cartSummaryCopy}
+              >
                 <View style={styles.cartHeadingRow}>
-                  <AppIcon icon={ShoppingBag} color={theme.primary} size={18} />
-                  <Text style={[styles.cartTitle, { color: theme.textPrimary }]}>Giỏ hàng</Text>
+                  <View style={[styles.cartBadge, { backgroundColor: theme.primary }]}>
+                    <AppIcon icon={ShoppingBag} color={theme.textInverse} size={15} />
+                  </View>
+                  <View style={styles.cartBarCopyText}>
+                    <Text style={[styles.cartTitle, { color: theme.textPrimary }]}>Xem giỏ hàng ({cartItemCount})</Text>
+                    <Text style={[styles.cartMeta, { color: theme.textSecondary }]}>Chạm để xem món & sửa</Text>
+                  </View>
                 </View>
-                <Text style={[styles.cartMeta, { color: theme.textSecondary }]}>{cartItemCount} món</Text>
-                <Text style={[styles.cartPrice, { color: theme.textPrimary }]}>{formatVND(cartTotal)}</Text>
-              </View>
+                <Text style={[styles.cartPrice, { color: theme.primary }]}>{formatVND(cartTotal)}</Text>
+              </Pressable>
               <View style={styles.cartAction}>
                 <Button
                   variant="primary"
@@ -1020,11 +1029,23 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
         </View>
       </Modal>
 
-      {/* Modal xem chi tiet phieu tinh tien hoa don e-bill */}
-      <ReceiptModal
-        visible={Boolean(receiptOrder)}
-        order={receiptOrder}
-        onClose={() => setReceiptOrder(null)}
+      {/* Modal xem va chinh sua gio hang cho khach */}
+      <CustomerCartModal
+        visible={isCartModalOpen}
+        tableNumber={displayTableNumber}
+        cart={cart}
+        cartItemCount={cartItemCount}
+        cartSubtotal={cartSubtotal}
+        cartVat={cartVat}
+        cartTotal={cartTotal}
+        orderNotes={orderNotes}
+        onChangeOrderNotes={setOrderNotes}
+        onUpdateQuantity={updateCartQuantity}
+        onRemoveItem={removeFromCart}
+        onClearCart={clearCart}
+        onSubmitOrder={() => void handleSendToKitchen()}
+        isSubmitting={isSubmitting}
+        onClose={() => setIsCartModalOpen(false)}
       />
     </SafeAreaView>
   );
@@ -1501,18 +1522,39 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.body,
     fontSize: typography.sizes.xs
   },
-  batchReceiptBtn: {
+  pendingCartAlert: {
     alignItems: 'center',
-    borderRadius: radii.sm,
-    borderWidth: 1,
+    borderRadius: radii.md,
+    borderWidth: 1.5,
     flexDirection: 'row',
-    gap: 4,
-    paddingHorizontal: spacing.xs + 2,
-    paddingVertical: 3
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    padding: spacing.md
   },
-  batchReceiptBtnText: {
+  pendingCartAlertLeft: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm
+  },
+  pendingCartAlertTitle: {
     fontFamily: typography.families.bodySemibold,
-    fontSize: 11
+    fontSize: typography.sizes.sm
+  },
+  pendingCartAlertSub: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs,
+    marginTop: 2
+  },
+  cartBadge: {
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    height: 28,
+    justifyContent: 'center',
+    width: 28
+  },
+  cartBarCopyText: {
+    gap: 2
   },
   batchOrderTitleRow: {
     alignItems: 'center',
