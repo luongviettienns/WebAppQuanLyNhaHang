@@ -86,6 +86,33 @@ export class ReportsService {
       .sort((a, b) => b.quantitySold - a.quantitySold || b.revenue - a.revenue)
       .slice(0, 5);
 
+    // Tinh phan bo doanh thu theo phuong thuc thanh toan tu cac don COMPLETED
+    let cashTotal = 0;
+    let cashCount = 0;
+    let bankTransferTotal = 0;
+    let bankTransferCount = 0;
+    let otherTotal = 0;
+    let otherCount = 0;
+
+    for (const order of completedOrdersList) {
+      if (order.paymentMethod === 'CASH') {
+        cashCount += 1;
+        cashTotal += order.finalAmount;
+      } else if (order.paymentMethod === 'BANK_TRANSFER') {
+        bankTransferCount += 1;
+        bankTransferTotal += order.finalAmount;
+      } else {
+        otherCount += 1;
+        otherTotal += order.finalAmount;
+      }
+    }
+
+    const paymentBreakdown = {
+      cash: { count: cashCount, total: cashTotal },
+      bankTransfer: { count: bankTransferCount, total: bankTransferTotal },
+      other: { count: otherCount, total: otherTotal }
+    };
+
     return {
       report: {
         date: targetDate,
@@ -95,7 +122,8 @@ export class ReportsService {
         totalRevenue,
         averageOrderValue,
         averagePrepTimeSec,
-        topSellers
+        topSellers,
+        paymentBreakdown
       }
     };
   }

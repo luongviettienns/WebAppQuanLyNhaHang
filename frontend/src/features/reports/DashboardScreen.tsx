@@ -11,7 +11,9 @@ import {
   RefreshCw,
   TrendingUp,
   Award,
-  BarChart2
+  BarChart2,
+  CreditCard,
+  QrCode
 } from 'lucide-react-native';
 import {
   StyleSheet,
@@ -129,6 +131,14 @@ export const DashboardScreen: React.FC = () => {
   const totalOrdersCount = report?.totalOrders || 0;
   const completionRate =
     totalOrdersCount > 0 ? Math.round((completedCount / totalOrdersCount) * 100) : 0;
+
+  // Payment Breakdown data for Cash & Bank Reconciliation
+  const cashData = report?.paymentBreakdown?.cash || { count: 0, total: 0 };
+  const bankData = report?.paymentBreakdown?.bankTransfer || { count: 0, total: 0 };
+  const otherPaymentData = report?.paymentBreakdown?.other || { count: 0, total: 0 };
+  const totalPaidRevenue = cashData.total + bankData.total + otherPaymentData.total;
+  const cashPercent = totalPaidRevenue > 0 ? Math.round((cashData.total / totalPaidRevenue) * 100) : 0;
+  const bankPercent = totalPaidRevenue > 0 ? Math.round((bankData.total / totalPaidRevenue) * 100) : 0;
 
   const maxTopSellerQuantity = Math.max(1, ...(report?.topSellers || []).map((item) => item.quantitySold));
   const reportPalette = {
@@ -478,7 +488,121 @@ export const DashboardScreen: React.FC = () => {
               )}
             </Surface>
 
-            {/* 2. ĐỐI SOÁT HÓA ĐƠN TRONG PHIÊN */}
+            {/* 2. PHÂN BỔ THANH TOÁN CHỐT KÉT */}
+            <Surface level="raised" style={styles.sectionSurface}>
+              <View style={styles.sectionHeaderRow}>
+                <View>
+                  <Text accessibilityRole="header" style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+                    Phân bổ thanh toán & Chốt két
+                  </Text>
+                  <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+                    Đối chiếu tiền mặt trong két và tiền chuyển khoản ngân hàng.
+                  </Text>
+                </View>
+                <AppIcon icon={CreditCard} color={brandColors.primary} size={20} />
+              </View>
+
+              {totalPaidRevenue > 0 ? (
+                <View style={styles.paymentReconcileContent}>
+                  {/* Thanh tỷ trọng tiền mặt vs chuyển khoản */}
+                  <View accessibilityLabel="Phân bổ phương thức thanh toán" style={[styles.outcomeBar, { backgroundColor: theme.surfaceSunken }]}>
+                    {cashData.total > 0 && (
+                      <View style={{ backgroundColor: brandColors.success, flex: cashData.total }} />
+                    )}
+                    {bankData.total > 0 && (
+                      <View style={{ backgroundColor: '#2563EB', flex: bankData.total }} />
+                    )}
+                    {otherPaymentData.total > 0 && (
+                      <View style={{ backgroundColor: '#F59E0B', flex: otherPaymentData.total }} />
+                    )}
+                  </View>
+
+                  {/* 2 Hộp số liệu đối soát chính */}
+                  <View style={[styles.paymentBoxesRow, isMobile && styles.paymentBoxesRowMobile]}>
+                    {/* Hộp Tiền mặt CASH */}
+                    <View
+                      style={[
+                        styles.paymentBox,
+                        {
+                          backgroundColor: theme.surfaceCanvas,
+                          borderColor: theme.borderSubtle,
+                          borderLeftColor: brandColors.success,
+                          borderLeftWidth: 3
+                        }
+                      ]}
+                    >
+                      <View style={styles.paymentBoxHeader}>
+                        <View style={styles.paymentLabelGroup}>
+                          <View style={[styles.paymentIconBadge, { backgroundColor: `${brandColors.success}18` }]}>
+                            <AppIcon icon={ReceiptText} color={brandColors.success} size={15} />
+                          </View>
+                          <Text style={[styles.paymentBoxTitle, { color: theme.textPrimary }]}>
+                            Tiền mặt (Trong két)
+                          </Text>
+                        </View>
+                        <View style={[styles.rateBadge, { backgroundColor: `${brandColors.success}18` }]}>
+                          <Text style={[styles.rateBadgeText, { color: brandColors.success }]}>
+                            {cashPercent}%
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.paymentAmountText, { color: theme.textPrimary }]}>
+                        {cashData.total.toLocaleString('vi-VN')} đ
+                      </Text>
+                      <View style={styles.paymentMetaRow}>
+                        <Text style={[styles.paymentMetaText, { color: theme.textSecondary }]}>
+                          {cashData.count} đơn · Cần kiểm đếm két
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Hộp Chuyển khoản QR */}
+                    <View
+                      style={[
+                        styles.paymentBox,
+                        {
+                          backgroundColor: theme.surfaceCanvas,
+                          borderColor: theme.borderSubtle,
+                          borderLeftColor: '#2563EB',
+                          borderLeftWidth: 3
+                        }
+                      ]}
+                    >
+                      <View style={styles.paymentBoxHeader}>
+                        <View style={styles.paymentLabelGroup}>
+                          <View style={[styles.paymentIconBadge, { backgroundColor: '#2563EB18' }]}>
+                            <AppIcon icon={QrCode} color="#2563EB" size={15} />
+                          </View>
+                          <Text style={[styles.paymentBoxTitle, { color: theme.textPrimary }]}>
+                            Chuyển khoản QR
+                          </Text>
+                        </View>
+                        <View style={[styles.rateBadge, { backgroundColor: '#2563EB18' }]}>
+                          <Text style={[styles.rateBadgeText, { color: '#2563EB' }]}>
+                            {bankPercent}%
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={[styles.paymentAmountText, { color: theme.textPrimary }]}>
+                        {bankData.total.toLocaleString('vi-VN')} đ
+                      </Text>
+                      <View style={styles.paymentMetaRow}>
+                        <Text style={[styles.paymentMetaText, { color: theme.textSecondary }]}>
+                          {bankData.count} đơn · Đối soát tài khoản
+                        </Text>
+                      </View>
+                    </View>
+                  </View>
+                </View>
+              ) : (
+                <EmptyState
+                  title="Chưa có dữ liệu thanh toán"
+                  description="Doanh thu tiền mặt và chuyển khoản sẽ hiển thị khi có đơn hoàn tất."
+                />
+              )}
+            </Surface>
+
+            {/* 3. ĐỐI SOÁT HÓA ĐƠN TRONG PHIÊN */}
             <Surface level="raised" style={styles.sectionSurface}>
               <View style={styles.sectionHeaderRow}>
                 <View>
@@ -1119,5 +1243,59 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.body,
     fontSize: typography.sizes.xs,
     fontVariant: ['tabular-nums']
+  },
+
+  /* Payment reconciliation */
+  paymentReconcileContent: {
+    gap: spacing.md
+  },
+  paymentBoxesRow: {
+    flexDirection: 'row',
+    gap: spacing.sm
+  },
+  paymentBoxesRowMobile: {
+    flexDirection: 'column'
+  },
+  paymentBox: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    flex: 1,
+    gap: spacing.xs,
+    padding: spacing.md
+  },
+  paymentBoxHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between'
+  },
+  paymentLabelGroup: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs
+  },
+  paymentIconBadge: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    height: 26,
+    justifyContent: 'center',
+    width: 26
+  },
+  paymentBoxTitle: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.xs
+  },
+  paymentAmountText: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.lg,
+    fontVariant: ['tabular-nums']
+  },
+  paymentMetaRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 4
+  },
+  paymentMetaText: {
+    fontFamily: typography.families.body,
+    fontSize: 11
   }
 });

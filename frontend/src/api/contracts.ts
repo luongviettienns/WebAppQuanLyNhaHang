@@ -213,6 +213,17 @@ export interface TopSellerItemDto {
   revenue: number;
 }
 
+export interface PaymentMethodSummaryDto {
+  count: number;
+  total: number;
+}
+
+export interface PaymentBreakdownDto {
+  cash: PaymentMethodSummaryDto;
+  bankTransfer: PaymentMethodSummaryDto;
+  other: PaymentMethodSummaryDto;
+}
+
 export interface DailyReportDto {
   date: string;
   totalOrders: number;
@@ -222,6 +233,7 @@ export interface DailyReportDto {
   averageOrderValue: number;
   averagePrepTimeSec: number;
   topSellers: TopSellerItemDto[];
+  paymentBreakdown?: PaymentBreakdownDto;
 }
 
 // ==========================================

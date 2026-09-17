@@ -86,6 +86,11 @@ describe('Daily Reports & Analytics API (Task 13 - Module M7)', () => {
       expect(res.body.data.report.averageOrderValue).toBe(0);
       expect(res.body.data.report.averagePrepTimeSec).toBe(0);
       expect(res.body.data.report.topSellers).toEqual([]);
+      expect(res.body.data.report.paymentBreakdown).toEqual({
+        cash: { count: 0, total: 0 },
+        bankTransfer: { count: 0, total: 0 },
+        other: { count: 0, total: 0 }
+      });
     });
   });
 
@@ -124,6 +129,7 @@ describe('Daily Reports & Analytics API (Task 13 - Module M7)', () => {
           totalAmount: 100000,
           vatAmount: 8000,
           finalAmount: 108000,
+          paymentMethod: 'CASH',
           paymentStatus: 'PAID',
           paidAt: new Date('2026-08-15T00:05:00+07:00'),
           createdAt: new Date('2026-08-15T00:00:10+07:00'),
@@ -152,6 +158,7 @@ describe('Daily Reports & Analytics API (Task 13 - Module M7)', () => {
           totalAmount: 200000,
           vatAmount: 16000,
           finalAmount: 216000,
+          paymentMethod: 'BANK_TRANSFER',
           paymentStatus: 'PAID',
           paidAt: new Date('2026-08-15T12:40:00+07:00'),
           createdAt: new Date('2026-08-15T12:30:00+07:00'),
@@ -269,6 +276,13 @@ describe('Daily Reports & Analytics API (Task 13 - Module M7)', () => {
       expect(report.topSellers[0].revenue).toBe(250000);
       expect(report.topSellers[1].quantitySold).toBe(2);
       expect(report.topSellers[1].revenue).toBe(50000);
+
+      // Payment Breakdown: Order 2 (CASH 108000) + Order 3 (BANK_TRANSFER 216000)
+      expect(report.paymentBreakdown).toEqual({
+        cash: { count: 1, total: 108000 },
+        bankTransfer: { count: 1, total: 216000 },
+        other: { count: 0, total: 0 }
+      });
     });
 
     it('defaults to today when date parameter is omitted and returns valid report structure', async () => {
