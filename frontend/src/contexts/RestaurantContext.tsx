@@ -101,7 +101,7 @@ interface RestaurantContextType {
 const RestaurantContext = createContext<RestaurantContextType | undefined>(undefined);
 
 export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { token, handleUnauthorized } = useAuth();
+  const { user, token, handleUnauthorized } = useAuth();
   const [socketUrl, setSocketUrl] = useState<string>(getSocketBaseUrl());
 
   // Menu State
@@ -155,6 +155,15 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // 2. Fetch Tables from Backend API
   const fetchTables = useCallback(async () => {
+    // Bep khong quan ly so do ban, bo qua de tranh loi 403 Forbidden
+    if (user?.role === 'KITCHEN') {
+      setTables([]);
+      setActiveTableId(null);
+      setActiveTableOrder(null);
+      setIsLoadingTables(false);
+      return;
+    }
+
     setIsLoadingTables(true);
     try {
       if (!token) {
@@ -173,6 +182,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         return;
       }
 
+      if (response.status === 403) {
+        setTables([]);
+        return;
+      }
+
       const json = await response.json();
 
       if (!response.ok) {
@@ -185,10 +199,15 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     } finally {
       setIsLoadingTables(false);
     }
-  }, [token, handleUnauthorized]);
+  }, [user?.role, token, handleUnauthorized]);
 
   // 3. Fetch KDS Orders from Backend API
   const fetchKDSOrders = useCallback(async () => {
+    // Chi KITCHEN va ADMIN moi co quyen xem danh sach KDS Orders
+    if (user && user.role !== 'KITCHEN' && user.role !== 'ADMIN') {
+      return;
+    }
+
     setIsLoadingKDS(true);
     setKdsError(null);
     try {
@@ -201,20 +220,24 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         return;
       }
 
+      if (response.status === 403) {
+        return;
+      }
+
       const json = await response.json();
 
       if (!response.ok) {
-        throw new Error(json.error?.message || 'Không thể tải danh sách đơn bếp');
+        throw new Error(json.error?.message || 'Không thể tải đơn hàng KDS');
       }
 
       setKdsOrders(json.data || []);
     } catch (err: any) {
-      console.error('Lỗi tải đơn KDS:', err);
-      setKdsError(err.message || 'Lỗi kết nối máy chủ');
+      console.error('Loi tai don hang KDS:', err);
+      setKdsError(err.message || 'Lỗi tải đơn hàng KDS');
     } finally {
       setIsLoadingKDS(false);
     }
-  }, [token, handleUnauthorized]);
+  }, [user?.role, token, handleUnauthorized]);
 
   // 4. Update Order Status (FSM: PENDING -> PREPARING -> READY -> COMPLETED)
   const updateOrderStatus = useCallback(
@@ -262,14 +285,24 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     return onServerConfigChanged((newUrl) => {
       setSocketUrl(newUrl);
       fetchMenu();
-      fetchTables();
+      if (user?.role !== 'KITCHEN') {
+        fetchTables();
+      }
+      if (user?.role === 'KITCHEN' || user?.role === 'ADMIN') {
+        fetchKDSOrders();
+      }
     });
-  }, [fetchMenu, fetchTables]);
+  }, [fetchMenu, fetchTables, fetchKDSOrders, user?.role]);
 
   useEffect(() => {
     fetchMenu();
-    fetchTables();
-  }, [fetchMenu, fetchTables]);
+    if (user?.role !== 'KITCHEN') {
+      fetchTables();
+    }
+    if (user?.role === 'KITCHEN' || user?.role === 'ADMIN') {
+      fetchKDSOrders();
+    }
+  }, [fetchMenu, fetchTables, fetchKDSOrders, user?.role]);
 
   // 5. Real-time Socket.io listeners
   useEffect(() => {
@@ -316,7 +349,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     // Order Status Changed
     socket.on('order:statusChanged', (payload: SocketOrderStatusChangedPayload) => {
       setLatestOrderStatusChanged(payload);
-      fetchTables();
+      if (user?.role !== 'KITCHEN') {
+        fetchTables();
+      }
       setActiveTableOrder((prev) => {
         if (prev && prev.id === payload.orderId) {
           return { ...prev, status: payload.status };
@@ -369,8 +404,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
     // Order New (Xuất hiện đơn mới từ POS hoặc QR khách)
     socket.on('order:new', (payload: SocketOrderNewPayload) => {
-      // Re-fetch tables to sync fresh floor map
-      fetchTables();
+      // Re-fetch tables to sync fresh floor map (chi khi khong phai la Bep)
+      if (user?.role !== 'KITCHEN') {
+        fetchTables();
+      }
       if (payload?.order) {
         setKdsOrders((prev) => {
           const exists = prev.some((o) => o.id === payload.order.id);
@@ -383,7 +420,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     return () => {
       socket.disconnect();
     };
-  }, [token, fetchTables]);
+  }, [token, fetchTables, user?.role]);
 
   // 4. Computed Menu Items
   const allMenuItems = categories.flatMap((cat) => cat.menuItems || []);
