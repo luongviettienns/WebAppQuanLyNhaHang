@@ -5,7 +5,10 @@ import { authorize } from '../../middlewares/authorize';
 
 export const inventoryRouter = Router();
 
-// Tat ca cac route quan ly kho va dinh luong yeu cau quyen ADMIN
+// File mau Excel la tai nguyen mau khong chua du lieu nhay cam
+inventoryRouter.get('/excel/template', InventoryController.downloadTemplate);
+
+// Tat ca cac route con lai quan ly kho va dinh luong yeu cau quyen ADMIN
 inventoryRouter.use(authenticate, authorize('ADMIN'));
 
 // Nguyen vat lieu

@@ -323,24 +323,65 @@ export const InventoryScreen: React.FC = () => {
   };
 
   // Download Excel Template
-  const handleDownloadTemplate = () => {
-    const base = getApiBaseUrl();
-    const url = `${base}/api/inventory/excel/template`;
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.open(url, '_blank');
-    } else {
-      setErrorMessage(`Vui lòng mở link sau để tải file: ${url}`);
+  const handleDownloadTemplate = async () => {
+    try {
+      setErrorMessage(null);
+      const base = getApiBaseUrl();
+      const url = `${base}/api/inventory/excel/template`;
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const res = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error?.message || 'Không thể tải file mẫu');
+        }
+        const blob = await res.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = 'Mau_Nhap_Kho_CrispyBite.xlsx';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(blobUrl);
+      } else {
+        setErrorMessage(`Vui lòng mở link sau để tải file: ${url}`);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Lỗi tải file mẫu');
     }
   };
 
   // Export Stock to Excel
-  const handleExportStock = () => {
-    const base = getApiBaseUrl();
-    const url = `${base}/api/inventory/excel/export`;
-    if (Platform.OS === 'web' && typeof window !== 'undefined') {
-      window.open(url, '_blank');
-    } else {
-      setErrorMessage(`Vui lòng mở link sau để xuất file: ${url}`);
+  const handleExportStock = async () => {
+    try {
+      setErrorMessage(null);
+      const base = getApiBaseUrl();
+      const url = `${base}/api/inventory/excel/export`;
+      if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof document !== 'undefined') {
+        const res = await fetch(url, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error?.message || 'Không thể xuất file tồn kho');
+        }
+        const blob = await res.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        const dateStr = new Date().toISOString().split('T')[0];
+        a.download = `Bao_Cao_Ton_Kho_${dateStr}.xlsx`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(blobUrl);
+      } else {
+        setErrorMessage(`Vui lòng mở link sau để xuất file: ${url}`);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Lỗi xuất dữ liệu tồn kho');
     }
   };
 
