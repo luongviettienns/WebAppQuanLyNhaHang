@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -18,17 +18,30 @@ import {
   Plus,
   RefreshCw,
   SlidersHorizontal,
-  UserCheck
+  UserCheck,
+  Layers,
+  Package,
+  ArrowDownToLine,
+  FileSpreadsheet
 } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useAuth } from '../../contexts/AuthContext';
+import { useRestaurant } from '../../contexts/RestaurantContext';
 import { AuditLogDto, AuditLogsPageDto } from '../../api/contracts';
 import { getApiBaseUrl } from '../../api/config';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import { statusTone, StatusTone } from '../../ui/tokens';
 
-type FilterCategory = 'ALL' | 'MENU' | 'IMAGE' | 'ORDER';
+type FilterCategory = 'ALL' | 'MENU' | 'INVENTORY' | 'IMAGE' | 'ORDER';
+
+const FILTER_OPTIONS: Array<{ id: FilterCategory; label: string }> = [
+  { id: 'ALL', label: 'Tất cả' },
+  { id: 'MENU', label: 'Thực đơn' },
+  { id: 'INVENTORY', label: 'Kho & Định lượng' },
+  { id: 'IMAGE', label: 'Tải ảnh' },
+  { id: 'ORDER', label: 'Hủy đơn' }
+];
 
 function formatVnd(amount: number): string {
   return new Intl.NumberFormat('vi-VN', {
@@ -63,6 +76,7 @@ function formatRelativeTime(dateIso: string): string {
 export const AuditLogScreen: React.FC = () => {
   const { theme } = useTheme();
   const { token } = useAuth();
+  const { allMenuItems } = useRestaurant();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
@@ -76,6 +90,45 @@ export const AuditLogScreen: React.FC = () => {
   const [isLoadingMore, setIsLoadingMore] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [ingredientMap, setIngredientMap] = useState<Map<number, { name: string; unit: string }>>(new Map());
+
+  const menuItemNameMap = useMemo(() => {
+    const map = new Map<number, string>();
+    allMenuItems.forEach((item) => {
+      map.set(item.id, item.name);
+    });
+    return map;
+  }, [allMenuItems]);
+
+  const fetchIngredients = useCallback(async () => {
+    if (!token) return;
+    try {
+      const base = getApiBaseUrl();
+      const res = await fetch(`${base}/api/inventory/ingredients`, {
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      if (res.ok) {
+        const json = await res.json();
+        if (json.data && Array.isArray(json.data)) {
+          const map = new Map<number, { name: string; unit: string }>();
+          json.data.forEach((ing: any) => {
+            map.set(ing.id, { name: ing.name, unit: ing.unit });
+          });
+          setIngredientMap(map);
+        }
+      }
+    } catch {
+      // Non-blocking
+    }
+  }, [token]);
+
+  useEffect(() => {
+    fetchIngredients();
+  }, [fetchIngredients]);
 
   const fetchLogs = useCallback(
     async (targetPage: number, currentFilter: FilterCategory, isAppend = false) => {
@@ -92,12 +145,8 @@ export const AuditLogScreen: React.FC = () => {
         params.append('page', String(targetPage));
         params.append('limit', '20');
 
-        if (currentFilter === 'ORDER') {
-          params.append('action', 'ORDER_VOIDED');
-        } else if (currentFilter === 'IMAGE') {
-          params.append('action', 'MENU_IMAGE_UPLOADED');
-        } else if (currentFilter === 'MENU') {
-          params.append('targetType', 'MenuItem');
+        if (currentFilter !== 'ALL') {
+          params.append('category', currentFilter);
         }
 
         const res = await fetch(`${base}/api/audit?${params.toString()}`, {
@@ -140,8 +189,9 @@ export const AuditLogScreen: React.FC = () => {
 
   const handleRefresh = useCallback(() => {
     setIsRefreshing(true);
+    fetchIngredients();
     fetchLogs(1, filter, false);
-  }, [fetchLogs, filter]);
+  }, [fetchIngredients, fetchLogs, filter]);
 
   const handleLoadMore = useCallback(() => {
     if (page < totalPages && !isLoadingMore && !isLoading) {
@@ -181,9 +231,39 @@ export const AuditLogScreen: React.FC = () => {
           tone: 'danger',
           icon: Ban
         };
+      case 'MENU_RECIPE_UPDATED':
+        return {
+          title: 'Định lượng món (BOM)',
+          tone: 'info',
+          icon: Layers
+        };
+      case 'INGREDIENT_CREATED':
+        return {
+          title: 'Thêm nguyên liệu mới',
+          tone: 'success',
+          icon: Package
+        };
+      case 'INGREDIENT_UPDATED':
+        return {
+          title: 'Sửa thông tin nguyên liệu',
+          tone: 'info',
+          icon: Pencil
+        };
+      case 'INVENTORY_STOCK_IN':
+        return {
+          title: 'Nhập kho nguyên liệu',
+          tone: 'success',
+          icon: ArrowDownToLine
+        };
+      case 'INVENTORY_EXCEL_IMPORT':
+        return {
+          title: 'Nhập kho từ Excel',
+          tone: 'success',
+          icon: FileSpreadsheet
+        };
       default:
         return {
-          title: action,
+          title: action.replace(/_/g, ' '),
           tone: 'neutral',
           icon: ClipboardList
         };
@@ -264,12 +344,217 @@ export const AuditLogScreen: React.FC = () => {
           </View>
         );
 
-      default:
+      case 'MENU_RECIPE_UPDATED': {
+        const dishName =
+          meta.menuItemName ||
+          (log.targetId ? menuItemNameMap.get(log.targetId) : undefined) ||
+          (log.targetId ? `Món ăn #${log.targetId}` : 'Món ăn');
+        const count = meta.ingredientsCount ?? 0;
         return (
-          <Text style={[styles.metaText, { color: theme.textSecondary }]}>
-            {JSON.stringify(meta)}
-          </Text>
+          <View style={styles.metaCol}>
+            <View style={styles.metaRow}>
+              <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Món ăn: </Text>
+              <Text style={[styles.metaBold, { color: theme.textPrimary }]}>{dishName}</Text>
+            </View>
+            <View style={[styles.metaRow, { marginTop: 4 }]}>
+              <View style={[styles.inlineBadge, { backgroundColor: theme.interactiveSecondary }]}>
+                <AppIcon icon={Layers} size={12} color={theme.primary} />
+                <Text style={[styles.inlineBadgeText, { color: theme.primary }]}>
+                  {count > 0
+                    ? `Đã thiết lập định lượng gồm ${count} nguyên vật liệu cấu thành`
+                    : 'Đã xóa toàn bộ định lượng món'}
+                </Text>
+              </View>
+            </View>
+          </View>
         );
+      }
+
+      case 'INGREDIENT_CREATED':
+        return (
+          <View style={styles.metaCol}>
+            <View style={styles.metaRow}>
+              <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Nguyên liệu: </Text>
+              <Text style={[styles.metaBold, { color: theme.textPrimary }]}>{meta.name || 'Nguyên liệu mới'}</Text>
+              {meta.sku ? <Text style={[styles.metaSub, { color: theme.textSecondary }]}> (SKU: {meta.sku})</Text> : null}
+            </View>
+            <View style={[styles.metaChipsRow, { marginTop: 4 }]}>
+              {meta.unit && (
+                <View style={[styles.inlineBadge, { backgroundColor: theme.surfaceSunken }]}>
+                  <Text style={[styles.inlineBadgeText, { color: theme.textSecondary }]}>Đơn vị: {meta.unit}</Text>
+                </View>
+              )}
+              {meta.stock != null && (
+                <View style={[styles.inlineBadge, { backgroundColor: theme.interactiveSecondary }]}>
+                  <Text style={[styles.inlineBadgeText, { color: theme.primary }]}>
+                    Tồn ban đầu: {meta.stock} {meta.unit || ''}
+                  </Text>
+                </View>
+              )}
+              {meta.costPerUnit != null && meta.costPerUnit > 0 && (
+                <View style={[styles.inlineBadge, { backgroundColor: theme.surfaceSunken }]}>
+                  <Text style={[styles.inlineBadgeText, { color: theme.textSecondary }]}>
+                    Giá vốn: {formatVnd(meta.costPerUnit)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        );
+
+      case 'INGREDIENT_UPDATED': {
+        const ingName =
+          meta.name ||
+          meta.updated?.name ||
+          meta.old?.name ||
+          (log.targetId ? ingredientMap.get(log.targetId)?.name : undefined) ||
+          (log.targetId ? `Nguyên liệu #${log.targetId}` : 'Nguyên liệu');
+        const oldCost = meta.old?.costPerUnit;
+        const newCost = meta.updated?.costPerUnit;
+        const oldMin = meta.old?.minThreshold;
+        const newMin = meta.updated?.minThreshold;
+        const oldUnit = meta.old?.unit;
+        const newUnit = meta.updated?.unit;
+        const oldName = meta.old?.name;
+        const newName = meta.updated?.name;
+
+        const hasCostChange = oldCost != null && newCost != null && oldCost !== newCost;
+        const hasMinChange = oldMin != null && newMin != null && oldMin !== newMin;
+        const hasNameChange = oldName && newName && oldName !== newName;
+        const hasUnitChange = oldUnit && newUnit && oldUnit !== newUnit;
+
+        return (
+          <View style={styles.metaCol}>
+            <View style={styles.metaRow}>
+              <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Nguyên liệu: </Text>
+              <Text style={[styles.metaBold, { color: theme.textPrimary }]}>{ingName}</Text>
+            </View>
+            <View style={[styles.metaCol, { marginTop: 4, gap: 3 }]}>
+              {hasNameChange && (
+                <Text style={[styles.metaText, { color: theme.textSecondary }]}>
+                  Đổi tên: &quot;{oldName}&quot; ➔ <Text style={{ color: theme.textPrimary, fontWeight: '600' }}>&quot;{newName}&quot;</Text>
+                </Text>
+              )}
+              {hasCostChange && (
+                <Text style={[styles.metaText, { color: theme.textSecondary }]}>
+                  Giá vốn: {formatVnd(oldCost)} ➔ <Text style={{ color: theme.primary, fontWeight: '600' }}>{formatVnd(newCost)}</Text>
+                </Text>
+              )}
+              {hasMinChange && (
+                <Text style={[styles.metaText, { color: theme.textSecondary }]}>
+                  Ngưỡng cảnh báo tồn: {oldMin} ➔ <Text style={{ color: theme.warning, fontWeight: '600' }}>{newMin}</Text> {newUnit || ''}
+                </Text>
+              )}
+              {hasUnitChange && (
+                <Text style={[styles.metaText, { color: theme.textSecondary }]}>
+                  Đơn vị tính: {oldUnit} ➔ <Text style={{ color: theme.textPrimary, fontWeight: '600' }}>{newUnit}</Text>
+                </Text>
+              )}
+              {!hasCostChange && !hasMinChange && !hasNameChange && !hasUnitChange && (
+                <Text style={[styles.metaSub, { color: theme.textSecondary }]}>
+                  Đã cập nhật thông tin cài đặt nguyên liệu thành công.
+                </Text>
+              )}
+            </View>
+          </View>
+        );
+      }
+
+      case 'INVENTORY_STOCK_IN': {
+        const ingName =
+          meta.ingredientName ||
+          (log.targetId ? ingredientMap.get(log.targetId)?.name : undefined) ||
+          (log.targetId ? `Nguyên liệu #${log.targetId}` : 'Nguyên liệu');
+        const unit = meta.unit || (log.targetId ? ingredientMap.get(log.targetId)?.unit : '') || '';
+        return (
+          <View style={styles.metaCol}>
+            <View style={styles.metaRow}>
+              <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Nguyên liệu: </Text>
+              <Text style={[styles.metaBold, { color: theme.textPrimary }]}>{ingName}</Text>
+              <Text style={[styles.metaBold, { color: theme.success, marginLeft: spacing.sm }]}>
+                +{meta.qty} {unit}
+              </Text>
+            </View>
+            <View style={[styles.metaRow, { marginTop: 4, gap: spacing.md, flexWrap: 'wrap' }]}>
+              {meta.cost != null && (
+                <Text style={[styles.metaText, { color: theme.textSecondary }]}>
+                  Đơn giá nhập: <Text style={{ color: theme.primary, fontWeight: '600' }}>{formatVnd(meta.cost)}</Text>
+                </Text>
+              )}
+              {meta.oldStock != null && meta.newStock != null && (
+                <Text style={[styles.metaText, { color: theme.textSecondary }]}>
+                  Tồn kho: {meta.oldStock} ➔ <Text style={{ color: theme.textPrimary, fontWeight: '600' }}>{meta.newStock} {unit}</Text>
+                </Text>
+              )}
+            </View>
+            {meta.newCost != null && meta.newCost !== meta.cost && (
+              <Text style={[styles.metaSub, { color: theme.textSecondary, marginTop: 2 }]}>
+                Giá vốn BQ mới: {formatVnd(meta.newCost)}/{unit || 'đơn vị'}
+              </Text>
+            )}
+            {meta.note ? (
+              <Text style={[styles.metaSub, { color: theme.textSecondary, marginTop: 2, fontStyle: 'italic' }]}>
+                Ghi chú: &quot;{meta.note}&quot;
+              </Text>
+            ) : null}
+          </View>
+        );
+      }
+
+      case 'INVENTORY_EXCEL_IMPORT':
+        return (
+          <View style={styles.metaCol}>
+            <View style={styles.metaRow}>
+              <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Tệp Excel: </Text>
+              <Text style={[styles.metaBold, { color: theme.textPrimary }]}>
+                {meta.sourceFileName || 'Danh sách nhập kho'}
+              </Text>
+            </View>
+            <View style={[styles.metaRow, { marginTop: 4 }]}>
+              <View style={[styles.inlineBadge, { backgroundColor: theme.interactiveSecondary }]}>
+                <AppIcon icon={FileSpreadsheet} size={12} color={theme.primary} />
+                <Text style={[styles.inlineBadgeText, { color: theme.primary }]}>
+                  Đã nhập thành công {meta.importedCount ?? 0} mặt hàng nguyên vật liệu
+                </Text>
+              </View>
+            </View>
+          </View>
+        );
+
+      default: {
+        if (!meta || Object.keys(meta).length === 0) {
+          return (
+            <Text style={[styles.metaSub, { color: theme.textSecondary }]}>
+              Không có thông tin bổ sung.
+            </Text>
+          );
+        }
+        return (
+          <View style={[styles.metaChipsRow, { gap: 6 }]}>
+            {Object.entries(meta).map(([key, val]) => {
+              if (val == null) return null;
+              const formattedKey = key
+                .replace(/([A-Z])/g, ' $1')
+                .replace(/_/g, ' ')
+                .trim();
+              const valStr =
+                typeof val === 'object'
+                  ? JSON.stringify(val)
+                  : typeof val === 'number' && key.toLowerCase().includes('price')
+                  ? formatVnd(val)
+                  : String(val);
+
+              return (
+                <View key={key} style={[styles.inlineBadge, { backgroundColor: theme.surfaceSunken }]}>
+                  <Text style={[styles.inlineBadgeText, { color: theme.textSecondary }]}>
+                    <Text style={{ fontWeight: '600', color: theme.textPrimary }}>{formattedKey}:</Text> {valStr}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        );
+      }
     }
   };
 
@@ -277,7 +562,7 @@ export const AuditLogScreen: React.FC = () => {
     <View style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
       <ScreenHeader
         title="Nhật ký hệ thống"
-        description="Theo dõi và kiểm tra các hành động quản trị (Thực đơn, Ảnh món, Hủy đơn hàng)"
+        description="Theo dõi và kiểm tra các hành động quản trị (Thực đơn, Kho hàng, Định lượng, Hủy đơn)"
         actions={
           <Button
             variant="secondary"
@@ -292,14 +577,7 @@ export const AuditLogScreen: React.FC = () => {
       {/* Filter Tabs & KPI */}
       <View style={[styles.toolbar, isMobile && styles.toolbarMobile, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
         <View style={styles.filterChips}>
-          {(
-            [
-              { id: 'ALL', label: 'Tất cả' },
-              { id: 'MENU', label: 'Thực đơn' },
-              { id: 'IMAGE', label: 'Tải ảnh' },
-              { id: 'ORDER', label: 'Hủy đơn' }
-            ] as const
-          ).map((item) => {
+          {FILTER_OPTIONS.map((item) => {
             const active = filter === item.id;
             return (
               <Pressable
@@ -569,6 +847,28 @@ const styles = StyleSheet.create({
   },
   metaSub: {
     fontSize: typography.sizes.xs,
+    fontFamily: typography.families.bodyMedium
+  },
+  metaChipsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.xs
+  },
+  inlineBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 3,
+    borderRadius: radii.sm
+  },
+  inlineBadgeText: {
+    fontSize: typography.sizes.xs,
+    fontFamily: typography.families.bodyMedium
+  },
+  metaLabel: {
+    fontSize: typography.sizes.sm,
     fontFamily: typography.families.bodyMedium
   },
   loadMoreContainer: {

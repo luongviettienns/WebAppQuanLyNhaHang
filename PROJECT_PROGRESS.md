@@ -163,6 +163,16 @@
       3. Nâng cấp hàm `deductInventoryForOrder` sang toán tử nguyên tử của CSDL: `data: { currentStock: { decrement: qtyNeeded } }` để triệt tiêu hoàn toàn nguy cơ race condition và ghi đè giá trị cũ khi nhiều món cùng trừ 1 nguyên liệu trong 1 giao dịch.
     - *Khóa lỗi bằng Regression Test*: Đã bổ sung 2 test cases trong `seed.spec.ts` và `inventory.api.spec.ts`: (1) Kiểm chứng 20/20 món ăn có BOM đầy đủ; (2) Kiểm chứng đơn hàng nhiều món dùng chung nguyên liệu được trừ kho nguyên tử chính xác tuyệt đối.
 
+29. **Hiển thị Nhật ký Hệ thống thân thiện cho người dùng Non-Code (Human-Friendly Audit Log UI & Metadata Enrichment)**:
+    - *Nguyên nhân gốc rễ (RCA)*: Các action quản trị kho và định lượng mới (`MENU_RECIPE_UPDATED`, `INGREDIENT_CREATED`, `INGREDIENT_UPDATED`, `INVENTORY_STOCK_IN`, `INVENTORY_EXCEL_IMPORT`) chưa được định nghĩa nhãn và view trong `AuditLogScreen.tsx`, khiến hệ thống rơi vào case fallback `JSON.stringify(meta)` in chuỗi JSON thô như `{"ingredientsCount":1}` và mã code kỹ thuật gây khó hiểu cho người dùng vận hành nhà hàng.
+    - *Giải pháp triệt để*:
+      1. **Làm giàu Metadata từ Backend**: Bổ sung `menuItemName`, `ingredientName`, `unit`, và các trường biến động chi tiết vào `AuditService.log` trong `inventory.service.ts`.
+      2. **Thiết kế UI chuyên biệt**: Ánh xạ toàn bộ action sang nhãn tiếng Việt dễ hiểu ("Định lượng món (BOM)", "Nhập kho nguyên liệu", "Tạo mới nguyên liệu", "Nhập kho từ Excel"), kết hợp icon ngữ cảnh (`Layers`, `Package`, `ArrowDownToLine`, `FileSpreadsheet`).
+      3. **Card chi tiết thân thiện**: Hiển thị tên món ăn rõ ràng, số lượng NVL cấu thành kèm badge màu, biến động tồn kho cũ $\rightarrow$ mới, đơn giá nhập, giá vốn bình quân; xóa bỏ 100% việc hiển thị JSON thô.
+      4. **Bộ nhớ tra cứu tự động**: Sử dụng `useRestaurant()` và tải danh mục nguyên liệu để tự động bù tên món ăn/tên NVL cho cả các bản ghi log cũ đã lưu trong DB.
+      5. **Bổ sung bộ lọc "Kho & Định lượng"**: Hỗ trợ param `category=INVENTORY` trên cả API và giao diện để chủ nhà hàng dễ dàng tách biệt nhật ký kho/BOM với thực đơn hay hủy đơn.
+    - *Khóa lỗi bằng Regression Test*: Đã bổ sung 2 test cases trong `backend/test/audit/audit.spec.ts` kiểm chứng chính xác việc lọc theo `category=INVENTORY` và `category=MENU`. 163/163 tests backend và 33/33 tests frontend pass 100%.
+
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
 

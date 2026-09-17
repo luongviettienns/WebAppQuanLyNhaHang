@@ -235,5 +235,50 @@ describe('Audit Log API & Action Logging (Admin Workspace)', () => {
       expect(res.body.data.total).toBeGreaterThanOrEqual(4);
       expect(res.body.data.totalPages).toBeGreaterThanOrEqual(2);
     });
+
+    it('filters logs by category=INVENTORY (Ingredient actions + MENU_RECIPE_UPDATED)', async () => {
+      // 1. Create ingredient
+      const ingRes = await request(app)
+        .post('/api/inventory/ingredients')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          sku: 'AUDIT_ING_01',
+          name: 'Bột chiên xù Audit Test',
+          unit: 'kg',
+          currentStock: 10,
+          costPerUnit: 25000,
+          minThreshold: 2
+        });
+      expect(ingRes.status).toBe(201);
+
+      // 2. Query audit with category=INVENTORY
+      const auditRes = await request(app)
+        .get('/api/audit?category=INVENTORY')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(auditRes.status).toBe(200);
+      expect(auditRes.body.data.logs.length).toBeGreaterThan(0);
+      const createdLog = auditRes.body.data.logs.find(
+        (l: any) => l.action === 'INGREDIENT_CREATED' && l.metadata?.sku === 'AUDIT_ING_01'
+      );
+      expect(createdLog).toBeDefined();
+      expect(createdLog.metadata.name).toBe('Bột chiên xù Audit Test');
+      expect(createdLog.metadata.unit).toBe('kg');
+      expect(createdLog.metadata.stock).toBe(10);
+      expect(createdLog.targetType).toBe('Ingredient');
+    });
+
+    it('filters logs by category=MENU (MenuItem actions excluding MENU_RECIPE_UPDATED)', async () => {
+      const auditRes = await request(app)
+        .get('/api/audit?category=MENU')
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(auditRes.status).toBe(200);
+      expect(auditRes.body.data.logs.length).toBeGreaterThan(0);
+      auditRes.body.data.logs.forEach((log: any) => {
+        expect(log.targetType).toBe('MenuItem');
+        expect(log.action).not.toBe('MENU_RECIPE_UPDATED');
+      });
+    });
   });
 });

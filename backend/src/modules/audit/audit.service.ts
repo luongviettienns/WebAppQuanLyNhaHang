@@ -50,6 +50,29 @@ export class AuditService {
     const skip = (page - 1) * limit;
 
     const where: any = {};
+    if (query.category) {
+      switch (query.category) {
+        case 'MENU':
+          where.targetType = 'MenuItem';
+          where.action = { not: 'MENU_RECIPE_UPDATED' };
+          break;
+        case 'INVENTORY':
+          where.OR = [
+            { targetType: 'Ingredient' },
+            { action: 'MENU_RECIPE_UPDATED' }
+          ];
+          break;
+        case 'IMAGE':
+          where.action = 'MENU_IMAGE_UPLOADED';
+          break;
+        case 'ORDER':
+          where.action = 'ORDER_VOIDED';
+          break;
+        case 'ALL':
+        default:
+          break;
+      }
+    }
     if (query.action) {
       where.action = query.action;
     }

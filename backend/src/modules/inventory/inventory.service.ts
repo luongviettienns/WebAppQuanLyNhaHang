@@ -176,7 +176,14 @@ export class InventoryService {
       targetId: created.id,
       actorId: userId,
       actorName: userName,
-      metadata: { sku: created.sku, name: created.name, unit: created.unit, stock: created.currentStock }
+      metadata: {
+        sku: created.sku,
+        name: created.name,
+        unit: created.unit,
+        stock: created.currentStock,
+        costPerUnit: created.costPerUnit,
+        minThreshold: created.minThreshold
+      }
     });
 
     return created;
@@ -214,7 +221,18 @@ export class InventoryService {
       targetId: updated.id,
       actorId: userId,
       actorName: userName,
-      metadata: { old: existing, updated: dto }
+      metadata: {
+        name: updated.name,
+        unit: updated.unit,
+        old: {
+          name: existing.name,
+          unit: existing.unit,
+          costPerUnit: existing.costPerUnit,
+          minThreshold: existing.minThreshold,
+          isActive: existing.isActive
+        },
+        updated: dto
+      }
     });
 
     return updated;
@@ -274,12 +292,15 @@ export class InventoryService {
         actorId: userId,
         actorName: userName,
         metadata: {
+          ingredientName: ing.name,
+          unit: ing.unit,
           qty: dto.quantity,
           cost: dto.costPerUnit,
           oldStock: ing.currentStock,
           newStock,
           oldCost: ing.costPerUnit,
-          newCost
+          newCost,
+          note: dto.note
         }
       });
 
@@ -555,7 +576,11 @@ export class InventoryService {
         targetId: menuItemId,
         actorId: userId,
         actorName: userName,
-        metadata: { ingredientsCount: ingredients.length }
+        metadata: {
+          menuItemId,
+          menuItemName: menuItem.name,
+          ingredientsCount: ingredients.filter((i) => i.quantityRequired > 0).length
+        }
       });
 
       return await InventoryService.getRecipe(menuItemId, tx as any);
