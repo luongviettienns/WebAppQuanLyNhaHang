@@ -18,7 +18,7 @@ import {
   DailyReportDto
 } from '../api/contracts';
 import { useAuth } from './AuthContext';
-import { getApiBaseUrl, getSocketBaseUrl } from '../api/config';
+import { getApiBaseUrl, getSocketBaseUrl, onServerConfigChanged } from '../api/config';
 import { IdempotencyKeyStore } from '../lib/idempotency';
 
 export interface CartItem {
@@ -100,11 +100,9 @@ interface RestaurantContextType {
 
 const RestaurantContext = createContext<RestaurantContextType | undefined>(undefined);
 
-const API_URL = getApiBaseUrl();
-const SOCKET_URL = getSocketBaseUrl();
-
 export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { token } = useAuth();
+  const { token, handleUnauthorized } = useAuth();
+  const [socketUrl, setSocketUrl] = useState<string>(getSocketBaseUrl());
 
   // Menu State
   const [categories, setCategories] = useState<CategoryDto[]>([]);
@@ -139,7 +137,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     setIsLoadingMenu(true);
     setMenuError(null);
     try {
-      const response = await fetch(`${API_URL}/api/menu`);
+      const response = await fetch(`${getApiBaseUrl()}/api/menu`);
       const json = await response.json();
 
       if (!response.ok) {
@@ -159,29 +157,50 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const fetchTables = useCallback(async () => {
     setIsLoadingTables(true);
     try {
-      const response = await fetch(`${API_URL}/api/tables`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+      if (!token) {
+        setTables([]);
+        setActiveTableId(null);
+        setActiveTableOrder(null);
+        return;
+      }
+
+      const response = await fetch(`${getApiBaseUrl()}/api/tables`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
+
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return;
+      }
+
       const json = await response.json();
 
-      if (response.ok) {
-        setTables(json.data.tables || []);
+      if (!response.ok) {
+        throw new Error(json.error?.message || 'Không thể tải danh sách bàn');
       }
+
+      setTables(json.data.tables || []);
     } catch (err: any) {
       console.error('Loi tai danh sach ban:', err);
     } finally {
       setIsLoadingTables(false);
     }
-  }, [token]);
+  }, [token, handleUnauthorized]);
 
   // 3. Fetch KDS Orders from Backend API
   const fetchKDSOrders = useCallback(async () => {
     setIsLoadingKDS(true);
     setKdsError(null);
     try {
-      const response = await fetch(`${API_URL}/api/orders?status=PENDING,PREPARING,READY`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/orders?status=PENDING,PREPARING,READY`, {
         headers: token ? { Authorization: `Bearer ${token}` } : {}
       });
+
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return;
+      }
+
       const json = await response.json();
 
       if (!response.ok) {
@@ -195,13 +214,13 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     } finally {
       setIsLoadingKDS(false);
     }
-  }, [token]);
+  }, [token, handleUnauthorized]);
 
   // 4. Update Order Status (FSM: PENDING -> PREPARING -> READY -> COMPLETED)
   const updateOrderStatus = useCallback(
     async (orderId: number, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED') => {
       try {
-        const response = await fetch(`${API_URL}/api/orders/${orderId}/status`, {
+        const response = await fetch(`${getApiBaseUrl()}/api/orders/${orderId}/status`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -209,6 +228,12 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
           },
           body: JSON.stringify({ status: nextStatus })
         });
+
+        if (response.status === 401) {
+          handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+          return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+        }
+
         const json = await response.json();
 
         if (!response.ok) {
@@ -229,8 +254,17 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         return { success: false, error: err.message || 'Lỗi kết nối máy chủ' };
       }
     },
-    [token]
+    [token, handleUnauthorized]
   );
+
+  // Lang nghe khi nguoi dung doi IP may chu Backend
+  useEffect(() => {
+    return onServerConfigChanged((newUrl) => {
+      setSocketUrl(newUrl);
+      fetchMenu();
+      fetchTables();
+    });
+  }, [fetchMenu, fetchTables]);
 
   useEffect(() => {
     fetchMenu();
@@ -239,14 +273,21 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // 5. Real-time Socket.io listeners
   useEffect(() => {
-    const socket: Socket = io(SOCKET_URL, {
+    const socket: Socket = io(socketUrl, {
       transports: ['websocket', 'polling'],
       autoConnect: true,
       auth: token ? { token } : undefined
     });
 
     socket.on('connect', () => {
-      console.log('⚡ Socket connected to Crispy Bite Server');
+      console.log('⚡ Socket connected to Crispy Bite Server:', socketUrl);
+    });
+
+    socket.on('connect_error', (err) => {
+      if (err?.message === 'UNAUTHENTICATED') {
+        console.warn('⚡ Socket bi tu choi do token khong hop le (UNAUTHENTICATED) -> dang xuat');
+        handleUnauthorized('Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.');
+      }
     });
 
     // 86'd Sold-out update
@@ -468,7 +509,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     const idempotencyKey = orderIdempotency.current.get(JSON.stringify(orderPayload));
 
     try {
-      const response = await fetch(`${API_URL}/api/orders`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/orders`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -476,6 +517,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         },
         body: JSON.stringify({ ...orderPayload, idempotencyKey })
       });
+
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
 
       const json = await response.json();
       if (!response.ok) {
@@ -510,7 +556,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     paymentMethod: PaymentMethod
   ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
     try {
-      const response = await fetch(`${API_URL}/api/orders/${orderId}/pay`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/orders/${orderId}/pay`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -518,6 +564,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         },
         body: JSON.stringify({ paymentMethod })
       });
+
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
 
       const json = await response.json();
       if (!response.ok) {
@@ -539,7 +590,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     status: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING'
   ): Promise<{ success: boolean; table?: DiningTableDto; error?: string }> => {
     try {
-      const response = await fetch(`${API_URL}/api/tables/${tableId}/status`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/tables/${tableId}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -547,6 +598,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         },
         body: JSON.stringify({ status })
       });
+
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
 
       const json = await response.json();
       if (!response.ok) {
@@ -566,7 +622,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     reason: string
   ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
     try {
-      const response = await fetch(`${API_URL}/api/orders/${orderId}/void`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/orders/${orderId}/void`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -574,6 +630,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         },
         body: JSON.stringify({ reason })
       });
+
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
 
       const json = await response.json();
       if (!response.ok) {
@@ -595,7 +656,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     isAvailable: boolean
   ): Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }> => {
     try {
-      const response = await fetch(`${API_URL}/api/menu/${menuItemId}/sold-out`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/menu/${menuItemId}/sold-out`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -603,6 +664,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         },
         body: JSON.stringify({ isAvailable })
       });
+
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
 
       const json = await response.json();
       if (!response.ok) {
@@ -627,7 +693,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     payload: MenuItemUpsertDto
   ): Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }> => {
     try {
-      const response = await fetch(`${API_URL}/api/menu`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/menu`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -635,6 +701,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         },
         body: JSON.stringify(payload)
       });
+
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
 
       const json = await response.json();
       if (!response.ok) {
@@ -654,7 +725,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     payload: MenuItemUpsertDto
   ): Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }> => {
     try {
-      const response = await fetch(`${API_URL}/api/menu/${id}`, {
+      const response = await fetch(`${getApiBaseUrl()}/api/menu/${id}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -662,6 +733,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         },
         body: JSON.stringify(payload)
       });
+
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
 
       const json = await response.json();
       if (!response.ok) {
@@ -680,7 +756,8 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     date?: string
   ): Promise<{ success: boolean; report?: DailyReportDto; error?: string }> => {
     try {
-      const url = date ? `${API_URL}/api/reports/daily?date=${date}` : `${API_URL}/api/reports/daily`;
+      const base = getApiBaseUrl();
+      const url = date ? `${base}/api/reports/daily?date=${date}` : `${base}/api/reports/daily`;
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -688,6 +765,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         }
       });
+
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
 
       const json = await response.json();
       if (!response.ok) {

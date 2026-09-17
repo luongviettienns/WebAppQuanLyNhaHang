@@ -164,7 +164,7 @@
       
       <div class="ip-bar">
         <span>🌐 Địa chỉ IP máy chủ:</span>
-        <input type="text" id="hostIp" value="192.168.1.11" />
+        <input type="text" id="hostIp" value="172.16.18.80" />
         <span>Port: <b>8081</b></span>
         <button onclick="updateQRCodes()">Cập nhật QR</button>
       </div>
@@ -203,7 +203,7 @@
     }
 
     function renderTables() {
-      const ip = document.getElementById('hostIp').value.trim() || '192.168.1.11';
+      const ip = document.getElementById('hostIp').value.trim() || '172.16.18.80';
       const grid = document.getElementById('tablesGrid');
       grid.innerHTML = '';
 
