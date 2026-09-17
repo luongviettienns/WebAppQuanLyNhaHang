@@ -4,6 +4,7 @@ import { app } from './app';
 import { env } from './config/env';
 import { setSocketIO } from './lib/socket';
 import { setupSocketServer } from './config/socket';
+import { startOrderTimeoutScheduler } from './modules/orders/orderTimeoutScheduler';
 
 const server = http.createServer(app);
 
@@ -22,6 +23,7 @@ if (process.env.NODE_ENV !== 'test') {
   server.listen(env.PORT, () => {
     console.log(`🚀 CRISPY BITE Backend Server dang chay tai port ${env.PORT}`);
     console.log(`👉 Health Check: http://localhost:${env.PORT}/health`);
+    startOrderTimeoutScheduler();
   });
 }
 

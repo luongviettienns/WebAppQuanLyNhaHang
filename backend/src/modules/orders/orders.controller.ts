@@ -78,5 +78,18 @@ export class OrdersController {
       next(error);
     }
   }
+
+  static async autoCancelExpired(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const timeoutMinutes = req.query.timeoutMinutes ? parseInt(req.query.timeoutMinutes as string, 10) : 60;
+      const result = await OrdersService.autoCancelExpiredOrders(timeoutMinutes);
+      res.status(200).json({
+        success: true,
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
 

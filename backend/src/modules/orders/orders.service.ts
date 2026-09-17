@@ -569,6 +569,119 @@ export class OrdersService {
 
     return { order: orderDto };
   }
+
+  /**
+   * Tu dong huy cac don hang PENDING qua timeoutMinutes (mac dinh 60 phut)
+   * voi ly do qua gio, kem cap nhat giai phong ban va phat su kien Socket.io
+   */
+  static async autoCancelExpiredOrders(timeoutMinutes: number = 60) {
+    const cutoffDate = new Date(Date.now() - timeoutMinutes * 60 * 1000);
+
+    const expiredOrders = await prisma.order.findMany({
+      where: {
+        status: 'PENDING',
+        paymentStatus: { not: 'PAID' },
+        createdAt: { lte: cutoffDate }
+      },
+      include: {
+        table: true
+      }
+    });
+
+    if (expiredOrders.length === 0) {
+      return {
+        cancelledCount: 0,
+        cancelledOrderIds: []
+      };
+    }
+
+    const cancelledOrderIds: number[] = [];
+    const now = new Date();
+    const defaultReason = 'Quá thời gian: Hơn 1 giờ chưa cập nhật trạng thái';
+
+    for (const expOrder of expiredOrders) {
+      try {
+        const { order, tableState } = await prisma.$transaction(async (tx) => {
+          const updatedOrder = await tx.order.update({
+            where: { id: expOrder.id },
+            data: {
+              status: 'CANCELLED',
+              paymentStatus: 'VOIDED',
+              voidReason: defaultReason,
+              voidedAt: now,
+              cancelledAt: now
+            },
+            include: {
+              items: true,
+              table: true
+            }
+          });
+
+          let nextTableState: any = null;
+          if (expOrder.tableId) {
+            const remainingOrder = await tx.order.findFirst({
+              where: {
+                tableId: expOrder.tableId,
+                paymentStatus: 'UNPAID',
+                status: { not: 'CANCELLED' },
+                id: { not: expOrder.id }
+              },
+              select: { id: true }
+            });
+
+            const status = remainingOrder ? 'OCCUPIED' : 'AVAILABLE';
+            const currentOrderId = remainingOrder?.id ?? null;
+
+            await tx.diningTable.update({
+              where: { id: expOrder.tableId },
+              data: {
+                status,
+                currentOrderId
+              }
+            });
+
+            if (updatedOrder.table) {
+              nextTableState = {
+                tableId: updatedOrder.table.id,
+                tableNumber: updatedOrder.table.tableNumber,
+                status,
+                currentOrderId
+              };
+            }
+          }
+
+          return { order: updatedOrder, tableState: nextTableState };
+        });
+
+        cancelledOrderIds.push(order.id);
+
+        const orderDto = formatOrderDto(order);
+        const socketPayload = {
+          orderId: orderDto.id,
+          code: orderDto.code,
+          status: orderDto.status,
+          tableId: orderDto.tableId,
+          tableNumber: orderDto.tableNumber,
+          cancelledAt: orderDto.cancelledAt,
+          voidReason: defaultReason
+        };
+
+        emitToRoom('restaurant:kds', 'order:statusChanged', socketPayload);
+        emitToAll('order:statusChanged', socketPayload);
+
+        if (tableState) {
+          emitToAll('table:statusChanged', tableState);
+        }
+      } catch (err) {
+        console.error(`[AutoCancel] Loi khi tu dong huy don ID ${expOrder.id}:`, err);
+      }
+    }
+
+    return {
+      cancelledCount: cancelledOrderIds.length,
+      cancelledOrderIds
+    };
+  }
 }
 
 function formatOrderDto(order: any) {
