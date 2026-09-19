@@ -108,3 +108,43 @@ export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
 export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
 export type DeleteCategoryInput = z.infer<typeof deleteCategorySchema>;
 export type ReorderCategoriesInput = z.infer<typeof reorderCategoriesSchema>;
+
+const importMenuTypeSchema = z.enum(['FOOD', 'DRINK', 'SERVICE', 'OTHER']);
+const importMenuItemTypeSchema = z.enum(['REGULAR', 'TOPPING', 'COMBO', 'SERVICE']);
+
+export const menuImportPreviewSchema = z.object({
+  fileName: z.string().trim().min(1, 'Tên file không được để trống').max(255, 'Tên file quá dài'),
+  fileBase64: z.string().min(1, 'Dữ liệu file không được để trống'),
+  createMissingCategories: z.boolean().optional().default(false)
+});
+
+export const menuImportRowSchema = z.object({
+  rowNumber: z.number().int().positive(),
+  sku: z.string().trim().min(1).optional(),
+  name: z.string().trim().min(1, 'Tên món không được để trống'),
+  categoryName: z.string().trim().min(1, 'Tên danh mục không được để trống'),
+  basePrice: z.number().int().positive('basePrice phải lớn hơn 0'),
+  menuType: importMenuTypeSchema,
+  itemType: importMenuItemTypeSchema,
+  isAvailable: z.boolean(),
+  trackStock: z.boolean(),
+  stockQuantity: z.number().int().min(0, 'stockQuantity không được âm'),
+  position: z.string().trim().optional().nullable(),
+  description: z.string().trim().optional().nullable(),
+  imageUrl: z.string().trim().optional().nullable()
+});
+
+export const menuImportCommitSchema = z.object({
+  sourceFileName: z.string().trim().min(1).max(255),
+  createMissingCategories: z.boolean().optional().default(false),
+  rows: z.array(menuImportRowSchema).min(1, 'Danh sách import không được để trống').max(1000, 'Tối đa 1000 dòng mỗi lần import')
+});
+
+export const menuExportQuerySchema = z.object({
+  format: z.enum(['csv', 'xlsx']).default('csv')
+});
+
+export type MenuImportPreviewInput = z.infer<typeof menuImportPreviewSchema>;
+export type MenuImportRowInput = z.infer<typeof menuImportRowSchema>;
+export type MenuImportCommitInput = z.infer<typeof menuImportCommitSchema>;
+export type MenuExportFormat = z.infer<typeof menuExportQuerySchema>['format'];

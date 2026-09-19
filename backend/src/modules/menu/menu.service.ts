@@ -7,10 +7,19 @@ import {
   CreateCategoryInput,
   CreateMenuItemInput,
   DeleteCategoryInput,
+  MenuExportFormat,
   ReorderCategoriesInput,
   UpdateCategoryInput,
   UpdateMenuItemInput
 } from './menu.schemas';
+import {
+  MenuExportRow,
+  MenuImportErrorRow,
+  MenuImportRow,
+  parseMenuImportBuffer,
+  serializeMenuCsv,
+  serializeMenuWorkbook
+} from './menu.import';
 
 const MENU_SKU_PREFIX = 'SP';
 const MENU_SKU_MAX_RETRIES = 3;
@@ -40,6 +49,68 @@ function isSkuUniqueConstraintError(error: unknown) {
 }
 
 export class MenuService {
+  static async exportMenu(format: MenuExportFormat): Promise<Buffer> {
+    const categories = await prisma.category.findMany({
+      orderBy: { displayOrder: 'asc' },
+      include: {
+        menuItems: {
+          orderBy: { displayOrder: 'asc' }
+        }
+      }
+    });
+
+    const rows: MenuExportRow[] = categories.flatMap(category =>
+      category.menuItems.map(item => ({
+        sku: item.sku,
+        name: item.name,
+        categoryName: category.name,
+        basePrice: item.basePrice,
+        menuType: item.menuType,
+        itemType: item.itemType,
+        isAvailable: item.isAvailable,
+        trackStock: item.trackStock,
+        stockQuantity: item.stockQuantity,
+        position: item.position,
+        description: item.description,
+        imageUrl: item.imageUrl
+      }))
+    );
+
+    return format === 'csv' ? serializeMenuCsv(rows) : serializeMenuWorkbook(rows);
+  }
+
+  static async previewMenuImport(buffer: Buffer, fileName: string, createMissingCategories: boolean) {
+    const parsed = parseMenuImportBuffer(buffer, fileName);
+    const categories = await prisma.category.findMany({ select: { name: true } });
+    const categoryNames = new Set(categories.map(category => category.name.trim().toLocaleLowerCase()));
+    const errorRows: MenuImportErrorRow[] = [...parsed.errors];
+    const validRows: MenuImportRow[] = [];
+
+    parsed.rows.forEach(row => {
+      const categoryKey = row.categoryName.trim().toLocaleLowerCase();
+      if (!createMissingCategories && !categoryNames.has(categoryKey)) {
+        errorRows.push({
+          rowNumber: row.rowNumber,
+          sku: row.sku,
+          name: row.name,
+          categoryName: row.categoryName,
+          error: `Danh mục "${row.categoryName}" không tồn tại`
+        });
+        return;
+      }
+      validRows.push(row);
+    });
+
+    errorRows.sort((a, b) => a.rowNumber - b.rowNumber);
+    return {
+      fileName,
+      totalRows: parsed.totalRows,
+      validRows,
+      errorRows,
+      canCommit: validRows.length > 0 && errorRows.length === 0
+    };
+  }
+
   static async createCategory(input: CreateCategoryInput, actorId?: number, actorName?: string) {
     const name = input.name.trim();
     const duplicate = await prisma.category.findFirst({ where: { name } });

@@ -8,6 +8,10 @@ export const menuRouter = Router();
 // GET /api/menu (Public hoac Authenticated)
 menuRouter.get('/', MenuController.getMenu);
 
+// Import/export menu (Chi ADMIN duoc phep)
+menuRouter.get('/export', authenticate, authorize('ADMIN'), MenuController.exportMenu);
+menuRouter.post('/import/preview', authenticate, authorize('ADMIN'), MenuController.previewMenuImport);
+
 // Category administration (Chi ADMIN duoc phep quan ly nhom mon)
 menuRouter.post('/categories', authenticate, authorize('ADMIN'), MenuController.createCategory);
 menuRouter.patch('/categories/reorder', authenticate, authorize('ADMIN'), MenuController.reorderCategories);

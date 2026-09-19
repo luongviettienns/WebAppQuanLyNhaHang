@@ -311,7 +311,7 @@ export function serializeMenuCsv(rows: MenuExportRow[]): Buffer {
 
 export function serializeMenuWorkbook(rows: MenuExportRow[]): Buffer {
   const workbook = XLSX.utils.book_new();
-  const worksheet = XLSX.utils.aoa_to_sheet([MENU_IMPORT_HEADERS, ...rows.map(exportRowValues)]);
+  const worksheet = XLSX.utils.aoa_to_sheet([[...MENU_IMPORT_HEADERS], ...rows.map(exportRowValues)]);
   worksheet['!cols'] = [
     { wch: 14 },
     { wch: 28 },

@@ -6,6 +6,8 @@ import {
   createCategorySchema,
   createMenuItemSchema,
   deleteCategorySchema,
+  menuExportQuerySchema,
+  menuImportPreviewSchema,
   reorderCategoriesSchema,
   updateCategorySchema,
   updateMenuItemSchema,
@@ -67,6 +69,36 @@ export class MenuController {
   static async getMenu(_req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const data = await MenuService.getFullMenu();
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async exportMenu(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { format } = menuExportQuerySchema.parse(req.query);
+      const buffer = await MenuService.exportMenu(format);
+      const extension = format === 'csv' ? 'csv' : 'xlsx';
+      res.setHeader(
+        'Content-Type',
+        format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="menu_${Date.now()}.${extension}"`);
+      res.send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async previewMenuImport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validated = menuImportPreviewSchema.parse(req.body);
+      const data = await MenuService.previewMenuImport(
+        Buffer.from(validated.fileBase64, 'base64'),
+        validated.fileName,
+        validated.createMissingCategories
+      );
       res.status(200).json({ data });
     } catch (error) {
       next(error);
