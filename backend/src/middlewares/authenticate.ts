@@ -22,11 +22,17 @@ declare global {
 
 export function authenticate(req: Request, _res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return next(ApiError.unauthorized('Yêu cầu cung cấp Bearer Token hợp lệ'));
+  let token: string | undefined;
+
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else if (typeof req.query.token === 'string' && req.query.token.length > 0) {
+    token = req.query.token;
   }
 
-  const token = authHeader.substring(7);
+  if (!token) {
+    return next(ApiError.unauthorized('Yêu cầu cung cấp Bearer Token hợp lệ'));
+  }
 
   try {
     const decoded = jwt.verify(token, env.JWT_SECRET, {
@@ -53,7 +59,7 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
 }
 
 export function optionalAuthenticate(req: Request, res: Response, next: NextFunction): void {
-  if (!req.headers.authorization) {
+  if (!req.headers.authorization && !req.query.token) {
     next();
     return;
   }

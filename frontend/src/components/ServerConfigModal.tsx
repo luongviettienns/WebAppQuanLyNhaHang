@@ -304,7 +304,7 @@ export const ServerConfigModal: React.FC<ServerConfigModalProps> = ({ visible, o
           {/* Footer */}
           <View style={[styles.footer, { borderTopColor: theme.borderSubtle }]}>
             <Text style={[styles.footerNote, { color: theme.textSecondary }]}>
-              💡 Mẹo: Khi đổi Wi-Fi, chỉ cần mở màn hình này và bấm "Tự động nhận diện".
+              {'💡 Mẹo: Khi đổi Wi-Fi, chỉ cần mở màn hình này và bấm "Tự động nhận diện".'}
             </Text>
             <View style={{ minWidth: 80 }}>
               <Button label="Đóng" variant="primary" onPress={onClose} />

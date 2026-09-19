@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Check, ImageIcon, Pencil, Plus, Search, Trash2, X } from 'lucide-react-native';
+import React, { useState, useMemo, useRef } from 'react';
+import { Check, Eye, ImageIcon, Pencil, Plus, Search, Sparkles, Trash2, Upload, X, Zap } from 'lucide-react-native';
 import {
   StyleSheet,
   Text,
@@ -17,7 +17,10 @@ import {
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { useToast } from '../../contexts/ToastContext';
 import { MenuItemDto, MenuItemUpsertDto } from '../../api/contracts';
+import { getApiBaseUrl, resolveImageUrl } from '../../api/config';
 import { elevation, radii, spacing, statusColors, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, Field, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import {
@@ -42,6 +45,60 @@ interface ModifierGroupForm {
   options: ModifierOptionForm[];
 }
 
+interface ModifierPreset {
+  id: string;
+  label: string;
+  group: ModifierGroupForm;
+}
+
+const MODIFIER_PRESETS: ModifierPreset[] = [
+  {
+    id: 'size',
+    label: 'Kích cỡ (Tiêu chuẩn / Vừa / Lớn)',
+    group: {
+      name: 'Kích cỡ',
+      isRequired: true,
+      minSelectStr: '1',
+      maxSelectStr: '1',
+      options: [
+        { name: 'Cỡ tiêu chuẩn', priceDeltaStr: '0' },
+        { name: 'Cỡ vừa (+10k)', priceDeltaStr: '10000' },
+        { name: 'Cỡ lớn (+20k)', priceDeltaStr: '20000' }
+      ]
+    }
+  },
+  {
+    id: 'spicy',
+    label: 'Độ cay (Không cay / Cay vừa / Cay nhiều)',
+    group: {
+      name: 'Độ cay',
+      isRequired: true,
+      minSelectStr: '1',
+      maxSelectStr: '1',
+      options: [
+        { name: 'Không cay', priceDeltaStr: '0' },
+        { name: 'Cay vừa', priceDeltaStr: '0' },
+        { name: 'Cay nhiều', priceDeltaStr: '0' }
+      ]
+    }
+  },
+  {
+    id: 'topping',
+    label: 'Topping thêm (Phô mai / Trứng...)',
+    group: {
+      name: 'Topping thêm',
+      isRequired: false,
+      minSelectStr: '0',
+      maxSelectStr: '3',
+      options: [
+        { name: 'Thêm phô mai', priceDeltaStr: '10000' },
+        { name: 'Thêm trứng ốp la', priceDeltaStr: '10000' },
+        { name: 'Thêm sốt đặc biệt', priceDeltaStr: '5000' }
+      ]
+    }
+  }
+];
+
 interface MenuItemForm {
   id?: number;
   name: string;
@@ -56,6 +113,8 @@ interface MenuItemForm {
 export const MenuManagementScreen: React.FC = () => {
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
+  const { token } = useAuth();
+  const { showToast } = useToast();
   const {
     categories,
     allMenuItems,
@@ -74,7 +133,9 @@ export const MenuManagementScreen: React.FC = () => {
   const [editingItem, setEditingItem] = useState<MenuItemDto | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
   const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isMobile = width < 768;
   const switchAppearance = {
     style: styles.switchTarget,
@@ -183,13 +244,77 @@ export const MenuManagementScreen: React.FC = () => {
     setIsModalOpen(true);
   };
 
+  const handlePickFile = () => {
+    if (Platform.OS !== 'web') return;
+    // Tao the input an, click de mo hop thoai chon file
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/png,image/jpeg,image/webp,image/gif';
+    input.onchange = async (e: Event) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      // Doc file thanh base64 data URL
+      const reader = new FileReader();
+      reader.onload = async (ev) => {
+        const dataUrl = ev.target?.result as string;
+        if (!dataUrl) return;
+        setIsUploadingImage(true);
+        try {
+          const res = await fetch(`${getApiBaseUrl()}/api/menu/upload-image`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token ?? ''}`
+            },
+            body: JSON.stringify({ dataUrl })
+          });
+          const json = await res.json();
+          if (res.ok && json.data?.imageUrl) {
+            setForm((prev) => ({ ...prev, imageUrl: json.data.imageUrl }));
+            showToast({
+              type: 'success',
+              title: 'Tải ảnh thành công',
+              message: 'Ảnh món đã được cập nhật vào biểu mẫu!'
+            });
+          } else {
+            showToast({
+              type: 'error',
+              title: 'Lỗi tải ảnh',
+              message: json.message || 'Không thể tải ảnh lên máy chủ.'
+            });
+          }
+        } catch {
+          showToast({
+            type: 'error',
+            title: 'Lỗi mạng',
+            message: 'Không thể kết nối đến máy chủ để tải ảnh.'
+          });
+        } finally {
+          setIsUploadingImage(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+    input.click();
+  };
+
   const handleToggleSoldOut = async (item: MenuItemDto) => {
     setTogglingItemId(item.id);
     const nextState = !item.isAvailable;
     const res = await toggleMenuItemSoldOut(item.id, nextState);
     setTogglingItemId(null);
     if (!res.success) {
-      Alert.alert('Lỗi cập nhật', res.error || 'Không thể đổi trạng thái món ăn');
+      showToast({
+        type: 'error',
+        title: 'Lỗi cập nhật',
+        message: res.error || 'Không thể đổi trạng thái món ăn'
+      });
+    } else {
+      showToast({
+        type: nextState ? 'success' : 'warning',
+        title: nextState ? 'Đã mở bán lại' : 'Đã báo hết hàng',
+        message: `${item.name}: ${nextState ? 'Khách và thu ngân có thể gọi món này' : 'Món đã được gắn nhãn hết hàng (86d)'}`
+      });
     }
   };
 
@@ -208,6 +333,24 @@ export const MenuManagementScreen: React.FC = () => {
         }
       ]
     }));
+  };
+
+  const applyPreset = (preset: ModifierPreset) => {
+    setForm((prev) => ({
+      ...prev,
+      modifierGroups: [
+        ...prev.modifierGroups,
+        {
+          ...preset.group,
+          options: preset.group.options.map((opt) => ({ ...opt }))
+        }
+      ]
+    }));
+    showToast({
+      type: 'info',
+      title: 'Đã thêm mẫu nhanh',
+      message: `Đã thêm nhóm "${preset.group.name}". Bạn có thể đổi tên hoặc giá nếu muốn.`
+    });
   };
 
   const removeModifierGroup = (groupIndex: number) => {
@@ -359,9 +502,18 @@ export const MenuManagementScreen: React.FC = () => {
 
     if (res.success) {
       setIsModalOpen(false);
-      Alert.alert('Thành công', editingItem ? 'Đã cập nhật món ăn!' : 'Đã thêm món ăn mới!');
+      showToast({
+        type: 'success',
+        title: 'Thành công',
+        message: editingItem ? `Đã cập nhật món "${name}"!` : `Đã thêm món "${name}" vào thực đơn!`
+      });
     } else {
       setFormError(res.error || 'Có lỗi xảy ra khi lưu món ăn.');
+      showToast({
+        type: 'error',
+        title: 'Chưa thể lưu món',
+        message: res.error || 'Có lỗi xảy ra khi lưu món ăn.'
+      });
     }
   };
 
@@ -560,7 +712,7 @@ export const MenuManagementScreen: React.FC = () => {
                     <View style={styles.mobileItemHeader}>
                       {renderCheckbox(selected, () => toggleItemSelection(item.id), `Chọn món ${item.name}`)}
                       <View style={[styles.thumbnailContainer, { backgroundColor: theme.surfaceSunken }]}>
-                        {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={22} />}
+                        {item.imageUrl ? <Image source={{ uri: resolveImageUrl(item.imageUrl) || '' }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={22} />}
                       </View>
                       <View style={styles.itemInfo}>
                         <Text style={[styles.itemCode, { color: theme.textSecondary }]}>{formatMenuItemCode(item.id)}</Text>
@@ -623,7 +775,7 @@ export const MenuManagementScreen: React.FC = () => {
                       <View style={styles.selectColumn}>{renderCheckbox(selected, () => toggleItemSelection(item.id), `Chọn món ${item.name}`)}</View>
                       <View style={[styles.codeColumn, styles.codeCell]}>
                         <View style={[styles.thumbnailContainer, { backgroundColor: theme.surfaceSunken }]}>
-                          {item.imageUrl ? <Image source={{ uri: item.imageUrl }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={20} />}
+                          {item.imageUrl ? <Image source={{ uri: resolveImageUrl(item.imageUrl) || '' }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={20} />}
                         </View>
                         <Text style={[styles.itemCode, { color: theme.textPrimary }]}>{formatMenuItemCode(item.id)}</Text>
                       </View>
@@ -685,6 +837,64 @@ export const MenuManagementScreen: React.FC = () => {
             <ScrollView contentContainerStyle={styles.modalBody}>
               {formError && <InlineAlert title="Chưa thể lưu món" message={formError} />}
 
+              {/* === Live Preview Section (Giao diện xem trước thực tế) === */}
+              <View style={[styles.previewSection, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                <View style={styles.previewHeader}>
+                  <View style={styles.previewBadge}>
+                    <AppIcon icon={Eye} size={15} color={theme.primary} />
+                    <Text style={[styles.previewTitle, { color: theme.textPrimary }]}>Xem trước hiển thị</Text>
+                  </View>
+                  <Text style={[styles.previewHint, { color: theme.textSecondary }]}>Mô phỏng như trên máy POS & điện thoại khách</Text>
+                </View>
+
+                <View style={[styles.previewCard, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+                  <View style={[styles.previewImgBox, { backgroundColor: theme.surfaceSunken }]}>
+                    {form.imageUrl ? (
+                      <Image
+                        source={{ uri: resolveImageUrl(form.imageUrl) || '' }}
+                        style={styles.previewImg}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <AppIcon icon={ImageIcon} size={28} color={theme.textSecondary} />
+                    )}
+                  </View>
+                  <View style={styles.previewDetails}>
+                    <View style={styles.previewRow}>
+                      <Text style={[styles.previewItemName, { color: theme.textPrimary }]} numberOfLines={1}>
+                        {form.name.trim() || 'Tên món ăn...'}
+                      </Text>
+                      <StatusBadge
+                        tone={form.isAvailable ? 'success' : 'danger'}
+                        label={form.isAvailable ? 'Còn hàng' : 'Hết món'}
+                      />
+                    </View>
+                    <Text style={[styles.previewCategory, { color: theme.textSecondary }]}>
+                      {getCategoryName(form.categoryId)}
+                    </Text>
+                    <Text style={[styles.previewPrice, { color: theme.primary }]}>
+                      {form.basePriceStr ? Number(form.basePriceStr).toLocaleString('vi-VN') + ' đ' : '0 đ'}
+                    </Text>
+                    {form.description.trim() ? (
+                      <Text style={[styles.previewDesc, { color: theme.textSecondary }]} numberOfLines={2}>
+                        {form.description.trim()}
+                      </Text>
+                    ) : null}
+                    {form.modifierGroups.length > 0 && (
+                      <View style={styles.previewTags}>
+                        {form.modifierGroups.map((g, idx) => (
+                          <View key={idx} style={[styles.previewTag, { backgroundColor: theme.surfaceSunken }]}>
+                            <Text style={[styles.previewTagText, { color: theme.textSecondary }]}>
+                              {g.name || `Nhóm ${idx + 1}`} ({g.options.length})
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                </View>
+              </View>
+
               <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
                 <View style={styles.sectionHeading}>
                   <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Thông tin món</Text>
@@ -705,7 +915,62 @@ export const MenuManagementScreen: React.FC = () => {
                   </ScrollView>
                 </View>
                 <Field label="Mô tả" placeholder="Thành phần hoặc đặc điểm của món" multiline numberOfLines={3} style={styles.textArea} value={form.description} onChangeText={(value) => setForm((previous) => ({ ...previous, description: value }))} />
-                <Field label="Đường dẫn ảnh" placeholder="https://..." autoCapitalize="none" value={form.imageUrl} onChangeText={(value) => setForm((previous) => ({ ...previous, imageUrl: value }))} />
+                {/* === Image Upload Section === */}
+                <View style={styles.imageSection}>
+                  <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Ảnh món</Text>
+                  {/* Preview */}
+                  {form.imageUrl ? (
+                    <View style={[styles.imagePreviewBox, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                      <Image
+                        source={{ uri: resolveImageUrl(form.imageUrl) || '' }}
+                        style={styles.imagePreview}
+                        resizeMode="cover"
+                      />
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Xóa ảnh"
+                        onPress={() => setForm((prev) => ({ ...prev, imageUrl: '' }))}
+                        style={[styles.imageRemoveBtn, { backgroundColor: theme.danger }]}
+                      >
+                        <AppIcon icon={Trash2} color={theme.textInverse} size={14} />
+                      </Pressable>
+                    </View>
+                  ) : null}
+                  {/* Upload button (web only) */}
+                  {Platform.OS === 'web' && (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Tải ảnh từ máy tính"
+                      disabled={isUploadingImage}
+                      onPress={handlePickFile}
+                      style={({ pressed }) => [
+                        styles.uploadButton,
+                        {
+                          backgroundColor: pressed ? theme.interactiveQuiet : theme.surfaceSunken,
+                          borderColor: theme.borderSubtle,
+                          opacity: isUploadingImage ? 0.6 : 1
+                        }
+                      ]}
+                    >
+                      {isUploadingImage ? (
+                        <ActivityIndicator size="small" color={theme.primary} />
+                      ) : (
+                        <AppIcon icon={Upload} color={theme.textSecondary} size={18} />
+                      )}
+                      <Text style={[styles.uploadButtonText, { color: theme.textSecondary }]}>
+                        {isUploadingImage ? 'Đang tải lên…' : 'Tải ảnh từ máy tính'}
+                      </Text>
+                    </Pressable>
+                  )}
+                  {/* Manual URL input */}
+                  <Field
+                    label={Platform.OS === 'web' ? 'Hoặc dán liên kết ảnh (URL)' : 'Đường dẫn ảnh (URL)'}
+                    placeholder="https://example.com/image.jpg"
+                    autoCapitalize="none"
+                    value={form.imageUrl}
+                    onChangeText={(value) => setForm((previous) => ({ ...previous, imageUrl: value }))}
+                  />
+                </View>
               </View>
 
               <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
@@ -734,6 +999,35 @@ export const MenuManagementScreen: React.FC = () => {
                     <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>Cỡ phần, vị sốt hoặc món thêm đi kèm.</Text>
                   </View>
                   <Button variant="secondary" label="Thêm nhóm" icon={Plus} onPress={addModifierGroup} />
+                </View>
+
+                {/* Presets Bar (Mẫu chọn 1 chạm thông dụng) */}
+                <View style={styles.presetsContainer}>
+                  <Text style={[styles.presetLabel, { color: theme.textSecondary }]}>
+                    ⚡ Thêm nhanh mẫu phổ biến:
+                  </Text>
+                  <View style={styles.presetButtonsRow}>
+                    {MODIFIER_PRESETS.map((preset) => (
+                      <Pressable
+                        key={preset.id}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Thêm mẫu ${preset.label}`}
+                        style={({ pressed }) => [
+                          styles.presetChip,
+                          {
+                            backgroundColor: pressed ? theme.interactiveQuiet : theme.surfaceBase,
+                            borderColor: theme.borderSubtle
+                          }
+                        ]}
+                        onPress={() => applyPreset(preset)}
+                      >
+                        <AppIcon icon={Sparkles} size={13} color={theme.primary} />
+                        <Text style={[styles.presetChipText, { color: theme.textPrimary }]}>
+                          {preset.label}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
                 </View>
 
                 {form.modifierGroups.length === 0 ? (
@@ -886,5 +1180,34 @@ const styles = StyleSheet.create({
   optionPrice: { flex: 1, minWidth: 120 },
   modalFooter: { borderTopWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end', padding: spacing.md },
   footerButton: { minWidth: 104 },
-  footerButtonPrimary: { minWidth: 152 }
+  footerButtonPrimary: { minWidth: 152 },
+  imageSection: { gap: spacing.sm },
+  imagePreviewBox: { borderRadius: radii.md, borderWidth: 1, height: 160, overflow: 'hidden', position: 'relative' },
+  imagePreview: { height: '100%', width: '100%' },
+  imageRemoveBtn: { alignItems: 'center', borderRadius: radii.sm, bottom: spacing.sm, height: 28, justifyContent: 'center', position: 'absolute', right: spacing.sm, width: 28 },
+  uploadButton: { alignItems: 'center', borderRadius: radii.md, borderStyle: 'dashed', borderWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', minHeight: spacing.touchTargetMobile, paddingHorizontal: spacing.md },
+  uploadButtonText: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
+  previewSection: { borderRadius: radii.md, borderWidth: 1, padding: spacing.md, gap: spacing.sm },
+  previewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.xs },
+  previewBadge: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  previewTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs, textTransform: 'uppercase', letterSpacing: 0.5 },
+  previewHint: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  previewCard: { borderRadius: radii.md, borderWidth: 1, padding: spacing.md, flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
+  previewImgBox: { width: 64, height: 64, borderRadius: radii.sm, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  previewImg: { width: '100%', height: '100%' },
+  previewDetails: { flex: 1, gap: 2 },
+  previewRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.xs },
+  previewItemName: { flex: 1, fontFamily: typography.families.bodyBold, fontSize: typography.sizes.sm },
+  previewCategory: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  previewPrice: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.md },
+  previewDesc: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  previewTags: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, marginTop: 2 },
+  previewTag: { borderRadius: radii.xs, paddingHorizontal: 6, paddingVertical: 2 },
+  previewTagText: { fontSize: 10, fontFamily: typography.families.bodyMedium },
+  presetsContainer: { gap: spacing.xs, marginTop: spacing.xs },
+  presetLabel: { fontSize: typography.sizes.xs, fontFamily: typography.families.bodyMedium },
+  presetButtonsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  presetChip: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: radii.pill, borderWidth: 1, paddingHorizontal: spacing.sm, paddingVertical: 6 },
+  presetChipText: { fontSize: typography.sizes.xs, fontFamily: typography.families.bodyMedium }
 });
+

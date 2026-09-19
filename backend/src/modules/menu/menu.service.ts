@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
+import { AuditService } from '../audit/audit.service';
 import { CreateMenuItemInput, UpdateMenuItemInput } from './menu.schemas';
 
 const MENU_SKU_PREFIX = 'SP';
@@ -58,7 +59,7 @@ export class MenuService {
   /**
    * Admin tao mon an moi kem cac modifier groups va options
    */
-  static async createMenuItem(input: CreateMenuItemInput) {
+  static async createMenuItem(input: CreateMenuItemInput, actorId?: number, actorName?: string) {
     const category = await prisma.category.findUnique({
       where: { id: input.categoryId }
     });
@@ -112,6 +113,20 @@ export class MenuService {
           return created;
         });
 
+        await AuditService.log({
+          action: 'MENU_ITEM_CREATED',
+          targetType: 'MenuItem',
+          targetId: menuItem.id,
+          actorId,
+          actorName,
+          metadata: {
+            name: menuItem.name,
+            basePrice: menuItem.basePrice,
+            categoryId: menuItem.categoryId,
+            sku: menuItem.sku
+          }
+        });
+
         return { menuItem };
       } catch (error) {
         if (attempt < MENU_SKU_MAX_RETRIES && isSkuUniqueConstraintError(error)) {
@@ -130,7 +145,7 @@ export class MenuService {
   /**
    * Admin cap nhat thong tin mon an, gia, danh muc hoac modifier groups
    */
-  static async updateMenuItem(id: number, input: UpdateMenuItemInput) {
+  static async updateMenuItem(id: number, input: UpdateMenuItemInput, actorId?: number, actorName?: string) {
     const existing = await prisma.menuItem.findUnique({
       where: { id }
     });
@@ -207,13 +222,28 @@ export class MenuService {
       });
     }
 
+    await AuditService.log({
+      action: 'MENU_ITEM_UPDATED',
+      targetType: 'MenuItem',
+      targetId: menuItem.id,
+      actorId,
+      actorName,
+      metadata: {
+        name: menuItem.name,
+        basePrice: menuItem.basePrice,
+        previousName: existing.name,
+        previousBasePrice: existing.basePrice,
+        isAvailable: menuItem.isAvailable
+      }
+    });
+
     return { menuItem };
   }
 
   /**
    * Cap nhat trang thai con hang / het hang (86d) cua mon an
    */
-  static async updateSoldOut(menuItemId: number, isAvailable: boolean) {
+  static async updateSoldOut(menuItemId: number, isAvailable: boolean, actorId?: number, actorName?: string) {
     const existing = await prisma.menuItem.findUnique({
       where: { id: menuItemId }
     });
@@ -238,6 +268,19 @@ export class MenuService {
     emitToAll('menu:itemSoldOutChanged', {
       menuItemId: updated.id,
       isAvailable: updated.isAvailable
+    });
+
+    await AuditService.log({
+      action: 'MENU_ITEM_AVAILABILITY_CHANGED',
+      targetType: 'MenuItem',
+      targetId: menuItemId,
+      actorId,
+      actorName,
+      metadata: {
+        name: updated.name,
+        isAvailable,
+        previousIsAvailable: existing.isAvailable
+      }
     });
 
     return { menuItem: updated };

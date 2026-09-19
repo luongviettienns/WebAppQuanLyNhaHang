@@ -13,33 +13,11 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
     await expect(adminBtn).toBeVisible({ timeout: 10000 });
     await adminBtn.click();
 
-    // 2. Navigate to Admin Screen
-    const adminTab = page.getByTestId('tab-admin');
-    await expect(adminTab).toBeVisible({ timeout: 10000 });
-    await expect(adminTab.getByText('Quản trị')).toBeVisible();
-    await adminTab.click();
+    // 2. Reports is the default Admin screen from the workspace sidebar
+    const reportsTab = page.getByTestId('tab-reports');
+    await expect(reportsTab).toBeVisible({ timeout: 10000 });
+    await expect(reportsTab.getByText('Báo cáo')).toBeVisible();
 
-    // Verify the sentence-case admin hierarchy.
-    await expect(page.getByRole('heading', { name: 'Trung tâm quản trị' })).toBeVisible({ timeout: 8000 });
-
-    // 3. Menu Management: Verify filters, actions, items, and availability controls.
-    const menuSubtab = page.getByTestId('admin-subtab-menu');
-    await expect(menuSubtab).toBeVisible();
-    await expect(page.getByPlaceholder('Theo mã hoặc tên món')).toBeVisible();
-    await expect(page.getByTestId('admin-btn-add-item')).toContainText('Món mới');
-
-    const firstSwitch = page.locator('[data-testid^="menu-item-switch-"]').first();
-    await expect(firstSwitch).toBeVisible({ timeout: 8000 });
-    const switchBounds = await firstSwitch.boundingBox();
-    expect(switchBounds!.width).toBeGreaterThanOrEqual(44);
-    expect(switchBounds!.height).toBeGreaterThanOrEqual(44);
-
-    // 4. Navigate to Reports Subtab
-    const reportsSubtab = page.getByTestId('admin-subtab-reports');
-    await expect(reportsSubtab).toBeVisible();
-    await reportsSubtab.click();
-
-    // 5. Verify the decision hierarchy remains readable after switching subtabs.
     const kpiRevenue = page.getByTestId('kpi-revenue');
     const kpiOrders = page.getByTestId('kpi-orders');
     const kpiAov = page.getByTestId('kpi-aov');
@@ -56,6 +34,22 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
 
     // Verify Top 5 Sellers section
     await expect(page.getByRole('heading', { name: 'Món bán chạy' })).toBeVisible();
+
+    // 3. Navigate to Menu Screen directly from workspace sidebar
+    const menuTab = page.getByTestId('tab-menu');
+    await expect(menuTab).toBeVisible();
+    await expect(menuTab.getByText('Thực đơn')).toBeVisible();
+    await menuTab.click();
+
+    // Menu Management: Verify filters, actions, items, and availability controls.
+    await expect(page.getByPlaceholder('Theo mã hoặc tên món')).toBeVisible();
+    await expect(page.getByTestId('admin-btn-add-item')).toContainText('Món mới');
+
+    const firstSwitch = page.locator('[data-testid^="menu-item-switch-"]').first();
+    await expect(firstSwitch).toBeVisible({ timeout: 8000 });
+    const switchBounds = await firstSwitch.boundingBox();
+    expect(switchBounds!.width).toBeGreaterThanOrEqual(44);
+    expect(switchBounds!.height).toBeGreaterThanOrEqual(44);
 
     // 6. Navigate to Table Map to verify Admin Void functionality
     const tablesTab = page.getByTestId('tab-tables');

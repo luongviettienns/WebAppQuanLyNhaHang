@@ -158,3 +158,19 @@ export async function fetchServerNetworkInfo(): Promise<Array<{ name: string; ip
     return [];
   }
 }
+
+/**
+ * Chuyển đổi đường dẫn ảnh tương đối (ví dụ: /uploads/menu_123.jpg) thành URL hoàn chỉnh có thể truy cập được từ bất kỳ thiết bị nào.
+ */
+export function resolveImageUrl(url?: string | null): string | undefined {
+  if (!url || typeof url !== 'string') return undefined;
+  const trimmed = url.trim();
+  if (!trimmed) return undefined;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.startsWith('data:')) {
+    return trimmed;
+  }
+  const baseUrl = getApiBaseUrl().replace(/\/+$/, '');
+  const relativePath = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  return `${baseUrl}${relativePath}`;
+}
+

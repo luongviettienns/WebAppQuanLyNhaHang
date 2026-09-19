@@ -105,4 +105,43 @@ describe('Database Seed & Schema Verification (Task 5)', () => {
       expect(item.position === null || item.position.length > 0).toBe(true);
     });
   });
+
+  it('seed 8 nguyen vat lieu trong yeu va map BOM thanh cong cho tat ca 20 mon an co dinh luong', async () => {
+    await seedDatabase(prismaTest);
+
+    // Kiem tra 8 nguyen lieu
+    const ingredients = await prismaTest.ingredient.findMany();
+    expect(ingredients.length).toBe(8);
+
+    // Kiem tra so mon an co BOM
+    const bomItems = await prismaTest.menuItemIngredient.findMany({
+      select: { menuItemId: true },
+      distinct: ['menuItemId']
+    });
+    expect(bomItems.length).toBe(20);
+
+    // Kiem tra mon cu the: Combo 1 Nguoi co dung 4 nguyen lieu (ga, khoai, dau, lon nuoc)
+    const combo = await prismaTest.menuItem.findFirst({
+      where: { name: 'Combo 1 Người: Gà Giòn + Khoai + Nước' },
+      include: {
+        menuItemIngredients: {
+          include: { ingredient: true }
+        }
+      }
+    });
+    expect(combo).not.toBeNull();
+    expect(combo?.menuItemIngredients.length).toBe(4);
+
+    // Kiem tra Burger Bo Nuong Pho Mai co dung 3 nguyen lieu (vo banh, bo, pho mai)
+    const burger = await prismaTest.menuItem.findFirst({
+      where: { name: 'Burger Bò Nướng Phô Mai' },
+      include: {
+        menuItemIngredients: {
+          include: { ingredient: true }
+        }
+      }
+    });
+    expect(burger).not.toBeNull();
+    expect(burger?.menuItemIngredients.length).toBe(3);
+  });
 });

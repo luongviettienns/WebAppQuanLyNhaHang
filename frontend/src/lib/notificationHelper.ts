@@ -107,7 +107,9 @@ class NotificationHelper {
           document.title = oldTitle;
         }, 8000);
       }
-    } catch {}
+    } catch (_err) {
+      // ignore title flashing errors in non-browser environments
+    }
 
     // Show OS notification
     const Notif = (window as any).Notification;

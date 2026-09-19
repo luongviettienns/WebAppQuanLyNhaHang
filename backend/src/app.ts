@@ -11,7 +11,11 @@ import { menuRouter } from './modules/menu/menu.routes';
 import { tablesRouter } from './modules/tables/tables.routes';
 import { ordersRouter } from './modules/orders/orders.routes';
 import { reportsRouter } from './modules/reports/reports.routes';
+import { auditRouter } from './modules/audit/audit.routes';
+import { inventoryRouter } from './modules/inventory/inventory.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
+
+import { getUploadsDir } from './lib/uploads';
 
 export const app = express();
 
@@ -22,7 +26,11 @@ app.use(
   })
 );
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+
+// Phục vụ ảnh tải lên tĩnh
+const uploadsDir = getUploadsDir();
+app.use('/uploads', express.static(uploadsDir));
 
 // Swagger UI Documentation Endpoint
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
@@ -64,6 +72,12 @@ app.use('/api/orders', ordersRouter);
 
 // Daily Reports & KPI routes (Admin only)
 app.use('/api/reports', reportsRouter);
+
+// System Audit Logs routes (Admin only)
+app.use('/api/audit', auditRouter);
+
+// Inventory, BOM & Stock routes (Admin only)
+app.use('/api/inventory', inventoryRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);

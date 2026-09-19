@@ -111,14 +111,14 @@ test('QR menu cards contain price and status at 390x844', async ({ page }, testI
 test('Admin menu, reports and table actions fit at 1440x900', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await login(page, 'admin');
-  await page.getByTestId('tab-admin').click();
+  await page.getByTestId('tab-menu').click();
   await expect(page.getByTestId('admin-btn-add-item')).toBeInViewport();
   await capture(page, 'admin-menu-light', testInfo);
   await page.getByTestId('admin-btn-add-item').click();
   await expect(page.getByRole('button', { name: 'Tạo món', exact: true })).toBeInViewport();
   await capture(page, 'admin-form-light', testInfo);
   await page.getByRole('button', { name: 'Đóng biểu mẫu' }).click();
-  await page.getByTestId('admin-subtab-reports').click();
+  await page.getByTestId('tab-reports').click();
   await expect(page.getByTestId('kpi-revenue')).toBeVisible();
   expect((await page.getByTestId('kpi-revenue').boundingBox())!.height).toBeGreaterThanOrEqual(184);
   await capture(page, 'admin-reports-light', testInfo);

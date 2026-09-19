@@ -1,13 +1,16 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
+  BarChart3,
   ChefHat,
+  ClipboardList,
   LayoutGrid,
   LogOut,
   Moon,
-  ShieldCheck,
   ShoppingCart,
-  Sun
+  Sun,
+  Utensils,
+  Warehouse
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { useAuth } from '../contexts/AuthContext';
@@ -17,9 +20,12 @@ import { AppIcon, BrandMark, StatusBadge } from '../ui';
 import { POSScreen } from '../features/pos/POSScreen';
 import { TableScreen } from '../features/tables/TableScreen';
 import { KDSScreen } from '../features/kds/KDSScreen';
-import { AdminScreen } from '../features/admin/AdminScreen';
+import { DashboardScreen } from '../features/reports/DashboardScreen';
+import { MenuManagementScreen } from '../features/admin/MenuManagementScreen';
+import { AuditLogScreen } from '../features/admin/AuditLogScreen';
+import { InventoryScreen } from '../features/admin/InventoryScreen';
 
-type TabKey = 'pos' | 'tables' | 'kds' | 'admin';
+type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'inventory' | 'audit';
 
 interface TabItem {
   key: TabKey;
@@ -37,10 +43,11 @@ const tabsByRole = {
     { key: 'kds', label: 'Bếp', icon: ChefHat, component: KDSScreen }
   ],
   ADMIN: [
-    { key: 'pos', label: 'Bán hàng', icon: ShoppingCart, component: POSScreen },
+    { key: 'reports', label: 'Báo cáo', icon: BarChart3, component: DashboardScreen },
+    { key: 'menu', label: 'Thực đơn', icon: Utensils, component: MenuManagementScreen },
+    { key: 'inventory', label: 'Kho hàng', icon: Warehouse, component: InventoryScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
-    { key: 'kds', label: 'Bếp', icon: ChefHat, component: KDSScreen },
-    { key: 'admin', label: 'Quản trị', icon: ShieldCheck, component: AdminScreen }
+    { key: 'audit', label: 'Nhật ký', icon: ClipboardList, component: AuditLogScreen }
   ]
 } satisfies Record<string, TabItem[]>;
 
@@ -94,7 +101,14 @@ export const RoleTabs: React.FC = () => {
   const isDesktop = width >= 1200;
   const isMobile = width < 768;
   const tabs = useMemo(() => tabsByRole[user?.role || 'ADMIN'], [user?.role]);
-  const [activeTab, setActiveTab] = useState<TabKey>(tabs[0]?.key || 'pos');
+  const [activeTab, setActiveTab] = useState<TabKey>(() => tabsByRole[user?.role || 'ADMIN'][0]?.key || 'reports');
+
+  useEffect(() => {
+    if (tabs.length > 0 && !tabs.some((tab) => tab.key === activeTab)) {
+      setActiveTab(tabs[0].key);
+    }
+  }, [tabs, activeTab]);
+
   const selected = tabs.find((tab) => tab.key === activeTab) || tabs[0];
   const ActiveComponent = selected.component;
   const roleLabel = roleLabels[user?.role || 'ADMIN'];

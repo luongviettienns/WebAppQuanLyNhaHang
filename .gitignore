@@ -25,12 +25,14 @@ docs/
 *.md
 !README.md
 !PROJECT_PROGRESS.md
+!INVENTORY_DISCOVERY.md
 
 # Build artifacts & outputs
 dist/
 build/
 out/
 web-build/
+uploads/
 
 # Testing & Coverage
 coverage/

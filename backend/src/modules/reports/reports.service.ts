@@ -86,6 +86,57 @@ export class ReportsService {
       .sort((a, b) => b.quantitySold - a.quantitySold || b.revenue - a.revenue)
       .slice(0, 5);
 
+    // Tinh phan bo doanh thu theo phuong thuc thanh toan tu cac don COMPLETED
+    let cashTotal = 0;
+    let cashCount = 0;
+    let bankTransferTotal = 0;
+    let bankTransferCount = 0;
+    let otherTotal = 0;
+    let otherCount = 0;
+
+    for (const order of completedOrdersList) {
+      if (order.paymentMethod === 'CASH') {
+        cashCount += 1;
+        cashTotal += order.finalAmount;
+      } else if (order.paymentMethod === 'BANK_TRANSFER') {
+        bankTransferCount += 1;
+        bankTransferTotal += order.finalAmount;
+      } else {
+        otherCount += 1;
+        otherTotal += order.finalAmount;
+      }
+    }
+
+    const paymentBreakdown = {
+      cash: { count: cashCount, total: cashTotal },
+      bankTransfer: { count: bankTransferCount, total: bankTransferTotal },
+      other: { count: otherCount, total: otherTotal }
+    };
+
+    // Tinh tong chi phi gia von (COGS) tu cac giao dich AUTO_DEDUCT va KITCHEN_WASTE trong ngay
+    const inventoryTx = await prisma.inventoryTransaction.findMany({
+      where: {
+        createdAt: {
+          gte: startOfDay,
+          lte: endOfDay
+        },
+        type: {
+          in: ['AUTO_DEDUCT', 'KITCHEN_WASTE']
+        }
+      }
+    });
+
+    const totalCogs = inventoryTx.reduce((sum, tx) => sum + Math.abs(tx.costAmount), 0);
+    const grossProfit = totalRevenue - totalCogs;
+    const grossMargin = totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 1000) / 10 : 0;
+
+    const profitSummary = {
+      totalRevenue,
+      totalCogs,
+      grossProfit,
+      grossMargin
+    };
+
     return {
       report: {
         date: targetDate,
@@ -95,7 +146,9 @@ export class ReportsService {
         totalRevenue,
         averageOrderValue,
         averagePrepTimeSec,
-        topSellers
+        topSellers,
+        paymentBreakdown,
+        profitSummary
       }
     };
   }

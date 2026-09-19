@@ -2,6 +2,7 @@ import React from 'react';
 import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SlidersHorizontal, UtensilsCrossed } from 'lucide-react-native';
 import { MenuItemDto } from '../../api/contracts';
+import { resolveImageUrl } from '../../api/config';
 import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon, StatusBadge } from '../../ui';
@@ -38,7 +39,7 @@ export const MenuItemCard: React.FC<Props> = ({ item, onPress }) => {
     >
       <View style={[styles.media, { backgroundColor: theme.surfaceSunken }]}>
         {item.imageUrl ? (
-          <Image source={{ uri: item.imageUrl }} style={{ height: '100%', width: '100%' }} resizeMode="cover" />
+          <Image source={{ uri: resolveImageUrl(item.imageUrl) || '' }} style={{ height: '100%', width: '100%' }} resizeMode="cover" />
         ) : (
           <AppIcon icon={UtensilsCrossed} color={theme.textSecondary} size={28} />
         )}
