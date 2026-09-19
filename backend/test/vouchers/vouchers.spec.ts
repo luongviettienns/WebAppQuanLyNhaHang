@@ -6,6 +6,7 @@ import { seedDatabase } from '../../prisma/seed';
 import jwt from 'jsonwebtoken';
 import { env } from '../../src/config/env';
 import { OrdersService } from '../../src/modules/orders/orders.service';
+import { resetVoucherRateLimit } from '../../src/modules/vouchers/vouchers.routes';
 
 describe('Voucher & Coupon Engine (Phase 10 - Slice 10.2)', () => {
   let adminToken: string;
@@ -317,5 +318,80 @@ describe('Voucher & Coupon Engine (Phase 10 - Slice 10.2)', () => {
     // 5. Verify voucher usedCount decremented back
     const restoredVoucher = await prismaTest.voucher.findUniqueOrThrow({ where: { code: 'GIAM20K' } });
     expect(restoredVoucher.usedCount).toBe(initialUsedCount);
+  });
+
+  it('enforces rate limit of 10 requests per minute on POST /api/vouchers/validate', async () => {
+    resetVoucherRateLimit();
+
+    // Gui 10 requests hop le lien tiep
+    for (let i = 0; i < 10; i++) {
+      const res = await request(app)
+        .post('/api/vouchers/validate')
+        .send({ code: 'CRISPY10', orderAmount: 100000 });
+      expect(res.status).toBe(200);
+    }
+
+    // Request thu 11 bi chan 429 RATE_LIMITED
+    const limitedRes = await request(app)
+      .post('/api/vouchers/validate')
+      .send({ code: 'CRISPY10', orderAmount: 100000 });
+
+    expect(limitedRes.status).toBe(429);
+    expect(limitedRes.body.error.code).toBe('RATE_LIMITED');
+
+    // Reset rate limit store sau test
+    resetVoucherRateLimit();
+  });
+
+  it('prevents race condition when 2 concurrent orders apply the last remaining voucher usage slot', async () => {
+    // Tao voucher dac biet chi con dung 1 luot su dung (usageLimit: 1, usedCount: 0)
+    const limitedVoucher = await prismaTest.voucher.create({
+      data: {
+        code: 'RACE_VOUCHER',
+        title: 'Voucher duy nhat 1 luot',
+        discountType: 'FIXED_AMOUNT',
+        discountValue: 10000,
+        minOrderValue: 50000,
+        usageLimit: 1,
+        usedCount: 0,
+        startDate: new Date(Date.now() - 3600000),
+        endDate: new Date(Date.now() + 86400000)
+      }
+    });
+
+    const quantity = Math.max(3, Math.ceil(60000 / testMenuItem.basePrice));
+
+    // Gia lap 2 request tao don hang gui dong thoi (concurrent requests)
+    const [res1, res2] = await Promise.all([
+      request(app)
+        .post('/api/orders')
+        .send({
+          orderType: 'DINE_IN',
+          tableId: testTable.id,
+          qrCodeToken: testTable.qrCodeToken,
+          voucherCode: 'RACE_VOUCHER',
+          items: [{ menuItemId: testMenuItem.id, quantity }]
+        }),
+      request(app)
+        .post('/api/orders')
+        .send({
+          orderType: 'DINE_IN',
+          tableId: testTable.id,
+          qrCodeToken: testTable.qrCodeToken,
+          voucherCode: 'RACE_VOUCHER',
+          items: [{ menuItemId: testMenuItem.id, quantity }]
+        })
+    ]);
+
+    // Chinh xac 1 request thanh cong (201) va 1 request bi chan rollback do het luot (409 CONFLICT hoac 400)
+    const statuses = [res1.status, res2.status];
+    expect(statuses).toContain(201);
+    expect(statuses.some((s) => s === 409 || s === 400)).toBe(true);
+
+    // Kiem tra usedCount khong the vuot qua 1
+    const voucherInDb = await prismaTest.voucher.findUniqueOrThrow({
+      where: { id: limitedVoucher.id }
+    });
+    expect(voucherInDb.usedCount).toBe(1);
   });
 });

@@ -719,7 +719,7 @@ export const TableScreen: React.FC = () => {
                       <Button
                         testID="btn-open-transfer-modal"
                         variant="secondary"
-                        label="Chuyển bàn"
+                        label="Chuyển bàn 🔀"
                         icon={ArrowRightLeft}
                         disabled={isProcessingPay || isProcessingVoid || isProcessingTransfer}
                         onPress={handleOpenTransferModal}

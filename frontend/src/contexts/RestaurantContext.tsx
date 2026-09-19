@@ -15,8 +15,10 @@ import {
   SocketOrderNewPayload,
   ApiResponse,
   MenuItemUpsertDto,
-  DailyReportDto
+  DailyReportDto,
+  LowStockAlertDto
 } from '../api/contracts';
+import { fetchLowStockAlertsApi } from '../api/inventory';
 import { useAuth } from './AuthContext';
 import { getApiBaseUrl, getSocketBaseUrl, onServerConfigChanged } from '../api/config';
 import { IdempotencyKeyStore } from '../lib/idempotency';
@@ -98,6 +100,10 @@ interface RestaurantContextType {
   createMenuItem: (payload: MenuItemUpsertDto) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
   updateMenuItem: (id: number, payload: MenuItemUpsertDto) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
   fetchDailyReport: (date?: string) => Promise<{ success: boolean; report?: DailyReportDto; error?: string }>;
+
+  // Inventory Low Stock Alerts
+  lowStockAlerts: LowStockAlertDto[];
+  fetchLowStockAlerts: () => Promise<void>;
 }
 
 const RestaurantContext = createContext<RestaurantContextType | undefined>(undefined);
@@ -133,6 +139,25 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [kdsOrders, setKdsOrders] = useState<OrderDto[]>([]);
   const [isLoadingKDS, setIsLoadingKDS] = useState<boolean>(false);
   const [kdsError, setKdsError] = useState<string | null>(null);
+
+  // Inventory Low Stock Alerts (Bếp & Kho)
+  const [lowStockAlerts, setLowStockAlerts] = useState<LowStockAlertDto[]>([]);
+
+  const fetchLowStockAlerts = useCallback(async () => {
+    if (!token) return;
+    try {
+      const alerts = await fetchLowStockAlertsApi(token);
+      setLowStockAlerts(alerts);
+    } catch {
+      // background fail safe
+    }
+  }, [token]);
+
+  useEffect(() => {
+    if (user?.role === 'KITCHEN' || user?.role === 'ADMIN') {
+      fetchLowStockAlerts();
+    }
+  }, [user?.role, fetchLowStockAlerts]);
 
   // 1. Fetch Menu from Backend API
   const fetchMenu = useCallback(async () => {
@@ -420,6 +445,29 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
           return [payload.order, ...prev];
         });
       }
+    });
+
+    // Table Transferred (Chuyển bàn giữa 2 bàn)
+    socket.on('order:tableTransferred', () => {
+      if (user?.role === 'KITCHEN' || user?.role === 'ADMIN') {
+        fetchKDSOrders();
+      }
+      if (user?.role !== 'KITCHEN') {
+        fetchTables();
+      }
+    });
+
+    // Inventory Low Stock Alert (Real-time từ Bếp hoặc Thanh toán tự động trừ kho)
+    socket.on('inventory:lowStockAlert', (alert: LowStockAlertDto) => {
+      setLowStockAlerts((prev) => {
+        const idx = prev.findIndex((item) => item.id === alert.id);
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = alert;
+          return updated;
+        }
+        return [...prev, alert];
+      });
     });
 
     return () => {
@@ -905,7 +953,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         toggleMenuItemSoldOut,
         createMenuItem,
         updateMenuItem,
-        fetchDailyReport
+        fetchDailyReport,
+        lowStockAlerts,
+        fetchLowStockAlerts
       }}
     >
       {children}

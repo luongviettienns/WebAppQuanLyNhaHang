@@ -1,7 +1,6 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   SafeAreaView,
@@ -26,12 +25,12 @@ import {
   X
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
-import { LowStockAlertDto, MenuItemDto, OrderDto } from '../../api/contracts';
+import { MenuItemDto, OrderDto } from '../../api/contracts';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
-import { fetchLowStockAlertsApi, recordKitchenWasteApi } from '../../api/inventory';
+import { recordKitchenWasteApi } from '../../api/inventory';
 import { radii, spacing, typography } from '../../theme';
 import {
   AppIcon,
@@ -268,7 +267,9 @@ export const KDSScreen: React.FC = () => {
     updateOrderStatus,
     categories,
     fetchMenu,
-    toggleMenuItemSoldOut
+    toggleMenuItemSoldOut,
+    lowStockAlerts,
+    fetchLowStockAlerts
   } = useRestaurant();
 
   const { token } = useAuth();
@@ -279,7 +280,6 @@ export const KDSScreen: React.FC = () => {
   const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
   const [soldOutError, setSoldOutError] = useState<string | null>(null);
 
-  const [lowStockAlerts, setLowStockAlerts] = useState<LowStockAlertDto[]>([]);
   const [isLowStockModalOpen, setIsLowStockModalOpen] = useState(false);
 
   const [isWasteModalOpen, setIsWasteModalOpen] = useState(false);
@@ -292,20 +292,11 @@ export const KDSScreen: React.FC = () => {
   const [isSubmittingWaste, setIsSubmittingWaste] = useState(false);
   const [wasteError, setWasteError] = useState<string | null>(null);
 
-  const loadLowStockAlerts = useCallback(async () => {
-    try {
-      const alerts = await fetchLowStockAlertsApi(token);
-      setLowStockAlerts(alerts);
-    } catch {
-      // Background fail safe
-    }
-  }, [token]);
-
   useEffect(() => {
-    loadLowStockAlerts();
-    const interval = setInterval(loadLowStockAlerts, 30000);
+    fetchLowStockAlerts();
+    const interval = setInterval(fetchLowStockAlerts, 30000);
     return () => clearInterval(interval);
-  }, [loadLowStockAlerts]);
+  }, [fetchLowStockAlerts]);
 
   useEffect(() => {
     fetchKDSOrders();
@@ -421,7 +412,7 @@ export const KDSScreen: React.FC = () => {
       setIsWasteModalOpen(false);
       setWasteQuantity(1);
       setWasteNote('');
-      loadLowStockAlerts();
+      fetchLowStockAlerts();
     } catch (err: any) {
       setWasteError(err.message || 'Ghi nhận hao hụt thất bại');
     } finally {
@@ -462,13 +453,13 @@ export const KDSScreen: React.FC = () => {
               icon={Trash2}
               onPress={() => {
                 fetchMenu();
-                loadLowStockAlerts();
+                fetchLowStockAlerts();
                 setWasteError(null);
                 setIsWasteModalOpen(true);
               }}
             />
             <Button variant="secondary" label="Báo hết món" icon={PackageX} onPress={openSoldOutModal} />
-            <Button variant="quiet" label="Làm mới" icon={RefreshCw} onPress={() => { fetchKDSOrders(); loadLowStockAlerts(); }} />
+            <Button variant="quiet" label="Làm mới" icon={RefreshCw} onPress={() => { fetchKDSOrders(); fetchLowStockAlerts(); }} />
             <Button
               variant="quiet"
               label={isDark ? 'Giao diện sáng' : 'Giao diện tối'}

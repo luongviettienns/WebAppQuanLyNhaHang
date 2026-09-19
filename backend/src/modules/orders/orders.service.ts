@@ -256,10 +256,33 @@ export class OrdersService {
         });
 
         if (appliedVoucherId) {
-          await tx.voucher.update({
-            where: { id: appliedVoucherId },
-            data: { usedCount: { increment: 1 } }
+          const voucher = await tx.voucher.findUnique({
+            where: { id: appliedVoucherId }
           });
+
+          if (!voucher || !voucher.isActive) {
+            throw ApiError.badRequest('Mã khuyến mãi không tồn tại hoặc đã ngừng áp dụng');
+          }
+
+          if (voucher.usageLimit !== null) {
+            // Cap nhat nguyen tu: UPDATE Voucher SET usedCount = usedCount + 1 WHERE id = ? AND usedCount < usageLimit
+            const affectedRows = await tx.$executeRaw`
+              UPDATE Voucher 
+              SET usedCount = usedCount + 1 
+              WHERE id = ${appliedVoucherId} 
+                AND isActive = true 
+                AND usedCount < usageLimit
+            `;
+
+            if (affectedRows === 0) {
+              throw ApiError.conflict('Mã khuyến mãi đã hết lượt sử dụng do đơn hàng khác vừa áp dụng');
+            }
+          } else {
+            await tx.voucher.update({
+              where: { id: appliedVoucherId },
+              data: { usedCount: { increment: 1 } }
+            });
+          }
         }
 
         // Neu la don an tai ban -> cap nhat trang thai ban sang OCCUPIED
@@ -577,14 +600,11 @@ export class OrdersService {
       }
 
       if (existingOrder.voucherId) {
-        await tx.voucher.update({
-          where: { id: existingOrder.voucherId },
-          data: {
-            usedCount: {
-              decrement: 1
-            }
-          }
-        });
+        await tx.$executeRaw`
+          UPDATE Voucher 
+          SET usedCount = CASE WHEN usedCount > 0 THEN usedCount - 1 ELSE 0 END 
+          WHERE id = ${existingOrder.voucherId}
+        `;
       }
 
       return { order: updatedOrder, tableState: nextTableState };

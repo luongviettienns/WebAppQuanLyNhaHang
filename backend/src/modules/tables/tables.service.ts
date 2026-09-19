@@ -210,6 +210,9 @@ export class TablesService {
     }
 
     const result = await prisma.$transaction(async (tx) => {
+      // Khoa ca 2 ban bang SELECT ... FOR UPDATE de tranh race condition
+      await tx.$queryRaw`SELECT id FROM DiningTable WHERE id IN (${fromTableId}, ${toTableId}) FOR UPDATE`;
+
       const fromTable = await tx.diningTable.findUnique({
         where: { id: fromTableId },
         include: {

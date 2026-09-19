@@ -1,6 +1,7 @@
 import { PrismaClient, Prisma } from '@prisma/client';
 import { prisma as defaultPrisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
+import { emitToRoom } from '../../lib/socket';
 import { AuditService } from '../audit/audit.service';
 import {
   createIngredientSchema,
@@ -631,7 +632,7 @@ export class InventoryService {
         const itemCogs = Math.round(qtyNeeded * ing.costPerUnit);
         totalOrderCogs += itemCogs;
 
-        await tx.ingredient.update({
+        const updatedIng = await tx.ingredient.update({
           where: { id: ing.id },
           data: {
             currentStock: {
@@ -639,6 +640,18 @@ export class InventoryService {
             }
           }
         });
+
+        if (updatedIng.minThreshold > 0 && updatedIng.currentStock <= updatedIng.minThreshold) {
+          emitToRoom('restaurant:kds', 'inventory:lowStockAlert', {
+            id: updatedIng.id,
+            sku: updatedIng.sku,
+            name: updatedIng.name,
+            unit: updatedIng.unit,
+            currentStock: updatedIng.currentStock,
+            minThreshold: updatedIng.minThreshold,
+            isDepleted: updatedIng.currentStock <= 0
+          });
+        }
 
         await tx.inventoryTransaction.create({
           data: {
@@ -680,12 +693,24 @@ export class InventoryService {
         const costAmount = Math.round(dto.quantity * ingredient.costPerUnit);
         totalCostAmount += costAmount;
 
-        await tx.ingredient.update({
+        const updatedIng = await tx.ingredient.update({
           where: { id: ingredient.id },
           data: {
             currentStock: { decrement: dto.quantity }
           }
         });
+
+        if (updatedIng.minThreshold > 0 && updatedIng.currentStock <= updatedIng.minThreshold) {
+          emitToRoom('restaurant:kds', 'inventory:lowStockAlert', {
+            id: updatedIng.id,
+            sku: updatedIng.sku,
+            name: updatedIng.name,
+            unit: updatedIng.unit,
+            currentStock: updatedIng.currentStock,
+            minThreshold: updatedIng.minThreshold,
+            isDepleted: updatedIng.currentStock <= 0
+          });
+        }
 
         await tx.inventoryTransaction.create({
           data: {
@@ -744,12 +769,24 @@ export class InventoryService {
           const costAmount = Math.round(qtyNeeded * bom.ingredient.costPerUnit);
           totalCostAmount += costAmount;
 
-          await tx.ingredient.update({
+          const updatedBomIng = await tx.ingredient.update({
             where: { id: bom.ingredientId },
             data: {
               currentStock: { decrement: qtyNeeded }
             }
           });
+
+          if (updatedBomIng.minThreshold > 0 && updatedBomIng.currentStock <= updatedBomIng.minThreshold) {
+            emitToRoom('restaurant:kds', 'inventory:lowStockAlert', {
+              id: updatedBomIng.id,
+              sku: updatedBomIng.sku,
+              name: updatedBomIng.name,
+              unit: updatedBomIng.unit,
+              currentStock: updatedBomIng.currentStock,
+              minThreshold: updatedBomIng.minThreshold,
+              isDepleted: updatedBomIng.currentStock <= 0
+            });
+          }
 
           await tx.inventoryTransaction.create({
             data: {
