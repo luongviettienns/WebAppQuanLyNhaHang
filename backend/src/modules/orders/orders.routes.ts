@@ -20,5 +20,8 @@ ordersRouter.post('/:id/pay', authenticate, authorize('CASHIER', 'ADMIN'), Order
 // PATCH /api/orders/:id/void (Huy don hang kiem toan: Chi ADMIN)
 ordersRouter.patch('/:id/void', authenticate, authorize('ADMIN'), OrdersController.voidOrder);
 
+// POST /api/orders/auto-cancel-expired (Quet tu dong huy don PENDING qua han: Chi ADMIN hoac he thong)
+ordersRouter.post('/auto-cancel-expired', authenticate, authorize('ADMIN'), OrdersController.autoCancelExpired);
+
 
 

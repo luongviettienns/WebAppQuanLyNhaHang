@@ -25,8 +25,8 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
     // 3. Menu Management: Verify filters, actions, items, and availability controls.
     const menuSubtab = page.getByTestId('admin-subtab-menu');
     await expect(menuSubtab).toBeVisible();
-    await expect(page.getByPlaceholder('Tìm món theo tên hoặc mô tả')).toBeVisible();
-    await expect(page.getByTestId('admin-btn-add-item')).toContainText('Thêm món');
+    await expect(page.getByPlaceholder('Theo mã hoặc tên món')).toBeVisible();
+    await expect(page.getByTestId('admin-btn-add-item')).toContainText('Món mới');
 
     const firstSwitch = page.locator('[data-testid^="menu-item-switch-"]').first();
     await expect(firstSwitch).toBeVisible({ timeout: 8000 });
@@ -89,18 +89,21 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
   test('shows a mobile-first customer table ordering flow without internal system wording', async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
 
-    await page.getByTestId('demo-btn-admin').click();
-    await expect(page.getByTestId('tab-qr_table')).toBeVisible({ timeout: 10000 });
-    await page.getByTestId('tab-qr_table').click();
+    await page.goto('/?table=4&token=QR-TABLE-04');
+    await page.waitForLoadState('networkidle');
 
-    await expect(page.getByText('Bàn 04', { exact: true })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Thực đơn' })).toBeVisible();
+    await expect(page.getByText('Bàn 04', { exact: true })).toBeVisible({ timeout: 10000 });
+    const addMoreBtn = page.getByRole('button', { name: 'Gọi thêm món' });
+    if (await addMoreBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await addMoreBtn.click();
+    }
+    await expect(page.getByRole('heading', { name: 'Thực đơn' })).toBeVisible({ timeout: 10000 });
 
     await page.getByText('Gà Rán Giòn Cay (3 Miếng)', { exact: true }).click();
     const cartSummary = page.getByTestId('customer-cart-summary');
     await expect(cartSummary).toBeVisible();
-    await expect(cartSummary.getByText('Giỏ hàng')).toBeVisible();
-    await expect(cartSummary).toContainText('1 món');
+    await expect(cartSummary).toContainText('Xem giỏ hàng');
+    await expect(cartSummary).toContainText('(1)');
     await expect(cartSummary.getByRole('button', { name: 'Gửi món' })).toBeVisible();
 
     await expect(page.locator('body')).not.toContainText(/\b(?:KDS|POS)\b/);

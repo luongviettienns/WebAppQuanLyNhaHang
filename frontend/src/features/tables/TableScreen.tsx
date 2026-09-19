@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -13,6 +14,8 @@ import {
 } from 'react-native';
 import {
   Banknote,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   CircleCheck,
   Clock3,
@@ -97,6 +100,24 @@ export const TableScreen: React.FC = () => {
   const [isProcessingVoid, setIsProcessingVoid] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
   const [isProcessingClean, setIsProcessingClean] = useState(false);
+  const orderScrollRef = useRef<ScrollView>(null);
+
+  const scrollOrders = useCallback((offset: number) => {
+    if (orderScrollRef.current) {
+      if (Platform.OS === 'web') {
+        const node = (orderScrollRef.current as any)?.getScrollableNode?.() || orderScrollRef.current;
+        if (node && typeof node.scrollLeft === 'number') {
+          if (typeof node.scrollBy === 'function') {
+            node.scrollBy({ left: offset, behavior: 'smooth' });
+          } else {
+            node.scrollLeft += offset;
+          }
+          return;
+        }
+      }
+      orderScrollRef.current?.scrollTo({ x: offset > 0 ? 300 : 0, animated: true });
+    }
+  }, []);
 
   const counts = useMemo(() => ({
     all: tables.length,
@@ -459,36 +480,94 @@ export const TableScreen: React.FC = () => {
                 <View style={styles.detailSections}>
                   {(selectedTable?.orders?.length || 0) > 1 && (
                     <View style={styles.detailSection}>
-                      <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Đơn tại bàn</Text>
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.orderSelectorContent}>
-                        {selectedTable?.orders?.map((order) => {
-                          const selected = activeOrder.id === order.id;
-                          return (
+                      <View style={styles.orderSelectorHeader}>
+                        <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>
+                          Đơn tại bàn ({selectedTable?.orders?.length} đơn)
+                        </Text>
+                        {(selectedTable?.orders?.length || 0) > 2 && (
+                          <View style={styles.orderScrollControls}>
                             <Pressable
-                              key={order.id}
                               accessibilityRole="button"
-                              accessibilityState={{ selected }}
-                              onPress={() => {
-                                setSelectedOrderId(order.id);
-                                setPaySuccessMsg(null);
-                              }}
+                              accessibilityLabel="Cuộn đơn sang trái"
+                              onPress={() => scrollOrders(-180)}
                               style={({ pressed }) => [
-                                styles.orderSelectorButton,
+                                styles.orderNavBtn,
                                 {
-                                  backgroundColor: selected
-                                    ? theme.interactiveSecondary
-                                    : pressed ? theme.surfaceSunken : theme.surfaceBase,
-                                  borderColor: selected ? theme.primary : theme.borderSubtle
+                                  backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase,
+                                  borderColor: theme.borderSubtle
                                 }
                               ]}
                             >
-                              <Text style={[styles.orderSelectorText, { color: selected ? theme.primary : theme.textPrimary }]}>
-                                {order.code} · {formatVND(order.finalAmount)}
-                              </Text>
+                              <AppIcon icon={ChevronLeft} color={theme.textPrimary} size={15} />
                             </Pressable>
-                          );
-                        })}
-                      </ScrollView>
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel="Cuộn đơn sang phải"
+                              onPress={() => scrollOrders(180)}
+                              style={({ pressed }) => [
+                                styles.orderNavBtn,
+                                {
+                                  backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase,
+                                  borderColor: theme.borderSubtle
+                                }
+                              ]}
+                            >
+                              <AppIcon icon={ChevronRight} color={theme.textPrimary} size={15} />
+                            </Pressable>
+                          </View>
+                        )}
+                      </View>
+                      <View
+                        style={styles.orderSelectorRow}
+                        {...(Platform.OS === 'web'
+                          ? {
+                              onWheel: (e: any) => {
+                                const delta = e.deltaY || e.deltaX;
+                                if (delta && orderScrollRef.current) {
+                                  const node = (orderScrollRef.current as any)?.getScrollableNode?.() || orderScrollRef.current;
+                                  if (node && typeof node.scrollLeft === 'number') {
+                                    node.scrollLeft += delta;
+                                  }
+                                }
+                              }
+                            }
+                          : {})}
+                      >
+                        <ScrollView
+                          ref={orderScrollRef}
+                          horizontal
+                          showsHorizontalScrollIndicator={true}
+                          contentContainerStyle={styles.orderSelectorContent}
+                        >
+                          {selectedTable?.orders?.map((order) => {
+                            const selected = activeOrder.id === order.id;
+                            return (
+                              <Pressable
+                                key={order.id}
+                                accessibilityRole="button"
+                                accessibilityState={{ selected }}
+                                onPress={() => {
+                                  setSelectedOrderId(order.id);
+                                  setPaySuccessMsg(null);
+                                }}
+                                style={({ pressed }) => [
+                                  styles.orderSelectorButton,
+                                  {
+                                    backgroundColor: selected
+                                      ? theme.interactiveSecondary
+                                      : pressed ? theme.surfaceSunken : theme.surfaceBase,
+                                    borderColor: selected ? theme.primary : theme.borderSubtle
+                                  }
+                                ]}
+                              >
+                                <Text style={[styles.orderSelectorText, { color: selected ? theme.primary : theme.textPrimary }]}>
+                                  {order.code} · {formatVND(order.finalAmount)}
+                                </Text>
+                              </Pressable>
+                            );
+                          })}
+                        </ScrollView>
+                      </View>
                     </View>
                   )}
 
@@ -829,10 +908,42 @@ const styles = StyleSheet.create({
     fontSize: typography.sizes.md,
     lineHeight: typography.lineHeights.md
   },
-  orderSelectorContent: { gap: spacing.sm },
+  orderSelectorHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: spacing.xs
+  },
+  orderScrollControls: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs
+  },
+  orderNavBtn: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: 'center',
+    width: 28
+  },
+  orderSelectorRow: {
+    width: '100%'
+  },
+  orderSelectorContent: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.xs
+  },
   orderSelectorButton: {
+    alignItems: 'center',
     borderRadius: radii.pill,
     borderWidth: 1,
+    flexDirection: 'row',
+    flexShrink: 0,
+    gap: spacing.xs,
     justifyContent: 'center',
     minHeight: spacing.touchTargetMobile,
     paddingHorizontal: spacing.md

@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -10,7 +11,7 @@ import {
   Text,
   View
 } from 'react-native';
-import { Bell, Check, ChefHat, ChevronLeft, CreditCard, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
+import { Bell, Check, ChefHat, ChevronLeft, ChevronRight, CreditCard, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
 import { DiningTableDto, MenuItemDto, OrderDto, OrderStatus } from '../../api/contracts';
 import { getApiBaseUrl } from '../../api/config';
 import { useRestaurant } from '../../contexts/RestaurantContext';
@@ -22,6 +23,7 @@ import type { StatusTone } from '../../ui';
 import { MenuCategoryPills } from '../pos/MenuCategoryPills';
 import { MenuItemCard } from '../pos/MenuItemCard';
 import { ModifierModal } from '../pos/ModifierModal';
+import { CustomerCartModal } from './CustomerCartModal';
 import { notificationHelper } from '../../lib/notificationHelper';
 
 interface Props {
@@ -63,9 +65,14 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     openModifierModal,
     closeModifierModal,
     cart,
-    cartItemCount,
+    cartSubtotal,
+    cartVat,
     cartTotal,
+    cartItemCount,
     addToCart,
+    updateCartQuantity,
+    removeFromCart,
+    clearCart,
     createDineInOrder,
     tables,
     fetchTables,
@@ -79,8 +86,11 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
   const [isVietQRModalOpen, setIsVietQRModalOpen] = useState(false);
   const [isNotifPromptModalOpen, setIsNotifPromptModalOpen] = useState(false);
   const [isBrowsingMenu, setIsBrowsingMenu] = useState(false);
+  const [isCartModalOpen, setIsCartModalOpen] = useState(false);
+  const [orderNotes, setOrderNotes] = useState('');
   const [guestTable, setGuestTable] = useState<DiningTableDto | null>(null);
   const [guestTableError, setGuestTableError] = useState<string | null>(null);
+  const [resolvedQrToken, setResolvedQrToken] = useState<string | null>(qrCodeToken || null);
   const [notifPermission, setNotifPermission] = useState<'granted' | 'denied' | 'default' | 'unsupported'>(
     notificationHelper.getPermissionStatus()
   );
@@ -88,22 +98,37 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!qrCodeToken) return;
     let cancelled = false;
     const loadGuestTable = async () => {
       setGuestTableError(null);
       try {
-        const response = await fetch(`${getApiBaseUrl()}/api/tables/qr/${encodeURIComponent(qrCodeToken)}`);
-        const json = await response.json();
-        if (!response.ok) {
-          throw new Error(json.error?.message || 'Mã QR bàn không hợp lệ');
-        }
-        if (!cancelled) {
-          setGuestTable(json.data.table);
+        if (qrCodeToken) {
+          const response = await fetch(`${getApiBaseUrl()}/api/tables/qr/${encodeURIComponent(qrCodeToken)}`);
+          const json = await response.json();
+          if (!response.ok) {
+            throw new Error(json.error?.message || 'Mã QR bàn không hợp lệ');
+          }
+          if (!cancelled) {
+            setGuestTable(json.data.table);
+            setResolvedQrToken(qrCodeToken);
+          }
+        } else if (tableNumber) {
+          // Tu dong nhan dien va lay token hop le theo so ban tu server
+          const response = await fetch(`${getApiBaseUrl()}/api/tables/by-number/${tableNumber}`);
+          const json = await response.json();
+          if (!response.ok) {
+            throw new Error(json.error?.message || `Không thể tải thông tin Bàn ${tableNumber}`);
+          }
+          if (!cancelled) {
+            setGuestTable(json.data.table);
+            if (json.data.qrCodeToken) {
+              setResolvedQrToken(json.data.qrCodeToken);
+            }
+          }
         }
       } catch (err: any) {
         if (!cancelled) {
-          setGuestTableError(err.message || 'Không thể tải thông tin bàn từ mã QR');
+          setGuestTableError(err.message || 'Không thể tải thông tin bàn');
         }
       }
     };
@@ -111,8 +136,9 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     return () => {
       cancelled = true;
     };
-  }, [qrCodeToken]);
+  }, [qrCodeToken, tableNumber]);
 
+  const effectiveQrToken = qrCodeToken || resolvedQrToken;
   const table = guestTable || tables.find((t) => t.tableNumber === tableNumber) || (tables.length > 0 ? tables[0] : null);
   const tableId = table?.id;
   const displayTableNumber = table?.tableNumber ?? tableNumber;
@@ -128,6 +154,25 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     allTableOrders.length > 0
       ? allTableOrders.reduce((sum, o) => sum + (o.finalAmount || 0), 0)
       : liveOrder?.finalAmount || 0;
+
+  const batchScrollRef = useRef<ScrollView>(null);
+
+  const scrollBatches = useCallback((offset: number) => {
+    if (batchScrollRef.current) {
+      if (Platform.OS === 'web') {
+        const node = (batchScrollRef.current as any)?.getScrollableNode?.() || batchScrollRef.current;
+        if (node && typeof node.scrollLeft === 'number') {
+          if (typeof node.scrollBy === 'function') {
+            node.scrollBy({ left: offset, behavior: 'smooth' });
+          } else {
+            node.scrollLeft += offset;
+          }
+          return;
+        }
+      }
+      batchScrollRef.current?.scrollTo({ x: offset > 0 ? 300 : 0, animated: true });
+    }
+  }, []);
 
   // Luu vet status da thong bao de chan triet de viec spam chuong / rung / toast
   const lastNotifiedStatusKeyRef = useRef<string | null>(null);
@@ -275,13 +320,16 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     // Xin quyen thong bao trinh duyet khi khach dat mon
     notificationHelper.requestPermission().catch(() => {});
 
-    const result = await createDineInOrder(tableId, undefined, qrCodeToken);
+    const tokenToSend = effectiveQrToken || (table as any)?.qrCodeToken || undefined;
+    const result = await createDineInOrder(tableId, orderNotes.trim() || undefined, tokenToSend);
     setIsSubmitting(false);
 
     if (result.success && result.order) {
       setCurrentOrder(result.order);
       setSelectedOrderId(result.order.id);
       setIsBrowsingMenu(false);
+      setIsCartModalOpen(false);
+      setOrderNotes('');
       showToast({
         type: 'success',
         title: 'Đặt món thành công! 🚀',
@@ -367,8 +415,35 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
         )}
       </View>
 
-      {liveOrder && !isBrowsingMenu && cart.length === 0 ? (
+      {liveOrder && !isBrowsingMenu ? (
         <ScrollView contentContainerStyle={styles.progressContent} showsVerticalScrollIndicator={false}>
+          {cartItemCount > 0 && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Bạn đang có ${cartItemCount} món trong giỏ hàng. Chạm để xem và gửi bếp.`}
+              onPress={() => setIsCartModalOpen(true)}
+              style={[
+                styles.pendingCartAlert,
+                { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }
+              ]}
+            >
+              <View style={styles.pendingCartAlertLeft}>
+                <View style={[styles.cartBadge, { backgroundColor: theme.primary }]}>
+                  <AppIcon icon={ShoppingBag} color={theme.textInverse} size={15} />
+                </View>
+                <View style={styles.cartBarCopyText}>
+                  <Text style={[styles.pendingCartAlertTitle, { color: theme.primary }]}>
+                    Giỏ hàng có {cartItemCount} món chưa gửi bếp ({formatVND(cartTotal)})
+                  </Text>
+                  <Text style={[styles.pendingCartAlertSub, { color: theme.textSecondary }]}>
+                    Chạm để xem giỏ hàng hoặc gửi tiếp đợt món mới
+                  </Text>
+                </View>
+              </View>
+              <AppIcon icon={ChevronRight} color={theme.primary} size={18} />
+            </Pressable>
+          )}
+
           <View style={styles.progressHeading}>
             <View style={styles.progressHeadingCopy}>
               <Text accessibilityRole="header" style={[styles.screenTitle, { color: theme.textPrimary }]}>
@@ -387,67 +462,123 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
           {allTableOrders.length > 1 && (
             <View style={styles.batchSelectorContainer}>
               <View style={styles.batchSelectorHeader}>
-                <Text style={[styles.batchSelectorLabel, { color: theme.textSecondary }]}>
-                  Chọn đợt để xem tiến độ nấu:
-                </Text>
-                <Text style={[styles.batchTotalHint, { color: theme.primary }]}>
-                  Tổng bàn: {formatVND(totalTableAmount)}
-                </Text>
-              </View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.batchList}>
-                {allTableOrders.map((order, idx) => {
-                  const isSelected = order.id === liveOrder?.id;
-                  const batchNumber = allTableOrders.length - idx;
-                  const statusCfg = orderStatusConfig(order.status);
-                  return (
+                <View style={styles.batchSelectorTitleRow}>
+                  <Text style={[styles.batchSelectorLabel, { color: theme.textSecondary }]}>
+                    Chọn đợt để xem tiến độ nấu:
+                  </Text>
+                  <Text style={[styles.batchTotalHint, { color: theme.primary }]}>
+                    Tổng bàn: {formatVND(totalTableAmount)}
+                  </Text>
+                </View>
+                {allTableOrders.length > 2 && (
+                  <View style={styles.batchNavControls}>
                     <Pressable
-                      key={order.id}
-                      onPress={() => {
-                        setSelectedOrderId(order.id);
-                        setCurrentOrder(order);
-                      }}
+                      accessibilityRole="button"
+                      accessibilityLabel="Cuộn đợt sang trái"
+                      onPress={() => scrollBatches(-180)}
                       style={({ pressed }) => [
-                        styles.batchChip,
+                        styles.batchNavBtn,
                         {
-                          backgroundColor: isSelected ? theme.interactivePrimary : theme.surfaceRaised,
-                          borderColor: isSelected ? theme.interactivePrimary : theme.borderSubtle,
-                          opacity: pressed ? 0.85 : 1
+                          backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase,
+                          borderColor: theme.borderSubtle
                         }
                       ]}
                     >
-                      <Text
-                        style={[
-                          styles.batchChipTitle,
-                          { color: isSelected ? theme.textInverse : theme.textPrimary }
-                        ]}
-                      >
-                        Đợt {batchNumber} (#{order.code})
-                      </Text>
-                      <View
-                        style={[
-                          styles.batchChipBadge,
+                      <AppIcon icon={ChevronLeft} color={theme.textPrimary} size={15} />
+                    </Pressable>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Cuộn đợt sang phải"
+                      onPress={() => scrollBatches(180)}
+                      style={({ pressed }) => [
+                        styles.batchNavBtn,
+                        {
+                          backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase,
+                          borderColor: theme.borderSubtle
+                        }
+                      ]}
+                    >
+                      <AppIcon icon={ChevronRight} color={theme.textPrimary} size={15} />
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+              <View
+                style={styles.batchListWrapper}
+                {...(Platform.OS === 'web'
+                  ? {
+                      onWheel: (e: any) => {
+                        const delta = e.deltaY || e.deltaX;
+                        if (delta && batchScrollRef.current) {
+                          const node = (batchScrollRef.current as any)?.getScrollableNode?.() || batchScrollRef.current;
+                          if (node && typeof node.scrollLeft === 'number') {
+                            node.scrollLeft += delta;
+                          }
+                        }
+                      }
+                    }
+                  : {})}
+              >
+                <ScrollView
+                  ref={batchScrollRef}
+                  horizontal
+                  showsHorizontalScrollIndicator={true}
+                  contentContainerStyle={styles.batchList}
+                >
+                  {allTableOrders.map((order, idx) => {
+                    const isSelected = order.id === liveOrder?.id;
+                    const batchNumber = allTableOrders.length - idx;
+                    const statusCfg = orderStatusConfig(order.status);
+                    return (
+                      <Pressable
+                        key={order.id}
+                        onPress={() => {
+                          setSelectedOrderId(order.id);
+                          setCurrentOrder(order);
+                        }}
+                        style={({ pressed }) => [
+                          styles.batchChip,
                           {
-                            backgroundColor: isSelected
-                              ? 'rgba(255,255,255,0.25)'
-                              : statusColors.order[order.status]?.background || theme.surfaceSunken
+                            backgroundColor: isSelected ? theme.interactivePrimary : theme.surfaceRaised,
+                            borderColor: isSelected ? theme.interactivePrimary : theme.borderSubtle,
+                            opacity: pressed ? 0.85 : 1
                           }
                         ]}
                       >
                         <Text
                           style={[
-                            styles.batchChipStatus,
+                            styles.batchChipTitle,
+                            { color: isSelected ? theme.textInverse : theme.textPrimary }
+                          ]}
+                        >
+                          Đợt {batchNumber} (#{order.code})
+                        </Text>
+                        <View
+                          style={[
+                            styles.batchChipBadge,
                             {
-                              color: isSelected ? theme.textInverse : statusColors.order[order.status]?.text || theme.textSecondary
+                              backgroundColor: isSelected
+                                ? 'rgba(255,255,255,0.25)'
+                                : statusColors.order[order.status]?.background || theme.surfaceSunken
                             }
                           ]}
                         >
-                          {statusCfg.label}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
+                          <Text
+                            style={[
+                              styles.batchChipStatus,
+                              {
+                                color: isSelected ? theme.textInverse : statusColors.order[order.status]?.text || theme.textSecondary
+                              }
+                            ]}
+                          >
+                            {statusCfg.label}
+                          </Text>
+                        </View>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
             </View>
           )}
 
@@ -570,14 +701,16 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                     >
                       <View style={styles.batchOrderHeader}>
                         <View style={styles.batchOrderTitleGroup}>
-                          <Text style={[styles.batchOrderTitle, { color: isCurrentBatch ? theme.primary : theme.textPrimary }]}>
-                            Đợt {batchNumber} · Mã #{batchOrder.code} {isCurrentBatch ? '(Đang xem tiến độ)' : ''}
+                          <View style={styles.batchOrderTitleRow}>
+                            <Text style={[styles.batchOrderTitle, { color: isCurrentBatch ? theme.primary : theme.textPrimary }]}>
+                              Đợt {batchNumber} · Mã #{batchOrder.code} {isCurrentBatch ? '(Đang xem)' : ''}
+                            </Text>
+                            <StatusBadge {...orderStatusConfig(batchOrder.status)} />
+                          </View>
+                          <Text style={[styles.batchOrderTime, { color: theme.textSecondary }]}>
+                            Đặt lúc {new Date(batchOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                           </Text>
-                          <StatusBadge {...orderStatusConfig(batchOrder.status)} />
                         </View>
-                        <Text style={[styles.batchOrderTime, { color: theme.textSecondary }]}>
-                          {new Date(batchOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
-                        </Text>
                       </View>
 
                       <View style={styles.batchItemsList}>
@@ -586,15 +719,35 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                             key={item.id || String(item.menuItemId) + '-' + iIdx}
                             style={[styles.batchItemRow, iIdx > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 }]}
                           >
-                            <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
-                              {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
-                            </Text>
+                            <View style={styles.itemDetailCol}>
+                              <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
+                                {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
+                              </Text>
+                              {(item.selectedModifiersJson || []).map((mod, mIdx) => (
+                                <Text key={`${mod.optionId}-${mIdx}`} style={[styles.itemModifierText, { color: theme.textSecondary }]}>
+                                  + {mod.groupName}: {mod.optionName}{mod.priceDelta > 0 ? ` (+${formatVND(mod.priceDelta)})` : ''}
+                                </Text>
+                              ))}
+                              {item.notes ? (
+                                <Text style={[styles.itemNotesText, { color: theme.textSecondary }]}>
+                                  📝 Ghi chú: {item.notes}
+                                </Text>
+                              ) : null}
+                            </View>
                             <Text style={[styles.orderItemPrice, { color: theme.textPrimary }]}>
                               {formatVND(item.subtotal)}
                             </Text>
                           </View>
                         ))}
                       </View>
+
+                      {batchOrder.notes ? (
+                        <View style={[styles.batchOrderNotesBadge, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                          <Text style={[styles.batchOrderNotesText, { color: theme.textSecondary }]}>
+                            💬 Ghi chú đợt: {batchOrder.notes}
+                          </Text>
+                        </View>
+                      ) : null}
 
                       <View style={[styles.batchSubtotalRow, { borderTopColor: theme.borderSubtle }]}>
                         <Text style={[styles.batchSubtotalLabel, { color: theme.textSecondary }]}>Tiền đợt {batchNumber}:</Text>
@@ -610,7 +763,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                 <View style={[styles.grandTotalCard, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderStrong }]}>
                   <View>
                     <Text style={[styles.grandTotalLabel, { color: theme.textPrimary }]}>
-                      Tổng hóa đơn cả bàn ({allTableOrders.length} đợt)
+                      Tổng thanh toán cả bàn ({allTableOrders.length} đợt gọi món)
                     </Text>
                     <Text style={[styles.vatNote, { color: theme.textSecondary }]}>Đã gồm thuế VAT 8%</Text>
                   </View>
@@ -621,17 +774,52 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
               </View>
             ) : (
               <View style={[styles.orderItems, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+                <View style={styles.singleOrderHeader}>
+                  <View style={styles.singleOrderHeaderLeft}>
+                    <Text style={[styles.singleOrderCode, { color: theme.textPrimary }]}>
+                      Đơn #{liveOrder.code}
+                    </Text>
+                    <Text style={[styles.singleOrderTime, { color: theme.textSecondary }]}>
+                      Đặt lúc {new Date(liveOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                    </Text>
+                  </View>
+                  <StatusBadge {...orderStatusConfig(liveOrder.status)} />
+                </View>
+
+                <View style={styles.singleOrderDivider} />
+
                 {liveOrder.items?.map((item, index) => (
                   <View
                     key={item.id || String(item.menuItemId) + '-' + index}
                     style={[styles.orderItem, index > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 }]}
                   >
-                    <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
-                      {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
-                    </Text>
+                    <View style={styles.itemDetailCol}>
+                      <Text style={[styles.orderItemName, { color: theme.textPrimary }]}>
+                        {item.quantity} × {item.menuItemName || `Món #${item.menuItemId}`}
+                      </Text>
+                      {(item.selectedModifiersJson || []).map((mod, mIdx) => (
+                        <Text key={`${mod.optionId}-${mIdx}`} style={[styles.itemModifierText, { color: theme.textSecondary }]}>
+                          + {mod.groupName}: {mod.optionName}{mod.priceDelta > 0 ? ` (+${formatVND(mod.priceDelta)})` : ''}
+                        </Text>
+                      ))}
+                      {item.notes ? (
+                        <Text style={[styles.itemNotesText, { color: theme.textSecondary }]}>
+                          📝 Ghi chú: {item.notes}
+                        </Text>
+                      ) : null}
+                    </View>
                     <Text style={[styles.orderItemPrice, { color: theme.textPrimary }]}>{formatVND(item.subtotal)}</Text>
                   </View>
                 ))}
+
+                {liveOrder.notes ? (
+                  <View style={[styles.batchOrderNotesBadge, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                    <Text style={[styles.batchOrderNotesText, { color: theme.textSecondary }]}>
+                      💬 Ghi chú: {liveOrder.notes}
+                    </Text>
+                  </View>
+                ) : null}
+
                 <View style={[styles.orderTotal, { borderTopColor: theme.borderSubtle }]}>
                   <View>
                     <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Tổng thanh toán</Text>
@@ -701,14 +889,23 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
               testID="customer-cart-summary"
               style={[styles.customerCartBar, elevation.floatingAction, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderSubtle }]}
             >
-              <View style={styles.cartSummaryCopy}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`Xem giỏ hàng có ${cartItemCount} món, tổng cộng ${formatVND(cartTotal)}`}
+                onPress={() => setIsCartModalOpen(true)}
+                style={styles.cartSummaryCopy}
+              >
                 <View style={styles.cartHeadingRow}>
-                  <AppIcon icon={ShoppingBag} color={theme.primary} size={18} />
-                  <Text style={[styles.cartTitle, { color: theme.textPrimary }]}>Giỏ hàng</Text>
+                  <View style={[styles.cartBadge, { backgroundColor: theme.primary }]}>
+                    <AppIcon icon={ShoppingBag} color={theme.textInverse} size={15} />
+                  </View>
+                  <View style={styles.cartBarCopyText}>
+                    <Text style={[styles.cartTitle, { color: theme.textPrimary }]}>Xem giỏ hàng ({cartItemCount})</Text>
+                    <Text style={[styles.cartMeta, { color: theme.textSecondary }]}>Chạm để xem món & sửa</Text>
+                  </View>
                 </View>
-                <Text style={[styles.cartMeta, { color: theme.textSecondary }]}>{cartItemCount} món</Text>
-                <Text style={[styles.cartPrice, { color: theme.textPrimary }]}>{formatVND(cartTotal)}</Text>
-              </View>
+                <Text style={[styles.cartPrice, { color: theme.primary }]}>{formatVND(cartTotal)}</Text>
+              </Pressable>
               <View style={styles.cartAction}>
                 <Button
                   variant="primary"
@@ -831,6 +1028,25 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
           </SafeAreaView>
         </View>
       </Modal>
+
+      {/* Modal xem va chinh sua gio hang cho khach */}
+      <CustomerCartModal
+        visible={isCartModalOpen}
+        tableNumber={displayTableNumber}
+        cart={cart}
+        cartItemCount={cartItemCount}
+        cartSubtotal={cartSubtotal}
+        cartVat={cartVat}
+        cartTotal={cartTotal}
+        orderNotes={orderNotes}
+        onChangeOrderNotes={setOrderNotes}
+        onUpdateQuantity={updateCartQuantity}
+        onRemoveItem={removeFromCart}
+        onClearCart={clearCart}
+        onSubmitOrder={() => void handleSendToKitchen()}
+        isSubmitting={isSubmitting}
+        onClose={() => setIsCartModalOpen(false)}
+      />
     </SafeAreaView>
   );
 };
@@ -977,7 +1193,7 @@ const styles = StyleSheet.create({
   orderSection: { gap: spacing.sm },
   sectionTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
   orderItems: { borderRadius: radii.md, borderWidth: 1, overflow: 'hidden', paddingHorizontal: spacing.md },
-  orderItem: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
+  orderItem: { alignItems: 'flex-start', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', paddingVertical: spacing.md },
   orderItemName: { flex: 1, fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
   orderItemPrice: {
     fontFamily: typography.families.bodySemibold,
@@ -1138,7 +1354,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
+    marginBottom: spacing.xs,
     paddingHorizontal: 2
+  },
+  batchSelectorTitleRow: {
+    flex: 1,
+    gap: 2
   },
   batchSelectorLabel: {
     fontFamily: typography.families.bodySemibold,
@@ -1148,8 +1369,28 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.operationalBold,
     fontSize: typography.sizes.xs
   },
+  batchNavControls: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs,
+    marginLeft: spacing.sm
+  },
+  batchNavBtn: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    height: 28,
+    justifyContent: 'center',
+    width: 28
+  },
+  batchListWrapper: {
+    width: '100%'
+  },
   batchList: {
+    alignItems: 'center',
+    flexDirection: 'row',
     gap: spacing.sm,
+    paddingHorizontal: spacing.xs,
     paddingVertical: spacing.xs
   },
   batchChip: {
@@ -1157,6 +1398,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.md,
     borderWidth: 1.5,
     flexDirection: 'row',
+    flexShrink: 0,
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs
@@ -1217,7 +1459,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs
   },
   batchItemRow: {
-    alignItems: 'center',
+    alignItems: 'flex-start',
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingVertical: spacing.xs
@@ -1253,5 +1495,98 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.operationalBold,
     fontSize: typography.sizes.lg,
     fontVariant: [...typography.numeric.fontVariant]
+  },
+  itemDetailCol: {
+    flex: 1,
+    gap: 2,
+    minWidth: 0
+  },
+  itemModifierText: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs,
+    paddingLeft: spacing.xs
+  },
+  itemNotesText: {
+    fontFamily: typography.families.bodyMedium,
+    fontSize: typography.sizes.xs,
+    fontStyle: 'italic',
+    paddingLeft: spacing.xs
+  },
+  batchOrderNotesBadge: {
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    marginTop: spacing.xs,
+    padding: spacing.xs
+  },
+  batchOrderNotesText: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs
+  },
+  pendingCartAlert: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    padding: spacing.md
+  },
+  pendingCartAlertLeft: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm
+  },
+  pendingCartAlertTitle: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm
+  },
+  pendingCartAlertSub: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs,
+    marginTop: 2
+  },
+  cartBadge: {
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    height: 28,
+    justifyContent: 'center',
+    width: 28
+  },
+  cartBarCopyText: {
+    gap: 2
+  },
+  batchOrderTitleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs
+  },
+  singleOrderHeader: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingBottom: spacing.sm
+  },
+  singleOrderHeaderLeft: {
+    flex: 1,
+    gap: 2
+  },
+  singleOrderHeaderRight: {
+    alignItems: 'flex-end',
+    gap: spacing.xs
+  },
+  singleOrderCode: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.md
+  },
+  singleOrderTime: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs
+  },
+  singleOrderDivider: {
+    borderBottomColor: '#E5E7EB',
+    borderBottomWidth: 1,
+    marginBottom: spacing.xs
   }
 });

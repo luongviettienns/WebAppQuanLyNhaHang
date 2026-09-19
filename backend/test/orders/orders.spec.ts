@@ -73,6 +73,25 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     expect(res.body.data.table).not.toHaveProperty('qrCodeToken');
   });
 
+  it('GET /api/tables/by-number/:tableNumber tra ve thong tin ban va qrCodeToken cho khach goi mon', async () => {
+    const table = await prismaTest.diningTable.findFirstOrThrow({ where: { tableNumber: 4 } });
+
+    const res = await request(app).get('/api/tables/by-number/4');
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.table.tableNumber).toBe(4);
+    expect(res.body.data.qrCodeToken).toBe(table.qrCodeToken);
+  });
+
+  it('GET /api/tables/public tra ve danh sach ban kem qrCodeToken de in ma QR', async () => {
+    const res = await request(app).get('/api/tables/public');
+
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data.tables)).toBe(true);
+    expect(res.body.data.tables.length).toBe(12);
+    expect(res.body.data.tables[0]).toHaveProperty('qrCodeToken');
+  });
+
   it('POST /api/orders tu choi guest dine-in neu khong co QR token', async () => {
     const table = await prismaTest.diningTable.findFirstOrThrow({ where: { tableNumber: 12 } });
     const item = await prismaTest.menuItem.findFirstOrThrow({

@@ -5,7 +5,6 @@ import {
   LayoutGrid,
   LogOut,
   Moon,
-  QrCode,
   ShieldCheck,
   ShoppingCart,
   Sun
@@ -17,11 +16,10 @@ import { radii, spacing, typography } from '../theme';
 import { AppIcon, BrandMark, StatusBadge } from '../ui';
 import { POSScreen } from '../features/pos/POSScreen';
 import { TableScreen } from '../features/tables/TableScreen';
-import { TableOrderScreen } from '../features/customer/TableOrderScreen';
 import { KDSScreen } from '../features/kds/KDSScreen';
 import { AdminScreen } from '../features/admin/AdminScreen';
 
-type TabKey = 'pos' | 'tables' | 'qr_table' | 'kds' | 'admin';
+type TabKey = 'pos' | 'tables' | 'kds' | 'admin';
 
 interface TabItem {
   key: TabKey;
@@ -33,8 +31,7 @@ interface TabItem {
 const tabsByRole = {
   CASHIER: [
     { key: 'pos', label: 'Bán hàng', icon: ShoppingCart, component: POSScreen },
-    { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
-    { key: 'qr_table', label: 'Khách QR', icon: QrCode, component: TableOrderScreen }
+    { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen }
   ],
   KITCHEN: [
     { key: 'kds', label: 'Bếp', icon: ChefHat, component: KDSScreen }
@@ -42,7 +39,6 @@ const tabsByRole = {
   ADMIN: [
     { key: 'pos', label: 'Bán hàng', icon: ShoppingCart, component: POSScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
-    { key: 'qr_table', label: 'Khách QR', icon: QrCode, component: TableOrderScreen },
     { key: 'kds', label: 'Bếp', icon: ChefHat, component: KDSScreen },
     { key: 'admin', label: 'Quản trị', icon: ShieldCheck, component: AdminScreen }
   ]

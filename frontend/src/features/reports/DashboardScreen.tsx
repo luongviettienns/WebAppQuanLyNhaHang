@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   useWindowDimensions
 } from 'react-native';
+import { BarChart } from 'react-native-gifted-charts';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { DailyReportDto, OrderDto } from '../../api/contracts';
@@ -110,6 +111,53 @@ export const DashboardScreen: React.FC = () => {
     cancelled: brandColors.danger,
     ranking: brandColors.primary
   };
+
+  const [selectedTopItem, setSelectedTopItem] = useState<{
+    menuItemId: number;
+    name: string;
+    quantitySold: number;
+    revenue: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (report?.topSellers && report.topSellers.length > 0) {
+      setSelectedTopItem(report.topSellers[0]);
+    } else {
+      setSelectedTopItem(null);
+    }
+  }, [report]);
+
+  const barColors = [
+    brandColors.primary,
+    '#F97316',
+    '#F59E0B',
+    '#3B82F6',
+    '#8B5CF6'
+  ];
+
+  const barData = (report?.topSellers || []).map((item, index) => {
+    const isSelected = selectedTopItem?.menuItemId === item.menuItemId;
+    return {
+      value: item.quantitySold,
+      label: item.name.length > 8 ? item.name.substring(0, 7) + '…' : item.name,
+      frontColor: barColors[index % barColors.length],
+      opacity: isSelected ? 1 : 0.75,
+      topLabelComponent: () => (
+        <Text
+          style={{
+            color: isSelected ? theme.primary : theme.textSecondary,
+            fontSize: 11,
+            fontFamily: typography.families.operationalBold,
+            marginBottom: 4,
+            textAlign: 'center'
+          }}
+        >
+          {item.quantitySold}
+        </Text>
+      ),
+      onPress: () => setSelectedTopItem(item)
+    };
+  });
 
   const openReceipt = (order: OrderDto) => {
     setReceiptOrder(order);
@@ -225,23 +273,134 @@ export const DashboardScreen: React.FC = () => {
           <Surface level="raised" style={styles.topItemsPanel}>
             <View style={styles.sectionHeader}>
               <Text accessibilityRole="header" style={[styles.sectionTitle, { color: theme.textPrimary }]}>Món bán chạy</Text>
-              <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>Xếp hạng theo số phần trong các đơn hoàn tất.</Text>
+              <Text style={[styles.sectionSubtitle, { color: theme.textSecondary }]}>
+                Biểu đồ số phần bán ra của Top {report?.topSellers?.length || 5} món trong các đơn hoàn tất.
+              </Text>
             </View>
             {report?.topSellers && report.topSellers.length > 0 ? (
               <View style={styles.topSellerList}>
-                {report.topSellers.map((item, index) => (
-                  <View key={item.menuItemId} style={styles.topSellerRow}>
-                    <Text style={[styles.rank, { color: theme.textSecondary }]}>{index + 1}</Text>
-                    <View style={styles.topSellerInfo}>
-                      <View style={styles.topSellerCopy}>
-                        <Text style={[styles.topSellerName, { color: theme.textPrimary }]} numberOfLines={1}>{item.name}</Text>
-                        <Text style={[styles.topSellerQuantity, { color: theme.textSecondary }]}>{item.quantitySold} phần</Text>
+                {/* Biểu đồ cột Bar Chart */}
+                <View style={[styles.chartWrapper, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                  <View style={styles.chartLegendRow}>
+                    <Text style={[styles.chartLegendTitle, { color: theme.textSecondary }]}>
+                      📊 Biểu đồ số lượng bán (phần)
+                    </Text>
+                    <Text style={[styles.chartLegendHint, { color: theme.textSecondary }]}>
+                      Chạm cột để xem chi tiết
+                    </Text>
+                  </View>
+                  <View style={styles.chartCanvas}>
+                    <BarChart
+                      data={barData}
+                      barWidth={isMobile ? 24 : 36}
+                      spacing={isMobile ? 18 : 28}
+                      roundedTop
+                      roundedBottom={false}
+                      rulesColor={theme.borderSubtle}
+                      xAxisColor={theme.borderSubtle}
+                      yAxisColor={theme.borderSubtle}
+                      yAxisThickness={1}
+                      xAxisThickness={1}
+                      xAxisLabelTextStyle={{
+                        color: theme.textSecondary,
+                        fontSize: 10,
+                        fontFamily: typography.families.body
+                      }}
+                      yAxisTextStyle={{
+                        color: theme.textSecondary,
+                        fontSize: 10,
+                        fontFamily: typography.families.body
+                      }}
+                      noOfSections={4}
+                      maxValue={Math.max(5, Math.ceil(maxTopSellerQuantity * 1.25))}
+                      height={160}
+                      isAnimated
+                      animationDuration={350}
+                    />
+                  </View>
+                </View>
+
+                {/* Card hiển thị chi tiết món khi chọn cột */}
+                {selectedTopItem && (
+                  <View style={[styles.selectedItemCard, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+                    <View style={styles.selectedItemHeader}>
+                      <View style={[styles.selectedItemBadge, { backgroundColor: brandColors.primary }]}>
+                        <Text style={styles.selectedItemBadgeText}>
+                          Hạng {(report?.topSellers || []).findIndex((i) => i.menuItemId === selectedTopItem.menuItemId) + 1}
+                        </Text>
                       </View>
-                      <View style={[styles.itemBarTrack, { backgroundColor: theme.surfaceSunken }]}><View style={[styles.itemBarFill, { backgroundColor: reportPalette.ranking, width: `${Math.max(8, (item.quantitySold / maxTopSellerQuantity) * 100)}%` as `${number}%` }]} /></View>
-                      <Text style={[styles.topSellerRevenue, { color: theme.textSecondary }]}>{item.revenue.toLocaleString('vi-VN')} đ doanh thu</Text>
+                      <Text style={[styles.selectedItemTitle, { color: theme.textPrimary }]} numberOfLines={1}>
+                        {selectedTopItem.name}
+                      </Text>
+                    </View>
+                    <View style={styles.selectedItemMetrics}>
+                      <View style={styles.selectedItemMetricCol}>
+                        <Text style={[styles.selectedItemMetricLabel, { color: theme.textSecondary }]}>Số lượng đã bán</Text>
+                        <Text style={[styles.selectedItemMetricValue, { color: theme.textPrimary }]}>
+                          {selectedTopItem.quantitySold} phần
+                        </Text>
+                      </View>
+                      <View style={[styles.selectedItemDivider, { backgroundColor: theme.borderSubtle }]} />
+                      <View style={styles.selectedItemMetricCol}>
+                        <Text style={[styles.selectedItemMetricLabel, { color: theme.textSecondary }]}>Tổng doanh thu món</Text>
+                        <Text style={[styles.selectedItemMetricValue, { color: theme.primary }]}>
+                          {selectedTopItem.revenue.toLocaleString('vi-VN')} đ
+                        </Text>
+                      </View>
                     </View>
                   </View>
-                ))}
+                )}
+
+                {/* Danh sách xếp hạng chi tiết */}
+                <View style={styles.topSellerRowsContainer}>
+                  {report.topSellers.map((item, index) => (
+                    <Pressable
+                      key={item.menuItemId}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Chọn món ${item.name}`}
+                      onPress={() => setSelectedTopItem(item)}
+                      style={({ pressed }) => [
+                        styles.topSellerRow,
+                        selectedTopItem?.menuItemId === item.menuItemId && {
+                          backgroundColor: theme.surfaceSunken,
+                          borderColor: theme.borderSubtle,
+                          borderWidth: 1,
+                          borderRadius: radii.sm,
+                          padding: spacing.xs
+                        },
+                        pressed && { opacity: 0.8 }
+                      ]}
+                    >
+                      <Text style={[styles.rank, { color: index === 0 ? brandColors.primary : theme.textSecondary }]}>
+                        {index + 1}
+                      </Text>
+                      <View style={styles.topSellerInfo}>
+                        <View style={styles.topSellerCopy}>
+                          <Text style={[styles.topSellerName, { color: theme.textPrimary }]} numberOfLines={1}>
+                            {item.name}
+                          </Text>
+                          <Text style={[styles.topSellerQuantity, { color: theme.textSecondary }]}>
+                            {item.quantitySold} phần
+                          </Text>
+                        </View>
+                        <View style={[styles.itemBarTrack, { backgroundColor: theme.surfaceSunken }]}>
+                          <View
+                            style={[
+                              styles.itemBarFill,
+                              {
+                                backgroundColor: barColors[index % barColors.length],
+                                width: `${Math.max(8, (item.quantitySold / maxTopSellerQuantity) * 100)}%` as `${number}%`
+                              }
+                            ]}
+                          />
+                        </View>
+                        <Text style={[styles.topSellerRevenue, { color: theme.textSecondary }]}>
+                          {item.revenue.toLocaleString('vi-VN')} đ doanh thu
+                        </Text>
+                      </View>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
             ) : <EmptyState title="Chưa có xếp hạng" description="Món bán chạy sẽ xuất hiện khi có đơn hoàn tất trong ngày." />}
           </Surface>
@@ -333,6 +492,84 @@ const styles = StyleSheet.create({
   itemBarTrack: { borderRadius: radii.xs, height: spacing.xs, overflow: 'hidden' },
   itemBarFill: { borderRadius: radii.xs, height: '100%' },
   topSellerRevenue: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, fontVariant: ['tabular-nums'] },
+  chartWrapper: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.sm,
+    overflow: 'hidden',
+    padding: spacing.md
+  },
+  chartLegendRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between'
+  },
+  chartLegendTitle: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.xs
+  },
+  chartLegendHint: {
+    fontFamily: typography.families.body,
+    fontSize: 11
+  },
+  chartCanvas: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.xs
+  },
+  selectedItemCard: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md
+  },
+  selectedItemHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm
+  },
+  selectedItemBadge: {
+    borderRadius: radii.sm,
+    paddingHorizontal: spacing.xs + 2,
+    paddingVertical: 2
+  },
+  selectedItemBadgeText: {
+    color: '#FFFFFF',
+    fontFamily: typography.families.operationalBold,
+    fontSize: 11
+  },
+  selectedItemTitle: {
+    flex: 1,
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm
+  },
+  selectedItemMetrics: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: spacing.xs
+  },
+  selectedItemMetricCol: {
+    alignItems: 'center',
+    gap: 2
+  },
+  selectedItemMetricLabel: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs
+  },
+  selectedItemMetricValue: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.md,
+    fontVariant: ['tabular-nums']
+  },
+  selectedItemDivider: {
+    height: 24,
+    width: 1
+  },
+  topSellerRowsContainer: {
+    gap: spacing.sm,
+    marginTop: spacing.xs
+  },
   receiptPanel: { gap: spacing.md, padding: spacing.lg },
   orderSnapshotRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', minHeight: 64, paddingVertical: spacing.sm },
   orderSnapshotInfo: { flex: 1, gap: 2 },

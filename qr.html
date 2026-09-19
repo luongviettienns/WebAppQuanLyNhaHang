@@ -43,9 +43,11 @@
       padding: 12px 20px;
       border-radius: 12px;
       display: inline-flex;
+      flex-wrap: wrap;
       align-items: center;
+      justify-content: center;
       gap: 12px;
-      margin-bottom: 24px;
+      margin-bottom: 16px;
       font-size: 14px;
     }
     .ip-bar input {
@@ -57,8 +59,19 @@
       font-weight: bold;
       padding: 6px 12px;
       border-radius: 6px;
-      width: 170px;
+      width: 160px;
       text-align: center;
+    }
+    .ip-bar select {
+      background: #0F172A;
+      border: 1px solid #475569;
+      color: #F59E0B;
+      font-family: monospace;
+      font-size: 14px;
+      font-weight: bold;
+      padding: 6px 10px;
+      border-radius: 6px;
+      cursor: pointer;
     }
     .ip-bar button {
       background: #EF4444;
@@ -68,9 +81,24 @@
       border-radius: 6px;
       cursor: pointer;
       font-weight: 600;
+      transition: background 0.15s;
     }
     .ip-bar button:hover {
       background: #DC2626;
+    }
+    .sync-status {
+      font-size: 13px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-bottom: 20px;
+    }
+    .sync-ok {
+      background: rgba(16, 185, 129, 0.15);
+      color: #34D399;
+      border: 1px solid rgba(16, 185, 129, 0.3);
     }
     .instruction-card {
       background: rgba(30, 41, 59, 0.6);
@@ -81,6 +109,7 @@
       font-size: 14px;
       line-height: 1.6;
       color: #CBD5E1;
+      text-align: left;
     }
     .grid {
       display: grid;
@@ -109,23 +138,23 @@
       font-size: 15px;
       padding: 4px 14px;
       border-radius: 20px;
-      margin-bottom: 12px;
+      margin-bottom: 8px;
       letter-spacing: 0.5px;
     }
     .table-capacity {
       color: #94A3B8;
       font-size: 12px;
-      margin-bottom: 14px;
+      margin-bottom: 12px;
     }
     .qr-frame {
       background: white;
       padding: 12px;
-      border-radius: 10px;
+      border-radius: 12px;
       display: inline-block;
       margin-bottom: 14px;
+      line-height: 0;
     }
     .qr-frame img {
-      display: block;
       width: 180px;
       height: 180px;
     }
@@ -163,16 +192,28 @@
       <p class="subtitle">Khách hàng dùng Camera điện thoại quét mã QR tại bàn để vào thẳng thực đơn chọn món</p>
       
       <div class="ip-bar">
-        <span>🌐 Địa chỉ IP máy chủ:</span>
-        <input type="text" id="hostIp" value="192.168.43.73" />
-        <span>Port: <b>8081</b></span>
-        <button onclick="updateQRCodes()">Cập nhật QR</button>
+        <span>🌐 Chọn Card Mạng / Wi-Fi:</span>
+        <select id="adapterSelect" onchange="handleAdapterSelectChange()">
+          <option value="">🔄 Đang tự động dò IP Wi-Fi...</option>
+        </select>
+        <span>Hoặc nhập IP:</span>
+        <input type="text" id="hostIp" value="192.168.43.73" oninput="renderTables()" />
+        <span>Cổng Web:</span>
+        <select id="webPort" onchange="renderTables()">
+          <option value="8081" selected>8081 (Metro Dev Web)</option>
+          <option value="4000">4000 (Backend Production)</option>
+        </select>
+        <button onclick="autoDetectServerIp(true)">🔍 Dò lại IP</button>
+      </div>
+
+      <div>
+        <span id="syncStatus" class="sync-status sync-ok">🔄 Đang tự động nhận diện IP máy chủ...</span>
       </div>
 
       <div class="instruction-card">
         💡 <b>Hướng dẫn quét thử nghiệm:</b>
-        <br>• <b>Trên điện thoại thật</b>: Kết nối cùng Wi-Fi với máy tính $\rightarrow$ Mở <b>Camera</b> hoặc <b>Zalo</b> $\rightarrow$ Quét mã QR của bất kỳ bàn nào bên dưới. Điện thoại sẽ mở thẳng giao diện chọn món của bàn đó!
-        <br>• <b>Trên máy tính</b>: Bạn có thể bấm nút <b>"Mở thử Bàn..."</b> dưới mỗi mã QR để mở tab khách chọn món ngay trên trình duyệt PC.
+        <br>• <b>Trên điện thoại thật</b>: Kết nối cùng Wi-Fi với máy tính &rarr; Mở <b>Camera</b> hoặc <b>Zalo</b> &rarr; Quét mã QR của bất kỳ bàn nào bên dưới. Mã QR đã tích hợp token xác thực bàn nên khi bấm "Gửi bếp" đơn hàng sẽ được ghi nhận tức thì!
+        <br>• <b>Trên máy tính</b>: Bấm nút <b>"Mở thử Bàn..."</b> dưới mỗi mã QR để mở tab khách chọn món ngay trên trình duyệt PC.
       </div>
     </header>
 
@@ -182,33 +223,164 @@
   </div>
 
   <script>
-    const tables = [
-      { id: 1, name: "Bàn 01", cap: "Bàn 2 người" },
-      { id: 2, name: "Bàn 02", cap: "Bàn 2 người" },
-      { id: 3, name: "Bàn 03", cap: "Bàn 2 người" },
-      { id: 4, name: "Bàn 04", cap: "Bàn 2 người" },
-      { id: 5, name: "Bàn 05", cap: "Bàn 4 người" },
-      { id: 6, name: "Bàn 06", cap: "Bàn 4 người" },
-      { id: 7, name: "Bàn 07", cap: "Bàn 4 người" },
-      { id: 8, name: "Bàn 08", cap: "Bàn 4 người" },
-      { id: 9, name: "Bàn 09", cap: "Bàn 4 người" },
-      { id: 10, name: "Bàn 10", cap: "Bàn 4 người" },
-      { id: 11, name: "Bàn 11", cap: "Bàn nhóm 8 người" },
-      { id: 12, name: "Bàn 12", cap: "Bàn nhóm 8 người" },
+    let defaultTables = [
+      { id: 1, tableNumber: 1, name: "Bàn 01", cap: "Bàn 2 người", qrCodeToken: "QR-TABLE-01" },
+      { id: 2, tableNumber: 2, name: "Bàn 02", cap: "Bàn 2 người", qrCodeToken: "QR-TABLE-02" },
+      { id: 3, tableNumber: 3, name: "Bàn 03", cap: "Bàn 2 người", qrCodeToken: "QR-TABLE-03" },
+      { id: 4, tableNumber: 4, name: "Bàn 04", cap: "Bàn 2 người", qrCodeToken: "QR-TABLE-04" },
+      { id: 5, tableNumber: 5, name: "Bàn 05", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-05" },
+      { id: 6, tableNumber: 6, name: "Bàn 06", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-06" },
+      { id: 7, tableNumber: 7, name: "Bàn 07", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-07" },
+      { id: 8, tableNumber: 8, name: "Bàn 08", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-08" },
+      { id: 9, tableNumber: 9, name: "Bàn 09", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-09" },
+      { id: 10, tableNumber: 10, name: "Bàn 10", cap: "Bàn 4 người", qrCodeToken: "QR-TABLE-10" },
+      { id: 11, tableNumber: 11, name: "Bàn 11", cap: "Bàn nhóm 8 người", qrCodeToken: "QR-TABLE-11" },
+      { id: 12, tableNumber: 12, name: "Bàn 12", cap: "Bàn nhóm 8 người", qrCodeToken: "QR-TABLE-12" },
     ];
 
-    // Tu dong nhan dien IP neu dang mo qua HTTP
+    // Tự động nhận diện IP nếu đang mở trực tiếp qua URL trình duyệt chứa IP
     if (window.location.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
       document.getElementById('hostIp').value = window.location.hostname;
     }
 
+    async function autoDetectServerIp(forceRefresh = false) {
+      const statusEl = document.getElementById('syncStatus');
+      const hostInput = document.getElementById('hostIp');
+      const adapterSelect = document.getElementById('adapterSelect');
+
+      if (forceRefresh) {
+        statusEl.className = 'sync-status sync-ok';
+        statusEl.innerHTML = '🔄 Đang quét danh sách card mạng máy chủ...';
+      }
+
+      // 1. Dò tìm qua Backend Network Info API
+      const candidateHosts = [
+        window.location.hostname || 'localhost',
+        'localhost',
+        '127.0.0.1',
+        hostInput.value
+      ].filter((v, i, arr) => v && arr.indexOf(v) === i);
+
+      let netInfo = null;
+      for (const h of candidateHosts) {
+        try {
+          const res = await fetch(`http://${h}:4000/api/system/network-info`, { cache: 'no-store' });
+          if (res.ok) {
+            const json = await res.json();
+            if (json.data && Array.isArray(json.data.addresses) && json.data.addresses.length > 0) {
+              netInfo = json.data;
+              break;
+            }
+          }
+        } catch (e) {
+          // tiep tuc thu host khac
+        }
+      }
+
+      if (netInfo && netInfo.addresses && netInfo.addresses.length > 0) {
+        adapterSelect.innerHTML = '';
+
+        // Chấm điểm card mạng để tự động chọn Wi-Fi thật của máy tính:
+        // - Ưu tiên card có tên Wi-Fi, Wireless, WLAN (+60 điểm)
+        // - Ưu tiên dải mạng chuẩn Router: 192.168.x.x (+35 điểm), 10.x.x.x (+20 điểm), 172.16-31.x.x (+15 điểm)
+        // - Trừ điểm các mạng ảo VPN: Radmin, VMware, VirtualBox, vEthernet, Tailscale (-50 điểm)
+        const scored = netInfo.addresses.map(item => {
+          let score = 0;
+          const lowerName = item.name.toLowerCase();
+          if (lowerName.includes('wi-fi') || lowerName.includes('wireless') || lowerName.includes('wlan')) {
+            score += 60;
+          } else if (lowerName.includes('ethernet') || lowerName.includes('lan')) {
+            score += 25;
+          }
+
+          if (item.ip.startsWith('192.168.')) {
+            score += 35;
+          } else if (item.ip.startsWith('10.')) {
+            score += 20;
+          } else if (/^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(item.ip)) {
+            score += 15;
+          }
+
+          if (lowerName.includes('radmin') || lowerName.includes('vmware') || lowerName.includes('virtual') || lowerName.includes('tailscale') || lowerName.includes('vethernet')) {
+            score -= 50;
+          }
+
+          return { ...item, score };
+        });
+
+        scored.sort((a, b) => b.score - a.score);
+
+        scored.forEach((item, idx) => {
+          const opt = document.createElement('option');
+          opt.value = item.ip;
+          const isBest = idx === 0;
+          opt.textContent = `${item.name} (${item.ip})${isBest ? ' ⭐ [Tự động chọn cho Wi-Fi]' : ''}`;
+          adapterSelect.appendChild(opt);
+        });
+
+        const best = scored[0];
+        if (best && (forceRefresh || !hostInput.value || hostInput.value === '192.168.43.73' || hostInput.value === '192.168.137.100' || hostInput.value === 'localhost')) {
+          hostInput.value = best.ip;
+          adapterSelect.value = best.ip;
+        }
+
+        statusEl.className = 'sync-status sync-ok';
+        statusEl.innerHTML = `🟢 Đã tự động cập nhật IP Wi-Fi máy chủ: <b>${hostInput.value}</b> (${best ? best.name : 'Mạng LAN'})`;
+      } else {
+        adapterSelect.innerHTML = `<option value="${hostInput.value}">${hostInput.value} (Không lấy được danh sách card mạng)</option>`;
+        statusEl.className = 'sync-status sync-ok';
+        statusEl.innerHTML = `🌐 Đang sử dụng IP máy chủ: <b>${hostInput.value}</b>`;
+      }
+
+      renderTables();
+      await trySyncFromBackend();
+    }
+
+    function handleAdapterSelectChange() {
+      const select = document.getElementById('adapterSelect');
+      if (select.value) {
+        document.getElementById('hostIp').value = select.value;
+        renderTables();
+        trySyncFromBackend();
+      }
+    }
+
+    async function trySyncFromBackend() {
+      const ip = document.getElementById('hostIp').value.trim() || '192.168.43.73';
+      const statusEl = document.getElementById('syncStatus');
+      try {
+        const res = await fetch(`http://${ip}:4000/api/tables/public`, { cache: 'no-store' });
+        if (res.ok) {
+          const json = await res.json();
+          if (json.data && Array.isArray(json.data.tables) && json.data.tables.length > 0) {
+            defaultTables = json.data.tables.map(t => ({
+              id: t.id,
+              tableNumber: t.tableNumber,
+              name: `Bàn ${String(t.tableNumber).padStart(2, '0')}`,
+              cap: t.capacity ? `Bàn ${t.capacity} người` : 'Bàn chuẩn',
+              qrCodeToken: t.qrCodeToken
+            }));
+            statusEl.className = 'sync-status sync-ok';
+            statusEl.innerHTML = `✅ Đã đồng bộ 12 bàn & token bảo mật CSDL (IP: <b>${ip}</b>)`;
+            renderTables();
+            return;
+          }
+        }
+      } catch (e) {
+        // Backend chua bat hoac cross-origin
+      }
+      renderTables();
+    }
+
     function renderTables() {
       const ip = document.getElementById('hostIp').value.trim() || '192.168.43.73';
+      const port = document.getElementById('webPort').value || '8081';
       const grid = document.getElementById('tablesGrid');
       grid.innerHTML = '';
 
-      tables.forEach(t => {
-        const url = `http://${ip}:8081/?table=${t.id}`;
+      defaultTables.forEach(t => {
+        const token = t.qrCodeToken || `QR-TABLE-${String(t.tableNumber).padStart(2, '0')}`;
+        const url = `http://${ip}:${port}/?table=${t.tableNumber}&token=${encodeURIComponent(token)}`;
         const qrApi = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(url)}`;
         
         const card = document.createElement('div');
@@ -227,10 +399,11 @@
     }
 
     function updateQRCodes() {
-      renderTables();
+      autoDetectServerIp(true);
     }
 
     renderTables();
+    autoDetectServerIp();
   </script>
 </body>
 </html>
