@@ -137,6 +137,46 @@ export interface MenuItemUpsertDto {
   modifierGroups?: ModifierGroupUpsertDto[];
 }
 
+export interface MenuImportRowDto {
+  rowNumber: number;
+  sku?: string;
+  name: string;
+  categoryName: string;
+  basePrice: number;
+  menuType: MenuType;
+  itemType: MenuItemType;
+  isAvailable: boolean;
+  trackStock: boolean;
+  stockQuantity: number;
+  position?: string | null;
+  description?: string | null;
+  imageUrl?: string | null;
+}
+
+export interface MenuImportErrorRowDto {
+  rowNumber: number;
+  sku?: string;
+  name?: string;
+  categoryName?: string;
+  error: string;
+}
+
+export interface MenuImportPreviewDto {
+  fileName: string;
+  totalRows: number;
+  validRows: MenuImportRowDto[];
+  errorRows: MenuImportErrorRowDto[];
+  canCommit: boolean;
+}
+
+export interface MenuImportCommitDto {
+  createdCount: number;
+  updatedCount: number;
+  categoryCreatedCount: number;
+}
+
+export type MenuExportFormat = 'csv' | 'xlsx';
+
 // ==========================================
 // 5. TABLE DTOs
 // ==========================================
