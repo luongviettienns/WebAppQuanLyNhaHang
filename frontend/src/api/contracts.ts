@@ -10,6 +10,8 @@ export type OrderStatus = 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CAN
 export type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'NEED_CLEANING' | 'DIRTY';
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD';
 export type PaymentStatus = 'UNPAID' | 'PAID' | 'VOIDED';
+export type MenuType = 'FOOD' | 'DRINK' | 'SERVICE' | 'OTHER';
+export type MenuItemType = 'REGULAR' | 'TOPPING' | 'COMBO' | 'SERVICE';
 
 export type ErrorCode =
   | 'VALIDATION_ERROR'
@@ -82,6 +84,12 @@ export interface MenuItemDto {
   imageUrl?: string | null;
   isAvailable: boolean;
   displayOrder: number;
+  sku: string;
+  menuType: MenuType;
+  itemType: MenuItemType;
+  trackStock: boolean;
+  stockQuantity: number;
+  position?: string | null;
   modifierGroups?: ModifierGroupDto[];
 }
 
@@ -116,6 +124,11 @@ export interface MenuItemUpsertDto {
   imageUrl?: string | null;
   isAvailable?: boolean;
   displayOrder?: number;
+  menuType?: MenuType;
+  itemType?: MenuItemType;
+  trackStock?: boolean;
+  stockQuantity?: number;
+  position?: string | null;
   modifierGroups?: ModifierGroupUpsertDto[];
 }
 

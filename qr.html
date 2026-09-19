@@ -197,7 +197,7 @@
           <option value="">🔄 Đang tự động dò IP Wi-Fi...</option>
         </select>
         <span>Hoặc nhập IP:</span>
-        <input type="text" id="hostIp" value="192.168.137.100" oninput="renderTables()" />
+        <input type="text" id="hostIp" value="192.168.43.73" oninput="renderTables()" />
         <span>Cổng Web:</span>
         <select id="webPort" onchange="renderTables()">
           <option value="8081" selected>8081 (Metro Dev Web)</option>
@@ -319,7 +319,7 @@
         });
 
         const best = scored[0];
-        if (best && (forceRefresh || !hostInput.value || hostInput.value === '192.168.137.100' || hostInput.value === 'localhost')) {
+        if (best && (forceRefresh || !hostInput.value || hostInput.value === '192.168.43.73' || hostInput.value === '192.168.137.100' || hostInput.value === 'localhost')) {
           hostInput.value = best.ip;
           adapterSelect.value = best.ip;
         }
@@ -346,7 +346,7 @@
     }
 
     async function trySyncFromBackend() {
-      const ip = document.getElementById('hostIp').value.trim() || '192.168.137.100';
+      const ip = document.getElementById('hostIp').value.trim() || '192.168.43.73';
       const statusEl = document.getElementById('syncStatus');
       try {
         const res = await fetch(`http://${ip}:4000/api/tables/public`, { cache: 'no-store' });
@@ -373,7 +373,7 @@
     }
 
     function renderTables() {
-      const ip = document.getElementById('hostIp').value.trim() || '192.168.137.100';
+      const ip = document.getElementById('hostIp').value.trim() || '192.168.43.73';
       const port = document.getElementById('webPort').value || '8081';
       const grid = document.getElementById('tablesGrid');
       grid.innerHTML = '';

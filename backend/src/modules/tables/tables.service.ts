@@ -66,8 +66,23 @@ export class TablesService {
   }
 
   static async getTableByQrToken(qrCodeToken: string) {
-    const table = await prisma.diningTable.findUnique({
-      where: { qrCodeToken },
+    let tableNumberToMatch: number | null = null;
+    if (!isNaN(Number(qrCodeToken))) {
+      tableNumberToMatch = Number(qrCodeToken);
+    } else {
+      const match = qrCodeToken.match(/(?:qr_table_|table_|QR-TABLE-)(\d+)/i);
+      if (match && match[1]) {
+        tableNumberToMatch = Number(match[1]);
+      }
+    }
+
+    const table = await prisma.diningTable.findFirst({
+      where: {
+        OR: [
+          { qrCodeToken },
+          ...(tableNumberToMatch !== null ? [{ tableNumber: tableNumberToMatch }] : [])
+        ]
+      },
       include: {
         orders: {
           where: {

@@ -260,10 +260,11 @@ export class OrdersService {
     }
 
     if (transactionResult.isDuplicate) return transactionResult;
-    const createdOrder = transactionResult.order;
+    const createdOrder = formatOrderDto(transactionResult.order);
 
-    // Phat su kien don hang moi chi vao phong KDS bep
+    // Phat su kien don hang moi chi vao phong KDS bep va toan he thong
     emitToRoom('restaurant:kds', 'order:new', { order: createdOrder });
+    emitToAll('order:new', { order: createdOrder });
 
     if (targetTable) {
       emitToAll('table:statusChanged', {
@@ -704,6 +705,7 @@ export class OrdersService {
 }
 
 function formatOrderDto(order: any) {
+  const orderItems = Array.isArray(order.items) ? order.items : [];
   let prepTimeSec: number | null = null;
   if (order.readyAt && order.preparingAt) {
     prepTimeSec = Math.max(0, Math.round((new Date(order.readyAt).getTime() - new Date(order.preparingAt).getTime()) / 1000));
@@ -736,7 +738,7 @@ function formatOrderDto(order: any) {
     voidedByUserId: order.voidedByUserId ?? null,
     voidReason: order.voidReason ?? null,
     voidedAt: order.voidedAt ? (order.voidedAt instanceof Date ? order.voidedAt.toISOString() : order.voidedAt) : null,
-    items: (order.items || []).map((item: any) => ({
+    items: orderItems.map((item: any) => ({
       id: item.id,
       orderId: item.orderId,
       menuItemId: item.menuItemId,

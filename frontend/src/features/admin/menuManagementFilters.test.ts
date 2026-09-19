@@ -16,6 +16,12 @@ const items: MenuItemDto[] = [
     basePrice: 69000,
     isAvailable: true,
     displayOrder: 1,
+    sku: 'SP000001',
+    menuType: 'FOOD',
+    itemType: 'COMBO',
+    trackStock: false,
+    stockQuantity: 0,
+    position: null,
     modifierGroups: [
       {
         id: 10,
@@ -36,6 +42,12 @@ const items: MenuItemDto[] = [
     basePrice: 32000,
     isAvailable: false,
     displayOrder: 2,
+    sku: 'SP000025',
+    menuType: 'DRINK',
+    itemType: 'REGULAR',
+    trackStock: false,
+    stockQuantity: 0,
+    position: null,
     modifierGroups: []
   }
 ];

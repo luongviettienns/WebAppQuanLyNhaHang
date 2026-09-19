@@ -34,6 +34,20 @@ app.use('/uploads', express.static(uploadsDir));
 // Swagger UI Documentation Endpoint
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
+// Phục vụ trực tiếp trang Bảng Mã QR 12 Bàn Ăn
+app.get('/qr.html', (_req: Request, res: Response) => {
+  const possiblePaths = [
+    path.resolve(__dirname, '../../qr.html'),
+    path.resolve(process.cwd(), 'qr.html'),
+    path.resolve(process.cwd(), '../qr.html')
+  ];
+  const qrFilePath = possiblePaths.find((p) => fs.existsSync(p));
+  if (qrFilePath) {
+    return res.sendFile(qrFilePath);
+  }
+  res.status(404).json({ error: { message: 'Không tìm thấy file qr.html' } });
+});
+
 // Health Check Endpoint theo Foundation Contract
 app.get('/health', (_req: Request, res: Response) => {
   res.status(200).json({
@@ -78,7 +92,7 @@ const frontendDist = possibleFrontendPaths.find((p) => fs.existsSync(p));
 if (process.env.NODE_ENV !== 'test' && frontendDist) {
   app.use(express.static(frontendDist));
   app.get('*', (req: Request, res: Response, next) => {
-    if (req.path.startsWith('/api') || req.path.startsWith('/health')) {
+    if (req.path.startsWith('/api') || req.path.startsWith('/health') || req.path.startsWith('/api-docs') || req.path.startsWith('/qr.html')) {
       return next();
     }
     res.sendFile(path.join(frontendDist, 'index.html'));

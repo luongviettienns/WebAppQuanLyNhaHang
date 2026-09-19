@@ -408,11 +408,14 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       if (user?.role !== 'KITCHEN') {
         fetchTables();
       }
+      if (user?.role === 'KITCHEN' || user?.role === 'ADMIN') {
+        fetchKDSOrders();
+      }
       if (payload?.order) {
         setKdsOrders((prev) => {
           const exists = prev.some((o) => o.id === payload.order.id);
           if (exists) return prev;
-          return [...prev, payload.order];
+          return [payload.order, ...prev];
         });
       }
     });
@@ -420,7 +423,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     return () => {
       socket.disconnect();
     };
-  }, [token, fetchTables, user?.role]);
+  }, [token, fetchTables, fetchKDSOrders, user?.role]);
 
   // 4. Computed Menu Items
   const allMenuItems = categories.flatMap((cat) => cat.menuItems || []);
@@ -874,7 +877,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 export const useRestaurant = (): RestaurantContextType => {
   const context = useContext(RestaurantContext);
   if (!context) {
-    throw new Error('useRestaurant phai duoc su dung ben trong RestaurantProvider');
+    throw new Error('useRestaurant must be used within a RestaurantProvider');
   }
   return context;
 };
