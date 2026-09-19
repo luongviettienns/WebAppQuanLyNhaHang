@@ -5,6 +5,7 @@ import { CreateOrderInput, PayOrderInput, VoidOrderInput } from './orders.schema
 import { PaymentMethod } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { VouchersService } from '../vouchers/vouchers.service';
 import { createHash } from 'crypto';
 
 function canonicalize(value: unknown): unknown {
@@ -184,9 +185,22 @@ export class OrdersService {
       });
     }
 
-    // 5. Tinh toan thue VAT 8% (800 BPS)
-    const vatAmount = Math.round(totalAmount * 0.08);
-    const finalAmount = totalAmount + vatAmount;
+    // 5. Xu ly Voucher khuyen mai neu co
+    let voucherDiscount = 0;
+    let appliedVoucherId: number | null = null;
+    let appliedVoucherCode: string | null = null;
+
+    if (input.voucherCode) {
+      const voucherCalc = await VouchersService.validateVoucher(input.voucherCode, totalAmount);
+      voucherDiscount = voucherCalc.discountAmount;
+      appliedVoucherId = voucherCalc.voucherId;
+      appliedVoucherCode = voucherCalc.code;
+    }
+
+    // Tinh toan thue VAT 8% tren so tien sau khi tru khuyen mai (800 BPS)
+    const taxableAmount = Math.max(0, totalAmount - voucherDiscount);
+    const vatAmount = Math.round(taxableAmount * 0.08);
+    const finalAmount = taxableAmount + vatAmount;
 
     // 6. Tao ma don hang duy nhat CRISPY-YYYYMMDD-XXXX
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -217,8 +231,11 @@ export class OrdersService {
             tableId: resolvedTableId,
             buzzerNumber: input.buzzerNumber,
             totalAmount,
+            discountAmount: voucherDiscount,
             vatAmount,
             finalAmount,
+            voucherId: appliedVoucherId,
+            voucherCode: appliedVoucherCode,
             paymentStatus: 'UNPAID', // Mac dinh chua thanh toan (Post-Paid)
             notes: input.notes,
             idempotencyKey: input.idempotencyKey,
@@ -237,6 +254,13 @@ export class OrdersService {
             }
           }
         });
+
+        if (appliedVoucherId) {
+          await tx.voucher.update({
+            where: { id: appliedVoucherId },
+            data: { usedCount: { increment: 1 } }
+          });
+        }
 
         // Neu la don an tai ban -> cap nhat trang thai ban sang OCCUPIED
         if (input.orderType === 'DINE_IN' && resolvedTableId) {
@@ -552,6 +576,17 @@ export class OrdersService {
         }
       }
 
+      if (existingOrder.voucherId) {
+        await tx.voucher.update({
+          where: { id: existingOrder.voucherId },
+          data: {
+            usedCount: {
+              decrement: 1
+            }
+          }
+        });
+      }
+
       return { order: updatedOrder, tableState: nextTableState };
     });
 
@@ -722,6 +757,9 @@ function formatOrderDto(order: any) {
     tableNumber: order.table?.tableNumber ?? null,
     buzzerNumber: order.buzzerNumber ?? null,
     totalAmount: order.totalAmount,
+    discountAmount: order.discountAmount ?? 0,
+    voucherId: order.voucherId ?? null,
+    voucherCode: order.voucherCode ?? null,
     vatAmount: order.vatAmount,
     finalAmount: order.finalAmount,
     paymentMethod: order.paymentMethod,

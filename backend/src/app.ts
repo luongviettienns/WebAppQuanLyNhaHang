@@ -12,6 +12,7 @@ import { ordersRouter } from './modules/orders/orders.routes';
 import { reportsRouter } from './modules/reports/reports.routes';
 import { auditRouter } from './modules/audit/audit.routes';
 import { inventoryRouter } from './modules/inventory/inventory.routes';
+import { vouchersRouter } from './modules/vouchers/vouchers.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
 import { getUploadsDir } from './lib/uploads';
@@ -75,8 +76,11 @@ app.use('/api/reports', reportsRouter);
 // System Audit Logs routes (Admin only)
 app.use('/api/audit', auditRouter);
 
-// Inventory, BOM & Stock routes (Admin only)
+// Inventory, BOM & Stock routes (Admin & Kitchen)
 app.use('/api/inventory', inventoryRouter);
+
+// Vouchers & Promotions routes
+app.use('/api/vouchers', vouchersRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);

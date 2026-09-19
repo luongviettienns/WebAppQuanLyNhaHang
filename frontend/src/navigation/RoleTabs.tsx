@@ -9,6 +9,7 @@ import {
   Moon,
   ShoppingCart,
   Sun,
+  Tag,
   Utensils,
   Warehouse
 } from 'lucide-react-native';
@@ -24,8 +25,9 @@ import { DashboardScreen } from '../features/reports/DashboardScreen';
 import { MenuManagementScreen } from '../features/admin/MenuManagementScreen';
 import { AuditLogScreen } from '../features/admin/AuditLogScreen';
 import { InventoryScreen } from '../features/admin/InventoryScreen';
+import { VoucherManagementScreen } from '../features/admin/VoucherManagementScreen';
 
-type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'inventory' | 'audit';
+type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'inventory' | 'vouchers' | 'audit';
 
 interface TabItem {
   key: TabKey;
@@ -46,6 +48,7 @@ const tabsByRole = {
     { key: 'reports', label: 'Báo cáo', icon: BarChart3, component: DashboardScreen },
     { key: 'menu', label: 'Thực đơn', icon: Utensils, component: MenuManagementScreen },
     { key: 'inventory', label: 'Kho hàng', icon: Warehouse, component: InventoryScreen },
+    { key: 'vouchers', label: 'Ưu đãi', icon: Tag, component: VoucherManagementScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
     { key: 'audit', label: 'Nhật ký', icon: ClipboardList, component: AuditLogScreen }
   ]

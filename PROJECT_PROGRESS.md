@@ -2,28 +2,28 @@
 
 > **Hệ Thống Đa Nền Tảng Đặt Món & Quản Lý Nhà Hàng Fast Food "CRISPY BITE"**  
 > **Kiến trúc**: Full-Stack Monorepo (React Native / Expo SDK 54 + Node.js / Express / Prisma / MySQL + Real-time Socket.io)  
-> **Trạng thái**: Đã hoàn thiện 100% các Module nghiệp vụ từ M1 đến M8; Full Quality Gate PASS.  
-> **Cập nhật lần cuối**: 2026-09-18 00:30:00
+> **Trạng thái**: Đã hoàn thiện 100% các Module nghiệp vụ từ M1 đến M10 (Bao gồm Chuyển bàn, Báo hủy bếp, Cảnh báo NVL KDS & Hệ thống Voucher giảm giá); Full Quality Gate PASS.  
+> **Cập nhật lần cuối**: 2026-09-20 00:30:00
 
 ---
 
 ## 📈 1. TỔNG QUAN TIẾN ĐỘ (OVERALL PROGRESS)
 
 ```
-[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 8; Đạt chuẩn nghiệp vụ nhà hàng QSR thực tế)
+[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 10; Chuẩn hóa nghiệp vụ vận hành chuỗi QSR thực tế)
 ```
 
 ### 🧪 Bằng chứng kiểm chứng chất lượng (Verification Metrics)
-- **Backend Test Suite (Vitest)**: 22/22 test files passed (163/163 tests pass 100% - bao gồm Swagger Docs, Inventory Math, Excel Parsing/Export, Inventory Service, Inventory API, BOM Deduct on Paid, Shared Ingredient Atomic Decrement, Seed BOM Verification & Async Audit Logging).
+- **Backend Test Suite (Vitest)**: 25/25 test files passed (191/191 tests pass 100% - bao gồm Table Transfer FSM & Socket, Kitchen Waste & Low Stock Alerts, Voucher Engine CRUD & Validation, Order Discount & VAT 8% recalculation, Used Count increment & Restore on Void, Swagger Docs, Inventory Math, Excel Parsing/Export, Inventory Service, Inventory API, BOM Deduct on Paid, Shared Ingredient Atomic Decrement, Seed BOM Verification & Async Audit Logging).
 - **Frontend Test Suite (Vitest)**: 9/9 test files passed (39/39 tests pass 100% - bao gồm Login 401 Credential State Preservation, Web Warning Guards, menu management filters, notification helper & theme coordinator).
 - **Playwright E2E Suite**: 3/3 spec files (`cashier-kitchen-flow`, `admin-operations-flow`, `ui-consistency`).
-- **Tổng Unit / Integration Tests**: 202/202 tests passed 100% (163 backend + 39 frontend).
-- **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ workspaces.
+- **Tổng Unit / Integration Tests**: 230/230 tests passed 100% (191 backend + 39 frontend).
+- **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ workspaces (`backend` + `frontend`).
 - **ESLint**: `npm run lint` $\rightarrow$ 0 errors trên toàn bộ workspaces.
 - **Expo Framework Doctor**: `expo-doctor` $\rightarrow$ 18/18 checks passed 100%.
 - **Release Gate (`npm run check`)**: PASS 100% (Typecheck + Doctor + Backend Tests).
 - **Production Web & Node Build**: `npm run build` $\rightarrow$ Biên dịch thành công web bundles (`frontend/dist`) & backend dist.
-- **Database Migrations**: 6 migrations đồng bộ nhất quán trên cả `crispy_bite_dev` và `crispy_bite_test`.
+- **Database Migrations**: 7 migrations đồng bộ nhất quán trên cả `crispy_bite_dev` và `crispy_bite_test` (bao gồm `20260919230000_add_voucher_engine`).
 
 ### 🗂️ Tiến độ theo Giai đoạn (Phase Summary)
 | Giai đoạn | Mục tiêu cốt lõi | Trạng thái |
@@ -38,6 +38,7 @@
 | **Phase 7: UI/UX Redesign QSR** | Design tokens, Phông Barlow/Inter, UI Primitives, điều phối Theme vai trò | **HOÀN TẤT** (100%) |
 | **Phase 8: Vận hành Thực tế** | QR Token bảo mật, LAN auto-detect, Virtual Buzzer, Menu KiotViet, Auto-Cancel | **HOÀN TẤT** (100%) |
 | **Phase 9: Kho & BOM & COGS** | Tồn kho thực tế, Định lượng BOM món, Giá vốn bình quân, Báo cáo lãi gộp, Nhập/Xuất Excel | **HOÀN TẤT** (100%) |
+| **Phase 10: Mở Rộng Nghiệp Vụ QSR** | Chuyển bàn thông minh, Báo hủy bếp, Cảnh báo NVL KDS, Voucher & Coupon Engine | **HOÀN TẤT** (100%) |
 
 ---
 
@@ -77,6 +78,17 @@
 - **Quy trình Nhập/Xuất Excel chuẩn chỉnh**: Tải file mẫu 6 cột (`Mã NVL | Tên NVL | Đơn vị | Số lượng | Đơn giá | Ghi chú`), hỗ trợ kiểm tra trước (Preview Modal), nhập từng phần (Partial Import) các dòng hợp lệ mà không chặn đứng cả tệp; xuất báo cáo tồn kho kèm cột kiểm kê đối soát thực tế.
 - **Bóc tách Lợi nhuận Gộp trên Dashboard**: Tự động tính tổng giá vốn hàng bán (`totalCogs`), lợi nhuận gộp (`grossProfit`), và tỷ suất biên lời (`grossMargin`) bóc tách riêng trong báo cáo tài chính ngày.
 
+### 6. Phân hệ Mở Rộng Nghiệp Vụ Vận Hành Thực Tế (Phase 10 QSR Operations)
+- **Chuyển Bàn Ăn Thông Minh (Smart Table Transfer)**: API `POST /api/tables/transfer` hỗ trợ chuyển toàn bộ đơn hàng chưa thanh toán (`UNPAID`) từ bàn nguồn sang bàn đích. Tự động xử lý trạng thái bàn (`AVAILABLE`, `OCCUPIED`), phát Socket real-time đồng bộ sơ đồ bàn cho tất cả Thu ngân và Quản trị, ghi nhật ký AuditLog chi tiết.
+- **Báo Hủy Món & Nguyên Liệu Bếp (Kitchen Waste Logging)**: API `POST /api/inventory/kitchen-waste` cho phép Đầu bếp/Thu ngân ghi nhận nguyên liệu hoặc món bị cháy, hỏng, đổ vỡ. Tự động quy đổi định lượng BOM nếu hủy theo món, trừ kho với loại giao dịch `KITCHEN_WASTE`, cập nhật chi phí hủy vào giá vốn hàng bán (`kitchenWasteCost`) trong báo cáo tài chính.
+- **Màn hình Bếp KDS Tích hợp**: Ticker cảnh báo nguyên liệu sắp hết tồn kho (`currentStock <= minThreshold`), modal báo hủy nhanh cho bếp thao tác 1 chạm không cần mở trang quản trị kho.
+- **Hệ Thống Voucher & Mã Giảm Giá Đa Nền Tảng (Voucher & Coupon Engine)**:
+  - **Prisma Schema & Migrations**: Bảng `Voucher` hỗ trợ cả 2 hình thức: Giảm theo % (`PERCENTAGE`) kèm mức giảm tối đa (`maxDiscount`) và Giảm số tiền cố định (`FIXED_AMOUNT`), điều kiện đơn tối thiểu (`minOrderValue`), thời hạn hiệu lực, giới hạn tổng lượt dùng (`usageLimit`).
+  - **Chuẩn Hóa Thuế VAT 8% Sau Giảm Giá**: Tuân thủ luật thuế hiện hành, VAT chỉ tính trên doanh thu chịu thuế sau khi đã trừ giảm giá (`taxableAmount = Math.max(0, subtotal - discountAmount)`).
+  - **Hoàn Trả Lượt Dùng Khi Void/Hủy Đơn**: Tự động tăng `usedCount` khi tạo đơn và hoàn trả lại số lượt dùng nếu đơn hàng bị Quản trị viên Void hủy bỏ.
+  - **Trải Nghiệm Khách Hàng & POS**: Ô nhập mã khuyến mãi trực quan, kiểm tra điều kiện tức thì (báo lỗi rõ ràng nếu chưa đạt đơn tối thiểu hoặc hết hạn), hiển thị dòng giảm giá chi tiết trên Giỏ hàng, Màn hình thu ngân POS, Hóa đơn nhiệt và Bản in PDF.
+  - **Giao Diện Quản Trị Voucher (Admin Voucher Management)**: Tab chuyên dụng trong sidebar Admin cho phép Quản lý theo dõi danh sách, số lượt đã dùng/tổng lượt, tạo mới/sửa/xóa mã voucher với modal thiết kế trực quan chuẩn Design System.
+
 ---
 
 ## 📝 3. NHẬT KÝ MỐC PHÁT TRIỂN CHÍNH (MILESTONE RELEASES)
@@ -103,6 +115,7 @@
 | **Đối Soát Chốt Két (09/17)** | Phân bổ Doanh thu theo Tiền mặt vs Chuyển khoản QR | TDD backend tính toán `paymentBreakdown` (CASH, BANK_TRANSFER, OTHER); cập nhật `DailyReportDto`; Card trực quan "Phân bổ thanh toán & Chốt két" trên Dashboard (Thanh tỷ trọng, số tiền, số đơn, % doanh thu phục vụ kiểm két); 18/18 test files backend (133 tests) pass 100%, 7/7 test files frontend (33 tests) pass 100%, typecheck 0 lỗi |
 | **Đóng Băng Nghiệp Vụ Kho (09/17)** | Hoàn tất Discovery & Chốt Kiến trúc Quản lý Kho, Định lượng (BOM), Giá vốn (COGS) & Excel | Hoàn thành `INVENTORY_DISCOVERY.md`; chốt 5 quyết định nghiệp vụ (Bình quân gia quyền, trừ kho khi PAID, cho phép bán âm kèm thuật toán bù trừ net positive không méo mó giá vốn, BOM nguyên liệu trọng yếu ≥2% hoặc ≥20k, cuốn chiếu Phase 1 cho Món chính); chốt quy trình Nhập hàng Excel (Template cố định, Parse/Validate dòng, Preview modal, Non-blocking partial import) & Xuất Excel tồn kho |
 | **Kho & BOM Toàn Diện (09/17)** | Hoàn thành trọn vẹn Phân hệ Quản lý Kho, BOM, Giá vốn COGS & Excel | Schema 3 bảng mới (`Ingredient`, `MenuItemIngredient`, `InventoryTransaction`), migration áp dụng dev/test; Backend Service & Controller 11 API endpoints; Tích hợp trừ kho tự động khi PAID; Báo cáo Dashboard tích hợp COGS & Gross Profit; Giao diện 2 tab Kho & BOM đẹp mắt chuẩn QSR, 3 modal (Tạo NVL, Nhập nhanh, Preview Excel); 22 test files backend (157 tests), 7 test files frontend (33 tests) pass 100%; `npm run check` PASS 100% |
+| **Mở Rộng Nghiệp Vụ QSR (09/20)** | Mở Rộng Nghiệp Vụ Vận Hành Thực Tế QSR: Chuyển Bàn, Báo Hủy Bếp, Cảnh Báo NVL KDS & Voucher Giảm Giá | Đặc tả thiết kế `mo-rong-nghiep-vu-qsr-design.md`; API Chuyển bàn (`/api/tables/transfer`) + FSM lock + Socket; API Báo hủy bếp (`/api/inventory/kitchen-waste`) + Ticker/Modal KDS; Voucher Engine (`/api/vouchers`) + Schema `Voucher` + Recalculate VAT 8% sau giảm giá + Giỏ hàng Khách + POS Thu ngân + Hóa đơn nhiệt & PDF + Màn hình Quản trị Voucher Admin; 25 test files backend (191 tests), 9 test files frontend (39 tests) pass 100%; typecheck 0 lỗi, lint 0 lỗi, expo-doctor 18/18 checks pass |
 
 ---
 
@@ -186,8 +199,6 @@
       1. `frontend/src/features/auth/loginInvalidCredentials.test.tsx`: Kiểm chứng `input-username` giữ nguyên giá trị sau phản hồi 401.
       2. `frontend/src/webWarningGuards.test.ts`: 5 tests kiểm chứng không vi phạm deprecation cảnh báo web.
       3. `backend/test/audit/audit.spec.ts`: Kiểm chứng ghi và đọc audit log ngay lập tức sau thao tác kho không còn bị race condition.
-    - *Kết quả nghiệm thu*: 163/163 backend tests PASS (100%), 39/39 frontend tests PASS (100%), expo-doctor 18/18 checks PASS.
-
 31. **Đồng bộ hóa Nhánh Phân tán & Gỡ Xung đột Toàn vẹn (Distributed Branch Synchronization & Conflict Resolution Gate)**:
     - *Bối cảnh & Thách thức*: Nhánh `origin/pKhanh` tách rẽ từ mốc cũ (`6283b7a`) và phát triển song song trong khi `main` đã hoàn thành Phân hệ M-3 (Kho & BOM), Nhật ký hệ thống AuditLog, Upload ảnh món, DatePicker báo cáo và Swagger API. `pKhanh` bổ sung bộ sưu tập Postman (`postman/`), tối ưu regex nhận diện QR bàn, mở rộng metadata món ăn (`menuType`, `itemType`, `trackStock`, `stockQuantity`, `position`) và phân quyền KITCHEN xem bàn ăn.
     - *Giải pháp triệt để*:
@@ -200,5 +211,15 @@
       - Frontend: 9 test files, 39/39 tests PASS (100%), typecheck 0 lỗi, lint 0 lỗi.
       - Đã Fast-forward cập nhật hoàn tất vào `main`.
 
+32. **Xử lý Múi Giờ UTC vs Múi Giờ Nghiệp Vụ Địa Phương trong Truy Vấn Báo Cáo (Timezone Boundary Alignment in Reporting Queries)**:
+    - *Nguyên nhân gốc rễ (RCA)*: Trong `kitchen-waste.spec.ts`, lệnh `new Date().toISOString().split('T')[0]` lấy ngày theo giờ UTC. Khi chạy test trong khung giờ rạng sáng tại Việt Nam (00:00 - 07:00 ICT = UTC+7), ngày UTC vẫn là ngày hôm trước (`2026-09-19`), trong khi giao dịch hủy kho phát sinh theo thời điểm hiện tại (`2026-09-20` ICT). Khi API `/api/reports/daily?date=2026-09-19` truy vấn theo khoảng `[2026-09-19T00:00:00+07:00, 2026-09-19T23:59:59+07:00]`, nó bỏ qua các bản ghi phát sinh vào sáng `2026-09-20` ICT, dẫn đến `kitchenWasteCost = 0`.
+    - *Khóa lỗi bằng Regression Test*: Chuẩn hóa việc sinh chuỗi ngày theo đúng múi giờ nghiệp vụ Việt Nam: `new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh' }).format(new Date())` trong test case báo cáo của `kitchen-waste.spec.ts`. 6/6 tests của `kitchen-waste.spec.ts` và toàn bộ 25/25 test files backend (191/191 tests) PASS 100%.
+    - *Quét phòng ngừa toàn diện (Horizontal Scan)*: Rà soát toàn bộ các bộ test báo cáo và dịch vụ báo cáo (`reports.service.ts`, `reports.spec.ts`), đảm bảo `ReportsService.getDailyReport` mặc định sử dụng `Asia/Ho_Chi_Minh` khi không truyền tham số, và các test queries đều nhất quán múi giờ Việt Nam.
+
+33. **Tính Toán Thuế GTGT (VAT) Hợp Pháp Khi Áp Dụng Khuyến Mãi/Voucher (VAT Calculation on Discounted Taxable Base)**:
+    - *Nguyên nhân gốc rễ & Quy định Pháp lý*: Theo quy định thuế GTGT hiện hành (Thông tư 219/2013/TT-BTC & Nghị định giảm thuế VAT 8%), thuế GTGT được tính trên giá bán thực tế sau khi đã trừ các khoản giảm giá, chiết khấu thương mại hợp lệ (`taxableAmount = Math.max(0, subtotal - discountAmount)`). Nếu tính VAT trên tổng phụ trước chiết khấu (`subtotal * 0.08`), khách hàng sẽ phải chịu thuế trên khoản tiền họ không thanh toán, gây sai lệch sổ sách kế toán.
+    - *Giải pháp triệt để*: Tại `orders.service.ts`, `subtotal` được tính từ tổng món ăn; sau đó áp dụng voucher để ra `discountAmount`; tiền chịu thuế `taxableAmount = Math.max(0, subtotal - discountAmount)`; tiền thuế `tax = Math.round(taxableAmount * 0.08)`; và tổng thanh toán `total = taxableAmount + tax`. Công thức này được đồng bộ 100% trên cả Backend, Frontend Customer Cart, POS Screen và Snapshot Hóa đơn PDF.
+
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
+

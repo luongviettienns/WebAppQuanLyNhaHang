@@ -12,7 +12,7 @@ import {
   View
 } from 'react-native';
 import { Bell, Check, ChefHat, ChevronLeft, ChevronRight, CreditCard, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
-import { DiningTableDto, MenuItemDto, OrderDto, OrderStatus } from '../../api/contracts';
+import { DiningTableDto, MenuItemDto, OrderDto, OrderStatus, VoucherValidationResultDto } from '../../api/contracts';
 import { getApiBaseUrl } from '../../api/config';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -88,6 +88,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
   const [isBrowsingMenu, setIsBrowsingMenu] = useState(false);
   const [isCartModalOpen, setIsCartModalOpen] = useState(false);
   const [orderNotes, setOrderNotes] = useState('');
+  const [appliedVoucher, setAppliedVoucher] = useState<VoucherValidationResultDto | null>(null);
   const [guestTable, setGuestTable] = useState<DiningTableDto | null>(null);
   const [guestTableError, setGuestTableError] = useState<string | null>(null);
   const [resolvedQrToken, setResolvedQrToken] = useState<string | null>(qrCodeToken || null);
@@ -321,7 +322,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     notificationHelper.requestPermission().catch(() => {});
 
     const tokenToSend = effectiveQrToken || (table as any)?.qrCodeToken || undefined;
-    const result = await createDineInOrder(tableId, orderNotes.trim() || undefined, tokenToSend);
+    const result = await createDineInOrder(tableId, orderNotes.trim() || undefined, tokenToSend, appliedVoucher?.code);
     setIsSubmitting(false);
 
     if (result.success && result.order) {
@@ -330,6 +331,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
       setIsBrowsingMenu(false);
       setIsCartModalOpen(false);
       setOrderNotes('');
+      setAppliedVoucher(null);
       showToast({
         type: 'success',
         title: 'Đặt món thành công! 🚀',
@@ -904,7 +906,16 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                     <Text style={[styles.cartMeta, { color: theme.textSecondary }]}>Chạm để xem món & sửa</Text>
                   </View>
                 </View>
-                <Text style={[styles.cartPrice, { color: theme.primary }]}>{formatVND(cartTotal)}</Text>
+                <View style={{ alignItems: 'flex-end' }}>
+                  <Text style={[styles.cartPrice, { color: theme.primary }]}>
+                    {formatVND(appliedVoucher ? appliedVoucher.finalAmount : cartTotal)}
+                  </Text>
+                  {appliedVoucher && (
+                    <Text style={{ fontSize: 11, color: theme.success, fontFamily: typography.families.bodyMedium }}>
+                      🎟️ -{formatVND(appliedVoucher.discountAmount)}
+                    </Text>
+                  )}
+                </View>
               </Pressable>
               <View style={styles.cartAction}>
                 <Button
@@ -1038,11 +1049,16 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
         cartSubtotal={cartSubtotal}
         cartVat={cartVat}
         cartTotal={cartTotal}
+        appliedVoucher={appliedVoucher}
+        onApplyVoucher={setAppliedVoucher}
         orderNotes={orderNotes}
         onChangeOrderNotes={setOrderNotes}
         onUpdateQuantity={updateCartQuantity}
         onRemoveItem={removeFromCart}
-        onClearCart={clearCart}
+        onClearCart={() => {
+          clearCart();
+          setAppliedVoucher(null);
+        }}
         onSubmitOrder={() => void handleSendToKitchen()}
         isSubmitting={isSubmitting}
         onClose={() => setIsCartModalOpen(false)}

@@ -7,7 +7,14 @@ export type ErrorCode =
   | 'ORDER_STATE_INVALID'
   | 'RATE_LIMITED'
   | 'INTERNAL_ERROR'
-  | 'INVALID_CREDENTIALS';
+  | 'INVALID_CREDENTIALS'
+  | 'VOUCHER_ALREADY_EXISTS'
+  | 'VOUCHER_NOT_FOUND'
+  | 'VOUCHER_EXPIRED'
+  | 'VOUCHER_NOT_STARTED'
+  | 'VOUCHER_USAGE_EXHAUSTED'
+  | 'MIN_ORDER_VALUE_NOT_MET'
+  | 'VOUCHER_INACTIVE';
 
 export class ApiError extends Error {
   public readonly statusCode: number;

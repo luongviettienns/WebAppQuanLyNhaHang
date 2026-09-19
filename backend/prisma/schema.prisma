@@ -60,6 +60,11 @@ enum MenuItemType {
   SERVICE
 }
 
+enum DiscountType {
+  PERCENTAGE
+  FIXED_AMOUNT
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
@@ -153,10 +158,13 @@ model Order {
   status        OrderStatus    @default(PENDING)
   tableId       Int?
   buzzerNumber  Int?
-  totalAmount   Int // Tong tien truoc thue (VND)
-  vatAmount     Int // Tien thue VAT 8% (VND)
-  finalAmount   Int // Tong thanh toan (VND)
-  paymentMethod PaymentMethod?
+  totalAmount    Int // Tong tien truoc thue (VND)
+  discountAmount Int            @default(0) // Tien giam gia tu voucher (VND)
+  vatAmount      Int // Tien thue VAT 8% (VND)
+  finalAmount    Int // Tong thanh toan (VND)
+  voucherId      Int?
+  voucherCode    String?
+  paymentMethod  PaymentMethod?
   paymentStatus PaymentStatus  @default(UNPAID)
   paidAt        DateTime?
   notes         String?
@@ -184,9 +192,11 @@ model Order {
   table         DiningTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
   createdByUser User?        @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
   voidedByUser  User?        @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  voucher       Voucher?     @relation(fields: [voucherId], references: [id], onDelete: SetNull)
   items         OrderItem[]
   inventoryTransactions InventoryTransaction[]
 
+  @@index([voucherId])
   @@unique([idempotencyScope, idempotencyKey])
 }
 
@@ -282,5 +292,26 @@ model InventoryTransaction {
   @@index([ingredientId])
   @@index([type])
   @@index([createdAt])
+}
+
+model Voucher {
+  id            Int          @id @default(autoincrement())
+  code          String       @unique
+  title         String
+  discountType  DiscountType
+  discountValue Int          // Ti le % (1-100) hoac so tien VND
+  minOrderValue Int          @default(0) // Don hang toi thieu (VND)
+  maxDiscount   Int?         // Giam toi da doi voi % (VND)
+  usageLimit    Int          @default(100)
+  usedCount     Int          @default(0)
+  isActive      Boolean      @default(true)
+  startDate     DateTime
+  endDate       DateTime
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  orders        Order[]
+
+  @@index([code, isActive])
 }
 

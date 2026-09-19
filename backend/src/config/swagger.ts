@@ -781,6 +781,123 @@ const options: swaggerJSDoc.Options = {
             403: { description: 'Chỉ Admin mới có quyền xem nhật ký' }
           }
         }
+      },
+      '/api/vouchers/validate': {
+        post: {
+          tags: ['Vouchers & Promotions'],
+          summary: 'Kiểm tra và tính toán giảm giá của Voucher (Public/Client/POS)',
+          description: 'Xác thực mã voucher cho một giá trị đơn hàng cụ thể, trả về số tiền giảm, tiền chịu thuế, thuế VAT 8% và tổng tiền thanh toán.',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    code: { type: 'string', example: 'CRISPY10' },
+                    orderAmount: { type: 'integer', example: 150000, description: 'Tổng tiền hàng trước thuế (VND)' }
+                  },
+                  required: ['code', 'orderAmount']
+                }
+              }
+            }
+          },
+          responses: {
+            200: {
+              description: 'Voucher hợp lệ, trả về kết quả tính toán chi tiết',
+              content: {
+                'application/json': {
+                  example: {
+                    data: {
+                      voucherId: 1,
+                      code: 'CRISPY10',
+                      title: 'Giảm 10% tối đa 50K cho đơn từ 50K',
+                      discountType: 'PERCENTAGE',
+                      discountValue: 10,
+                      discountAmount: 15000,
+                      taxableAmount: 135000,
+                      vatAmount: 10800,
+                      finalAmount: 145800
+                    }
+                  }
+                }
+              }
+            },
+            400: { description: 'Voucher hết hạn, chưa đủ điều kiện đơn tối thiểu, hoặc hết lượt dùng' },
+            404: { description: 'Không tìm thấy mã voucher' }
+          }
+        }
+      },
+      '/api/vouchers/active': {
+        get: {
+          tags: ['Vouchers & Promotions'],
+          summary: 'Lấy danh sách các voucher đang có hiệu lực (Public/Client/POS)',
+          responses: {
+            200: {
+              description: 'Danh sách các voucher hợp lệ hiện tại',
+              content: {
+                'application/json': {
+                  example: {
+                    data: [
+                      {
+                        id: 1,
+                        code: 'CRISPY10',
+                        title: 'Giảm 10% tối đa 50K cho đơn từ 50K',
+                        discountType: 'PERCENTAGE',
+                        discountValue: 10,
+                        minOrderValue: 50000,
+                        maxDiscount: 50000,
+                        usageLimit: 100,
+                        usedCount: 12
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      '/api/vouchers': {
+        get: {
+          tags: ['Vouchers & Promotions'],
+          summary: 'Xem toàn bộ danh sách voucher hệ thống (Admin only)',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Danh sách toàn bộ voucher kèm thống kê số đơn đã áp dụng' }
+          }
+        },
+        post: {
+          tags: ['Vouchers & Promotions'],
+          summary: 'Tạo mã voucher khuyến mãi mới (Admin only)',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    code: { type: 'string', example: 'SUMMER2026' },
+                    title: { type: 'string', example: 'Ưu đãi hè rực rỡ' },
+                    discountType: { type: 'string', enum: ['PERCENTAGE', 'FIXED_AMOUNT'] },
+                    discountValue: { type: 'integer', example: 15 },
+                    minOrderValue: { type: 'integer', example: 100000 },
+                    maxDiscount: { type: 'integer', example: 60000 },
+                    usageLimit: { type: 'integer', example: 500 },
+                    startDate: { type: 'string', format: 'date-time' },
+                    endDate: { type: 'string', format: 'date-time' }
+                  },
+                  required: ['code', 'title', 'discountType', 'discountValue', 'startDate', 'endDate']
+                }
+              }
+            }
+          },
+          responses: {
+            201: { description: 'Tạo voucher thành công' },
+            409: { description: 'Mã voucher đã tồn tại' }
+          }
+        }
       }
     }
   },

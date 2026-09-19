@@ -9,9 +9,11 @@ import {
   TextInput,
   View
 } from 'react-native';
-import { Minus, Plus, ShoppingBag, Trash2, UtensilsCrossed, X } from 'lucide-react-native';
+import { Minus, Plus, ShoppingBag, Tag, Trash2, UtensilsCrossed, X } from 'lucide-react-native';
 import { CartItem } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { VoucherValidationResultDto } from '../../api/contracts';
+import { validateVoucherApi } from '../../api/vouchers';
 import { elevation, radii, spacing, typography } from '../../theme';
 import { AppIcon, Button } from '../../ui';
 
@@ -28,6 +30,8 @@ interface CustomerCartModalProps {
   cartSubtotal: number;
   cartVat: number;
   cartTotal: number;
+  appliedVoucher?: VoucherValidationResultDto | null;
+  onApplyVoucher?: (voucher: VoucherValidationResultDto | null) => void;
   orderNotes: string;
   onChangeOrderNotes: (notes: string) => void;
   onUpdateQuantity: (index: number, quantity: number) => void;
@@ -46,6 +50,8 @@ export const CustomerCartModal: React.FC<CustomerCartModalProps> = ({
   cartSubtotal,
   cartVat,
   cartTotal,
+  appliedVoucher,
+  onApplyVoucher,
   orderNotes,
   onChangeOrderNotes,
   onUpdateQuantity,
@@ -56,6 +62,30 @@ export const CustomerCartModal: React.FC<CustomerCartModalProps> = ({
   onClose
 }) => {
   const { theme } = useTheme();
+  const [voucherInput, setVoucherInput] = React.useState('');
+  const [voucherError, setVoucherError] = React.useState<string | null>(null);
+  const [isCheckingVoucher, setIsCheckingVoucher] = React.useState(false);
+
+  const handleApplyVoucher = async () => {
+    const code = voucherInput.trim().toUpperCase();
+    if (!code) return;
+    setIsCheckingVoucher(true);
+    setVoucherError(null);
+    try {
+      const result = await validateVoucherApi(code, cartSubtotal);
+      onApplyVoucher?.(result);
+      setVoucherInput('');
+    } catch (err: any) {
+      setVoucherError(err.message || 'Mã voucher không hợp lệ');
+    } finally {
+      setIsCheckingVoucher(false);
+    }
+  };
+
+  const handleRemoveVoucher = () => {
+    onApplyVoucher?.(null);
+    setVoucherError(null);
+  };
 
   return (
     <Modal
@@ -270,15 +300,89 @@ export const CustomerCartModal: React.FC<CustomerCartModalProps> = ({
                 />
               </View>
 
+              {/* Ô nhập mã giảm giá / Voucher */}
+              <View style={[styles.voucherSection, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                <View style={styles.voucherHeaderRow}>
+                  <AppIcon icon={Tag} color={theme.primary} size={16} />
+                  <Text style={[styles.voucherHeaderTitle, { color: theme.textPrimary }]}>Mã ưu đãi / Khuyến mãi</Text>
+                </View>
+
+                {appliedVoucher ? (
+                  <View style={[styles.appliedVoucherBadge, { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+                    <View style={styles.appliedVoucherInfo}>
+                      <Text style={[styles.appliedVoucherCode, { color: theme.primary }]}>
+                        🎟️ {appliedVoucher.code}
+                      </Text>
+                      <Text style={[styles.appliedVoucherDesc, { color: theme.textSecondary }]}>
+                        {appliedVoucher.title} (-{formatVND(appliedVoucher.discountAmount)})
+                      </Text>
+                    </View>
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel="Gỡ mã giảm giá"
+                      onPress={handleRemoveVoucher}
+                      style={({ pressed }) => [styles.removeVoucherBtn, { backgroundColor: pressed ? theme.surfaceSunken : 'transparent' }]}
+                    >
+                      <AppIcon icon={X} color={theme.danger} size={16} />
+                    </Pressable>
+                  </View>
+                ) : (
+                  <View style={styles.voucherInputRow}>
+                    <TextInput
+                      style={[
+                        styles.voucherInput,
+                        {
+                          backgroundColor: theme.surfaceBase,
+                          borderColor: voucherError ? theme.danger : theme.borderSubtle,
+                          color: theme.textPrimary
+                        }
+                      ]}
+                      placeholder="Nhập mã (VD: CRISPY10, GIAM20K)"
+                      placeholderTextColor={theme.textSecondary}
+                      value={voucherInput}
+                      onChangeText={(text) => {
+                        setVoucherInput(text.toUpperCase());
+                        if (voucherError) setVoucherError(null);
+                      }}
+                      autoCapitalize="characters"
+                    />
+                    <Button
+                      variant="secondary"
+                      label={isCheckingVoucher ? '...' : 'Áp dụng'}
+                      disabled={!voucherInput.trim() || isCheckingVoucher}
+                      onPress={handleApplyVoucher}
+                    />
+                  </View>
+                )}
+
+                {voucherError && (
+                  <Text style={[styles.voucherErrorText, { color: theme.danger }]}>
+                    ⚠️ {voucherError}
+                  </Text>
+                )}
+              </View>
+
               {/* Bảng phân tích chi phí thanh toán */}
               <View style={[styles.summaryCard, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderSubtle }]}>
                 <View style={styles.summaryRow}>
                   <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Cộng tiền món:</Text>
                   <Text style={[styles.summaryValue, { color: theme.textPrimary }]}>{formatVND(cartSubtotal)}</Text>
                 </View>
+                {appliedVoucher && (
+                  <View style={styles.summaryRow}>
+                    <Text style={[styles.summaryLabel, { color: theme.success }]}>
+                      Giảm giá ({appliedVoucher.code}):
+                    </Text>
+                    <Text style={[styles.summaryValue, { color: theme.success }]}>
+                      - {formatVND(appliedVoucher.discountAmount)}
+                    </Text>
+                  </View>
+                )}
                 <View style={styles.summaryRow}>
                   <Text style={[styles.summaryLabel, { color: theme.textSecondary }]}>Thuế VAT (8%):</Text>
-                  <Text style={[styles.summaryValue, { color: theme.textPrimary }]}>{formatVND(cartVat)}</Text>
+                  <Text style={[styles.summaryValue, { color: theme.textPrimary }]}>
+                    {formatVND(appliedVoucher ? appliedVoucher.vatAmount : cartVat)}
+                  </Text>
                 </View>
                 <View style={[styles.summaryDivider, { backgroundColor: theme.borderSubtle }]} />
                 <View style={styles.summaryGrandRow}>
@@ -286,7 +390,9 @@ export const CustomerCartModal: React.FC<CustomerCartModalProps> = ({
                     <Text style={[styles.grandLabel, { color: theme.textPrimary }]}>Tổng thanh toán:</Text>
                     <Text style={[styles.vatHint, { color: theme.textSecondary }]}>Đã bao gồm thuế VAT 8%</Text>
                   </View>
-                  <Text style={[styles.grandValue, { color: theme.primary }]}>{formatVND(cartTotal)}</Text>
+                  <Text style={[styles.grandValue, { color: theme.primary }]}>
+                    {formatVND(appliedVoucher ? appliedVoucher.finalAmount : cartTotal)}
+                  </Text>
                 </View>
               </View>
             </ScrollView>
@@ -562,5 +668,66 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     justifyContent: 'flex-end',
     padding: spacing.md
+  },
+  voucherSection: {
+    borderRadius: radii.md,
+    borderWidth: 1,
+    gap: spacing.xs,
+    padding: spacing.md
+  },
+  voucherHeaderRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs
+  },
+  voucherHeaderTitle: {
+    fontFamily: typography.families.bodyMedium,
+    fontSize: typography.sizes.xs
+  },
+  voucherInputRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm
+  },
+  voucherInput: {
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    flex: 1,
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.sm,
+    height: 40,
+    paddingHorizontal: spacing.sm
+  },
+  voucherErrorText: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs,
+    marginTop: spacing.xs
+  },
+  appliedVoucherBadge: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: spacing.sm
+  },
+  appliedVoucherInfo: {
+    flex: 1,
+    gap: 2
+  },
+  appliedVoucherCode: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.sm
+  },
+  appliedVoucherDesc: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs
+  },
+  removeVoucherBtn: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    height: 32,
+    justifyContent: 'center',
+    width: 32
   }
 });

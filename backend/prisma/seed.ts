@@ -783,6 +783,52 @@ export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
   }
 
   console.log(`✅ Da seed 8 Nguyen lieu va Dinh luong BOM cho ${matchedRecipesCount}/${recipeDefinitions.length} mon an thanh cong`);
+
+  // 6. Seed Vouchers khuyen mai mac dinh
+  const defaultVouchers = [
+    {
+      code: 'CRISPY10',
+      title: 'Giảm 10% tối đa 50.000đ cho đơn từ 50.000đ',
+      discountType: 'PERCENTAGE' as const,
+      discountValue: 10,
+      minOrderValue: 50000,
+      maxDiscount: 50000,
+      usageLimit: 100,
+      startDate: new Date('2026-01-01T00:00:00Z'),
+      endDate: new Date('2026-12-31T23:59:59Z')
+    },
+    {
+      code: 'GIAM20K',
+      title: 'Giảm ngay 20.000đ trực tiếp cho đơn từ 100.000đ',
+      discountType: 'FIXED_AMOUNT' as const,
+      discountValue: 20000,
+      minOrderValue: 100000,
+      usageLimit: 50,
+      startDate: new Date('2026-01-01T00:00:00Z'),
+      endDate: new Date('2026-12-31T23:59:59Z')
+    },
+    {
+      code: 'WELCOME50',
+      title: 'Siêu ưu đãi chào mừng: Giảm 50% tối đa 100.000đ cho đơn từ 80.000đ',
+      discountType: 'PERCENTAGE' as const,
+      discountValue: 50,
+      minOrderValue: 80000,
+      maxDiscount: 100000,
+      usageLimit: 200,
+      startDate: new Date('2026-01-01T00:00:00Z'),
+      endDate: new Date('2026-12-31T23:59:59Z')
+    }
+  ];
+
+  for (const v of defaultVouchers) {
+    await prisma.voucher.upsert({
+      where: { code: v.code },
+      update: {},
+      create: v
+    });
+  }
+  console.log(`✅ Da seed ${defaultVouchers.length} ma Voucher khuyen mai mac dinh`);
+
   console.log('🎉 SEED DATABASE HOAN TAT 100%!');
 }
 

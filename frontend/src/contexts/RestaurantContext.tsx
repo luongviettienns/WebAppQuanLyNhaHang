@@ -74,9 +74,10 @@ interface RestaurantContextType {
     orderType: OrderType;
     tableId?: number | null;
     qrCodeToken?: string;
+    voucherCode?: string;
     notes?: string;
   }) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
-  createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
+  createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string, voucherCode?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   payOrder: (orderId: number, paymentMethod: PaymentMethod) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   updateTableStatus: (tableId: number, status: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') => Promise<{ success: boolean; table?: DiningTableDto; error?: string }>;
   transferTable: (fromTableId: number, toTableId: number) => Promise<{ success: boolean; data?: { fromTable: DiningTableDto; toTable: DiningTableDto }; error?: string }>;
@@ -515,11 +516,13 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     orderType,
     tableId,
     qrCodeToken,
+    voucherCode,
     notes
   }: {
     orderType: OrderType;
     tableId?: number | null;
     qrCodeToken?: string;
+    voucherCode?: string;
     notes?: string;
   }): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
     if (cart.length === 0) {
@@ -543,6 +546,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     const orderPayload = {
       ...(orderType === 'DINE_IN' && tableId ? { tableId } : {}),
       ...(orderType === 'DINE_IN' && qrCodeToken ? { qrCodeToken } : {}),
+      ...(voucherCode ? { voucherCode } : {}),
       orderType,
       items: itemsPayload,
       notes
@@ -587,9 +591,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const createDineInOrder = async (
     tableId: number,
     notes?: string,
-    qrCodeToken?: string
+    qrCodeToken?: string,
+    voucherCode?: string
   ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
-    return createOrder({ orderType: 'DINE_IN', tableId, notes, qrCodeToken });
+    return createOrder({ orderType: 'DINE_IN', tableId, notes, qrCodeToken, voucherCode });
   };
 
   const payOrder = async (

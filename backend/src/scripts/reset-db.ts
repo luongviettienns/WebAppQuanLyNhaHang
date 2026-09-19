@@ -38,6 +38,7 @@ export async function resetDatabase() {
       'AuditLog',
       'OrderItem',
       'Order',
+      'Voucher',
       'ModifierOption',
       'ModifierGroup',
       'MenuItem',

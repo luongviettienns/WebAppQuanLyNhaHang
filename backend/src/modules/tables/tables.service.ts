@@ -102,7 +102,8 @@ export class TablesService {
       throw ApiError.notFound('Mã QR bàn không hợp lệ hoặc đã hết hạn');
     }
 
-    const { qrCodeToken: _qrCodeToken, ...safeTable } = deriveTableState(table);
+    const safeTable = deriveTableState(table) as Record<string, unknown>;
+    delete safeTable.qrCodeToken;
     return { table: safeTable };
   }
 

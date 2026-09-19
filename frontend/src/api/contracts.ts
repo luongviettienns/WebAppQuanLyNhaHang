@@ -171,6 +171,7 @@ export interface OrderCreateDto {
   items: OrderItemCreateDto[];
   notes?: string;
   idempotencyKey?: string;
+  voucherCode?: string;
 }
 
 export interface OrderItemDto {
@@ -194,6 +195,9 @@ export interface OrderDto {
   tableNumber?: number | null;
   buzzerNumber?: number | null;
   totalAmount: number;
+  discountAmount?: number;
+  voucherId?: number | null;
+  voucherCode?: string | null;
   vatAmount: number;
   finalAmount: number;
   paymentMethod?: PaymentMethod | null;
@@ -214,6 +218,41 @@ export interface OrderDto {
   voidedAt?: string | null;
 
   items: OrderItemDto[];
+}
+
+// ==========================================
+// 6.1. VOUCHER DTOs
+// ==========================================
+export type DiscountType = 'PERCENTAGE' | 'FIXED_AMOUNT';
+
+export interface VoucherDto {
+  id: number;
+  code: string;
+  title: string;
+  discountType: DiscountType;
+  discountValue: number;
+  minOrderValue: number;
+  maxDiscount?: number | null;
+  usageLimit: number;
+  usedCount: number;
+  isActive: boolean;
+  startDate: string;
+  endDate: string;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { orders: number };
+}
+
+export interface VoucherValidationResultDto {
+  voucherId: number;
+  code: string;
+  title: string;
+  discountType: DiscountType;
+  discountValue: number;
+  discountAmount: number;
+  taxableAmount: number;
+  vatAmount: number;
+  finalAmount: number;
 }
 
 // ==========================================

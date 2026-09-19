@@ -162,7 +162,12 @@ describe('Kitchen Waste & Low Stock Alerts API (Phase 10 - Slice 10.1)', () => {
 
   describe('Báo cáo COGS trên Dashboard bao gồm Kitchen Waste', () => {
     it('adds kitchen waste cost to totalCogs and computes correct grossProfit', async () => {
-      const today = new Date().toISOString().split('T')[0];
+      const today = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(new Date());
 
       const res = await request(app)
         .get(`/api/reports/daily?date=${today}`)

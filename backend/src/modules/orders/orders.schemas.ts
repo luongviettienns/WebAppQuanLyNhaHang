@@ -18,6 +18,7 @@ export const createOrderSchema = z.object({
   qrCodeToken: z.string().trim().min(1, 'Mã QR bàn là bắt buộc khi khách tự gọi món').optional(),
   buzzerNumber: z.number().optional(),
   idempotencyKey: z.string().optional(),
+  voucherCode: z.string().trim().optional(),
   notes: z.string().max(200).optional(),
   items: z.array(orderItemCreateSchema).min(1, 'Đơn hàng phải chứa ít nhất 1 món')
 });

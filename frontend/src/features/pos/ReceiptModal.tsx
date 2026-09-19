@@ -133,6 +133,16 @@ export const ReceiptModal: React.FC<Props> = ({ visible, order, onClose }) => {
                   <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Cộng tiền món</Text>
                   <Text style={[styles.totalValue, { color: theme.textPrimary }]}>{order.totalAmount.toLocaleString('vi-VN')} đ</Text>
                 </View>
+                {Boolean(order.discountAmount && order.discountAmount > 0) && (
+                  <View style={styles.totalRow}>
+                    <Text style={[styles.totalLabel, { color: theme.success }]}>
+                      Giảm giá voucher {order.voucherCode ? `(${order.voucherCode})` : ''}
+                    </Text>
+                    <Text style={[styles.totalValue, { color: theme.success }]}>
+                      - {order.discountAmount?.toLocaleString('vi-VN')} đ
+                    </Text>
+                  </View>
+                )}
                 <View style={styles.totalRow}>
                   <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Thuế GTGT (VAT 8%)</Text>
                   <Text style={[styles.totalValue, { color: theme.textPrimary }]}>{order.vatAmount.toLocaleString('vi-VN')} đ</Text>

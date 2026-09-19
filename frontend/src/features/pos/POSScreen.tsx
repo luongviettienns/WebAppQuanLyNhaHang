@@ -8,6 +8,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions
 } from 'react-native';
@@ -22,7 +23,8 @@ import {
   Utensils,
   X
 } from 'lucide-react-native';
-import { MenuItemDto, OrderDto, OrderType } from '../../api/contracts';
+import { MenuItemDto, OrderDto, OrderType, VoucherValidationResultDto } from '../../api/contracts';
+import { validateVoucherApi } from '../../api/vouchers';
 import { CartItem, useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -42,6 +44,8 @@ interface CartPanelProps {
   cartSubtotal: number;
   cartVat: number;
   cartTotal: number;
+  appliedVoucher: VoucherValidationResultDto | null;
+  onApplyVoucher: (voucher: VoucherValidationResultDto | null) => void;
   onClear: () => void;
   onCheckout: () => void;
   onRemove: (index: number) => void;
@@ -54,12 +58,33 @@ const CartPanel: React.FC<CartPanelProps> = ({
   cartSubtotal,
   cartVat,
   cartTotal,
+  appliedVoucher,
+  onApplyVoucher,
   onClear,
   onCheckout,
   onRemove,
   onUpdateQuantity
 }) => {
   const { theme } = useTheme();
+  const [voucherInput, setVoucherInput] = useState('');
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [isCheckingVoucher, setIsCheckingVoucher] = useState(false);
+
+  const handleApplyVoucher = async () => {
+    const code = voucherInput.trim().toUpperCase();
+    if (!code) return;
+    setIsCheckingVoucher(true);
+    setVoucherError(null);
+    try {
+      const result = await validateVoucherApi(code, cartSubtotal);
+      onApplyVoucher(result);
+      setVoucherInput('');
+    } catch (err: any) {
+      setVoucherError(err.message || 'Mã voucher không hợp lệ');
+    } finally {
+      setIsCheckingVoucher(false);
+    }
+  };
 
   return (
     <Surface level="base" style={[styles.cartPanel, { borderLeftColor: theme.borderSubtle }]}>
@@ -127,17 +152,85 @@ const CartPanel: React.FC<CartPanelProps> = ({
       )}
 
       <View style={[styles.cartTotals, { borderTopColor: theme.borderSubtle }]}>
+        {/* Voucher Section */}
+        {appliedVoucher ? (
+          <View style={[styles.posVoucherBadge, { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: typography.families.operationalBold, fontSize: typography.sizes.sm, color: theme.primary }}>
+                🎟️ {appliedVoucher.code} (-{formatVND(appliedVoucher.discountAmount)})
+              </Text>
+              <Text style={{ fontFamily: typography.families.body, fontSize: typography.sizes.xs, color: theme.textSecondary }}>
+                {appliedVoucher.title}
+              </Text>
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Gỡ voucher"
+              onPress={() => onApplyVoucher(null)}
+              style={styles.posVoucherRemoveBtn}
+            >
+              <AppIcon icon={X} color={theme.danger} size={16} />
+            </Pressable>
+          </View>
+        ) : (
+          <View style={styles.posVoucherInputRow}>
+            <TextInput
+              style={[
+                styles.posVoucherInput,
+                {
+                  backgroundColor: theme.surfaceSunken,
+                  borderColor: voucherError ? theme.danger : theme.borderSubtle,
+                  color: theme.textPrimary
+                }
+              ]}
+              placeholder="Mã voucher (VD: CRISPY10)"
+              placeholderTextColor={theme.textSecondary}
+              value={voucherInput}
+              onChangeText={(t: string) => {
+                setVoucherInput(t.toUpperCase());
+                if (voucherError) setVoucherError(null);
+              }}
+              autoCapitalize="characters"
+            />
+            <Button
+              variant="secondary"
+              label={isCheckingVoucher ? '...' : 'Áp dụng'}
+              disabled={!voucherInput.trim() || isCheckingVoucher}
+              onPress={handleApplyVoucher}
+            />
+          </View>
+        )}
+        {voucherError && (
+          <Text style={{ fontFamily: typography.families.body, fontSize: typography.sizes.xs, color: theme.danger }}>
+            ⚠️ {voucherError}
+          </Text>
+        )}
+
         <View style={styles.totalRow}>
           <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>Cộng tiền món</Text>
           <Text style={[styles.totalValue, { color: theme.textPrimary }]}>{formatVND(cartSubtotal)}</Text>
         </View>
+        {appliedVoucher && (
+          <View style={styles.totalRow}>
+            <Text style={[styles.totalLabel, { color: theme.success }]}>
+              Giảm giá ({appliedVoucher.code})
+            </Text>
+            <Text style={[styles.totalValue, { color: theme.success }]}>
+              - {formatVND(appliedVoucher.discountAmount)}
+            </Text>
+          </View>
+        )}
         <View style={styles.totalRow}>
           <Text style={[styles.totalLabel, { color: theme.textSecondary }]}>VAT 8%</Text>
-          <Text style={[styles.totalValue, { color: theme.textPrimary }]}>{formatVND(cartVat)}</Text>
+          <Text style={[styles.totalValue, { color: theme.textPrimary }]}>
+            {formatVND(appliedVoucher ? appliedVoucher.vatAmount : cartVat)}
+          </Text>
         </View>
         <View style={styles.grandTotalRow}>
           <Text style={[styles.grandTotalLabel, { color: theme.textPrimary }]}>Tổng thanh toán</Text>
-          <Text testID="pos-cart-total" style={[styles.grandTotalValue, { color: theme.primary }]}>{formatVND(cartTotal)}</Text>
+          <Text testID="pos-cart-total" style={[styles.grandTotalValue, { color: theme.primary }]}>
+            {formatVND(appliedVoucher ? appliedVoucher.finalAmount : cartTotal)}
+          </Text>
         </View>
         <Button testID="btn-open-checkout" variant="primary" label="Xác nhận đơn" disabled={cart.length === 0} onPress={onCheckout} />
       </View>
@@ -180,6 +273,7 @@ export const POSScreen: React.FC = () => {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [orderType, setOrderType] = useState<OrderType>('DINE_IN');
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
+  const [appliedVoucher, setAppliedVoucher] = useState<VoucherValidationResultDto | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successOrderCode, setSuccessOrderCode] = useState<string | null>(null);
@@ -218,13 +312,15 @@ export const POSScreen: React.FC = () => {
     setSubmitError(null);
     const result = await createOrder({
       orderType,
-      tableId: orderType === 'DINE_IN' ? selectedTableId : undefined
+      tableId: orderType === 'DINE_IN' ? selectedTableId : undefined,
+      voucherCode: appliedVoucher?.code
     });
     setIsSubmitting(false);
 
     if (result.success && result.order) {
       setSuccessOrderCode(result.order.code);
       setCreatedOrder(result.order);
+      setAppliedVoucher(null);
       const chosenTable = tables.find((t) => t.id === selectedTableId);
       showToast({
         type: 'success',
@@ -299,7 +395,12 @@ export const POSScreen: React.FC = () => {
             cartSubtotal={cartSubtotal}
             cartVat={cartVat}
             cartTotal={cartTotal}
-            onClear={clearCart}
+            appliedVoucher={appliedVoucher}
+            onApplyVoucher={setAppliedVoucher}
+            onClear={() => {
+              clearCart();
+              setAppliedVoucher(null);
+            }}
             onCheckout={handleOpenConfirmModal}
             onRemove={removeFromCart}
             onUpdateQuantity={updateCartQuantity}
@@ -311,7 +412,9 @@ export const POSScreen: React.FC = () => {
         <Surface level="raised" style={[styles.mobileCartSummary, elevation.floatingAction]}>
           <View testID="pos-cart-summary" style={styles.mobileCartSummaryCopy}>
             <Text style={[styles.mobileCartLabel, { color: theme.textPrimary }]}>Giỏ hàng · {cartItemCount} món</Text>
-            <Text testID="pos-cart-total" style={[styles.mobileCartTotal, { color: theme.primary }]}>{formatVND(cartTotal)}</Text>
+            <Text testID="pos-cart-total" style={[styles.mobileCartTotal, { color: theme.primary }]}>
+              {formatVND(appliedVoucher ? appliedVoucher.finalAmount : cartTotal)}
+            </Text>
           </View>
           <Button testID="btn-open-checkout" variant="primary" label="Xác nhận" onPress={handleOpenConfirmModal} />
         </Surface>
@@ -489,5 +592,34 @@ const styles = StyleSheet.create({
   successPanel: { alignItems: 'center', gap: spacing.sm, padding: spacing.xl },
   successTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, textAlign: 'center' },
   successDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm, maxWidth: 420, textAlign: 'center' },
-  successActionsRow: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', marginTop: spacing.md, width: '100%' }
+  successActionsRow: { flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', marginTop: spacing.md, width: '100%' },
+  posVoucherBadge: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    padding: spacing.sm
+  },
+  posVoucherRemoveBtn: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    height: 32,
+    justifyContent: 'center',
+    width: 32
+  },
+  posVoucherInputRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs
+  },
+  posVoucherInput: {
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    flex: 1,
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs,
+    height: 36,
+    paddingHorizontal: spacing.sm
+  }
 });
