@@ -157,7 +157,7 @@ describe('login with invalid credentials', () => {
     const inputPassword = screen!.root.findByProps({ testID: 'input-password' });
     await act(async () => {
       inputUsername.props.onChangeText('not-a-user');
-    inputPassword.props.onChangeText('wrong-password');
+      inputPassword.props.onChangeText('wrong-password');
     });
 
     await act(async () => {

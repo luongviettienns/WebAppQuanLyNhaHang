@@ -23,7 +23,7 @@ if (process.env.NODE_ENV !== 'test') {
   server.listen(env.PORT, () => {
     console.log(`🚀 CRISPY BITE Backend Server dang chay tai port ${env.PORT}`);
     console.log(`👉 Health Check: http://localhost:${env.PORT}/health`);
-    console.log(`📘 Swagger API Documentation: http://localhost:${env.PORT}/api-docs`);
+    console.log(`📘 Swagger API Docs: http://localhost:${env.PORT}/api-docs`);
     startOrderTimeoutScheduler();
   });
 }
