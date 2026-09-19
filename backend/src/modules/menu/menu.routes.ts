@@ -8,6 +8,12 @@ export const menuRouter = Router();
 // GET /api/menu (Public hoac Authenticated)
 menuRouter.get('/', MenuController.getMenu);
 
+// Category administration (Chi ADMIN duoc phep quan ly nhom mon)
+menuRouter.post('/categories', authenticate, authorize('ADMIN'), MenuController.createCategory);
+menuRouter.patch('/categories/reorder', authenticate, authorize('ADMIN'), MenuController.reorderCategories);
+menuRouter.patch('/categories/:id', authenticate, authorize('ADMIN'), MenuController.updateCategory);
+menuRouter.delete('/categories/:id', authenticate, authorize('ADMIN'), MenuController.deleteCategory);
+
 // POST /api/menu (Chi ADMIN duoc phep them mon moi)
 menuRouter.post('/', authenticate, authorize('ADMIN'), MenuController.createMenuItem);
 

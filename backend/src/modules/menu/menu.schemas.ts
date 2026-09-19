@@ -79,3 +79,32 @@ export const updateMenuItemSchema = z.object({
 
 export type CreateMenuItemInput = z.infer<typeof createMenuItemSchema>;
 export type UpdateMenuItemInput = z.infer<typeof updateMenuItemSchema>;
+
+const categoryNameSchema = z.string().trim().min(1, 'Tên danh mục không được để trống').max(100, 'Tên danh mục không được vượt quá 100 ký tự');
+
+export const createCategorySchema = z.object({
+  name: categoryNameSchema,
+  displayOrder: z.number().int('displayOrder phải là số nguyên').min(0, 'displayOrder không được âm').optional().default(0)
+});
+
+export const updateCategorySchema = z
+  .object({
+    name: categoryNameSchema.optional(),
+    displayOrder: z.number().int('displayOrder phải là số nguyên').min(0, 'displayOrder không được âm').optional()
+  })
+  .refine(input => input.name !== undefined || input.displayOrder !== undefined, {
+    message: 'Phải cung cấp ít nhất một trường cần cập nhật'
+  });
+
+export const deleteCategorySchema = z.object({
+  moveToCategoryId: z.number().int().positive().optional()
+});
+
+export const reorderCategoriesSchema = z.object({
+  ids: z.array(z.number().int().positive()).min(1, 'Danh sách category không được rỗng')
+});
+
+export type CreateCategoryInput = z.infer<typeof createCategorySchema>;
+export type UpdateCategoryInput = z.infer<typeof updateCategorySchema>;
+export type DeleteCategoryInput = z.infer<typeof deleteCategorySchema>;
+export type ReorderCategoriesInput = z.infer<typeof reorderCategoriesSchema>;

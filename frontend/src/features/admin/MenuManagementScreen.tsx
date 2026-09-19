@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useRef } from 'react';
-import { Check, Eye, ImageIcon, Pencil, Plus, Search, Sparkles, Trash2, Upload, X, Zap } from 'lucide-react-native';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { ArrowDown, ArrowUp, Check, Eye, ImageIcon, Pencil, Plus, Search, Sparkles, Trash2, Upload, X, Zap } from 'lucide-react-native';
 import {
   StyleSheet,
   Text,
@@ -19,7 +19,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
-import { MenuItemDto, MenuItemUpsertDto } from '../../api/contracts';
+import { CategoryDto, MenuItemDto, MenuItemUpsertDto } from '../../api/contracts';
 import { getApiBaseUrl, resolveImageUrl } from '../../api/config';
 import { elevation, radii, spacing, statusColors, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, Field, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
@@ -29,6 +29,7 @@ import {
   MenuAvailabilityFilter,
   MenuOptionPresenceFilter
 } from './menuManagementFilters';
+import { moveCategory, normalizeCategoryDraft } from './categoryManagement';
 
 interface ModifierOptionForm {
   id?: number;
@@ -121,6 +122,10 @@ export const MenuManagementScreen: React.FC = () => {
     toggleMenuItemSoldOut,
     createMenuItem,
     updateMenuItem,
+    createCategory,
+    updateCategory,
+    deleteCategory,
+    reorderCategories,
     isLoadingMenu
   } = useRestaurant();
 
@@ -135,6 +140,14 @@ export const MenuManagementScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
   const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [orderedCategories, setOrderedCategories] = useState<CategoryDto[]>([]);
+  const [editingCategory, setEditingCategory] = useState<CategoryDto | null>(null);
+  const [categoryName, setCategoryName] = useState('');
+  const [categoryDisplayOrder, setCategoryDisplayOrder] = useState('0');
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [isCategorySaving, setIsCategorySaving] = useState(false);
+  const [isCategoryReordering, setIsCategoryReordering] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const isMobile = width < 768;
   const switchAppearance = {
@@ -153,6 +166,10 @@ export const MenuManagementScreen: React.FC = () => {
     isAvailable: true,
     modifierGroups: []
   });
+
+  useEffect(() => {
+    setOrderedCategories([...categories].sort((a, b) => a.displayOrder - b.displayOrder));
+  }, [categories]);
 
   // Filter items by category & search query
   const filteredItems = useMemo(() => {
@@ -517,6 +534,105 @@ export const MenuManagementScreen: React.FC = () => {
     }
   };
 
+  const openCategoryManagement = () => {
+    setOrderedCategories([...categories].sort((a, b) => a.displayOrder - b.displayOrder));
+    setEditingCategory(null);
+    setCategoryName('');
+    setCategoryDisplayOrder(String(categories.length));
+    setCategoryError(null);
+    setIsCategoryModalOpen(true);
+  };
+
+  const editCategory = (category: CategoryDto) => {
+    setEditingCategory(category);
+    setCategoryName(category.name);
+    setCategoryDisplayOrder(String(category.displayOrder));
+    setCategoryError(null);
+  };
+
+  const resetCategoryDraft = () => {
+    setEditingCategory(null);
+    setCategoryName('');
+    setCategoryDisplayOrder(String(orderedCategories.length));
+    setCategoryError(null);
+  };
+
+  const saveCategory = async () => {
+    setCategoryError(null);
+    let payload: { name: string; displayOrder: number };
+    try {
+      payload = normalizeCategoryDraft(categoryName, categoryDisplayOrder);
+    } catch (error: any) {
+      setCategoryError(error.message);
+      return;
+    }
+
+    setIsCategorySaving(true);
+    const result = editingCategory
+      ? await updateCategory(editingCategory.id, payload)
+      : await createCategory(payload);
+    setIsCategorySaving(false);
+
+    if (!result.success) {
+      setCategoryError(result.error || 'Không thể lưu nhóm món');
+      return;
+    }
+
+    resetCategoryDraft();
+    showToast({
+      type: 'success',
+      title: editingCategory ? 'Đã cập nhật nhóm món' : 'Đã tạo nhóm món',
+      message: payload.name
+    });
+  };
+
+  const saveCategoryOrder = async () => {
+    setIsCategoryReordering(true);
+    const result = await reorderCategories(orderedCategories.map(category => category.id));
+    setIsCategoryReordering(false);
+    if (!result.success) {
+      setCategoryError(result.error || 'Không thể sắp xếp nhóm món');
+      return;
+    }
+    showToast({ type: 'success', title: 'Đã lưu thứ tự nhóm món', message: 'Bộ lọc thực đơn đã được cập nhật.' });
+  };
+
+  const moveCategoryInList = (index: number, direction: -1 | 1) => {
+    setOrderedCategories(previous => moveCategory(previous, index, direction));
+  };
+
+  const executeDeleteCategory = async (category: CategoryDto, moveToCategoryId?: number) => {
+    setCategoryError(null);
+    const result = await deleteCategory(category.id, moveToCategoryId);
+    if (!result.success) {
+      setCategoryError(result.error || 'Không thể xóa nhóm món');
+      return;
+    }
+    if (editingCategory?.id === category.id) resetCategoryDraft();
+    showToast({ type: 'success', title: 'Đã xóa nhóm món', message: category.name });
+  };
+
+  const confirmDeleteCategory = (category: CategoryDto) => {
+    const targets = orderedCategories.filter(candidate => candidate.id !== category.id);
+    const menuItemCount = category.menuItems?.length ?? 0;
+    const buttons = [
+      { text: 'Hủy', style: 'cancel' as const },
+      ...(menuItemCount > 0
+        ? targets.map(target => ({
+            text: `Chuyển món sang ${target.name}`,
+            onPress: () => void executeDeleteCategory(category, target.id)
+          }))
+        : [{ text: 'Xóa', style: 'destructive' as const, onPress: () => void executeDeleteCategory(category) }])
+    ];
+    Alert.alert(
+      menuItemCount > 0 ? 'Chọn danh mục đích' : 'Xóa nhóm món?',
+      menuItemCount > 0
+        ? `Nhóm "${category.name}" đang có ${menuItemCount} món. Chọn nơi chuyển món trước khi xóa.`
+        : `Xóa nhóm "${category.name}"?`,
+      buttons
+    );
+  };
+
   const getCategoryName = (catId: number) => {
     return categories.find((c) => c.id === catId)?.name || 'Khác';
   };
@@ -555,7 +671,12 @@ export const MenuManagementScreen: React.FC = () => {
         <ScreenHeader
           title="Món"
           description={`${filteredItems.length} / ${allMenuItems.length} món đang hiển thị${selectedItemIds.length > 0 ? ` · đã chọn ${selectedItemIds.length}` : ''}`}
-          actions={<Button testID="admin-btn-add-item" variant="primary" label="Món mới" icon={Plus} onPress={openCreateModal} />}
+          actions={(
+            <View style={styles.headerActions}>
+              <Button testID="admin-btn-manage-categories" variant="secondary" label="Nhóm món" icon={Pencil} onPress={openCategoryManagement} />
+              <Button testID="admin-btn-add-item" variant="primary" label="Món mới" icon={Plus} onPress={openCreateModal} />
+            </View>
+          )}
         />
         <View style={[styles.commandBar, isMobile && styles.commandBarMobile]}>
           <View style={[styles.searchBox, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
@@ -585,7 +706,12 @@ export const MenuManagementScreen: React.FC = () => {
           <Surface level="raised" style={styles.filterSidebar}>
             <ScrollView contentContainerStyle={styles.filterContent} showsVerticalScrollIndicator={false}>
               <View style={styles.filterSection}>
-                <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Nhóm món</Text>
+                <View style={styles.filterSectionHeader}>
+                  <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Nhóm món</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Quản lý nhóm món" onPress={openCategoryManagement}>
+                    <Text style={[styles.filterManageLink, { color: theme.primary }]}>Quản lý</Text>
+                  </Pressable>
+                </View>
                 {categoryFilters.map((category) => {
                   const selected = selectedCategoryId === category.id;
                   return (
@@ -820,6 +946,70 @@ export const MenuManagementScreen: React.FC = () => {
           )}
         </View>
       </View>
+
+      <Modal visible={isCategoryModalOpen} animationType="slide" transparent onRequestClose={() => setIsCategoryModalOpen(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+          <View style={[styles.modalCard, styles.categoryModalCard, elevation.modal, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.borderSubtle }]}>
+              <View style={styles.modalHeadingCopy}>
+                <Text accessibilityRole="header" style={[styles.modalTitle, { color: theme.textPrimary }]}>Quản lý nhóm món</Text>
+                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Tạo, đổi tên, xóa và sắp xếp nhóm hiển thị trên menu.</Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Đóng quản lý nhóm món" onPress={() => setIsCategoryModalOpen(false)} style={({ pressed }) => [styles.iconButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}>
+                <AppIcon icon={X} color={theme.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.categoryModalBody}>
+              {categoryError && <InlineAlert title="Chưa thể cập nhật nhóm món" message={categoryError} />}
+              <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
+                <View style={styles.sectionHeading}>
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{editingCategory ? 'Sửa nhóm món' : 'Tạo nhóm món mới'}</Text>
+                  <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>Tên nhóm được chuẩn hóa trước khi gửi lên máy chủ.</Text>
+                </View>
+                <Field label="Tên nhóm *" placeholder="Ví dụ: Đồ uống" value={categoryName} onChangeText={setCategoryName} />
+                <Field label="Thứ tự hiển thị" placeholder="0" keyboardType="numeric" value={categoryDisplayOrder} onChangeText={value => setCategoryDisplayOrder(value.replace(/[^0-9]/g, ''))} />
+                <View style={styles.categoryFormActions}>
+                  {editingCategory && <Button variant="quiet" label="Tạo mới" onPress={resetCategoryDraft} />}
+                  <Button variant="primary" label={editingCategory ? 'Lưu nhóm' : 'Tạo nhóm'} loading={isCategorySaving} onPress={() => void saveCategory()} />
+                </View>
+              </View>
+
+              <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
+                <View style={styles.sectionHeading}>
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Danh sách nhóm món</Text>
+                  <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>Dùng mũi tên để đổi vị trí, sau đó lưu thứ tự.</Text>
+                </View>
+                <View style={styles.categoryList}>
+                  {orderedCategories.map((category, index) => (
+                    <View key={category.id} style={[styles.categoryRow, { borderColor: theme.borderSubtle, backgroundColor: theme.surfaceSunken }]}>
+                      <View style={styles.categoryRowCopy}>
+                        <Text style={[styles.categoryRowName, { color: theme.textPrimary }]}>{category.name}</Text>
+                        <Text style={[styles.categoryRowMeta, { color: theme.textSecondary }]}>{category.menuItems?.length ?? 0} món · thứ tự {index + 1}</Text>
+                      </View>
+                      <View style={styles.categoryRowActions}>
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Đưa ${category.name} lên`} disabled={index === 0} onPress={() => moveCategoryInList(index, -1)} style={[styles.iconButton, { opacity: index === 0 ? 0.35 : 1 }]}>
+                          <AppIcon icon={ArrowUp} color={theme.textPrimary} size={17} />
+                        </Pressable>
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Đưa ${category.name} xuống`} disabled={index === orderedCategories.length - 1} onPress={() => moveCategoryInList(index, 1)} style={[styles.iconButton, { opacity: index === orderedCategories.length - 1 ? 0.35 : 1 }]}>
+                          <AppIcon icon={ArrowDown} color={theme.textPrimary} size={17} />
+                        </Pressable>
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Sửa ${category.name}`} onPress={() => editCategory(category)} style={styles.iconButton}>
+                          <AppIcon icon={Pencil} color={theme.primary} size={17} />
+                        </Pressable>
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ${category.name}`} onPress={() => confirmDeleteCategory(category)} style={styles.iconButton}>
+                          <AppIcon icon={Trash2} color={theme.danger} size={17} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+                <Button variant="secondary" label="Lưu thứ tự" loading={isCategoryReordering} onPress={() => void saveCategoryOrder()} />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={isModalOpen} animationType="slide" transparent onRequestClose={() => setIsModalOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
@@ -1090,6 +1280,7 @@ const styles = StyleSheet.create({
   toolbarMobile: { padding: spacing.md },
   commandBar: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },
   commandBarMobile: { alignItems: 'stretch', flexDirection: 'column' },
+  headerActions: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   searchBox: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.sm, minHeight: spacing.touchTargetMobile, maxWidth: 560, paddingLeft: spacing.md, paddingRight: spacing.xs },
   searchInput: { flex: 1, fontFamily: typography.families.body, fontSize: typography.sizes.sm, minHeight: spacing.touchTargetMobile },
   iconButton: { alignItems: 'center', borderRadius: radii.md, height: spacing.touchTargetMobile, justifyContent: 'center', width: spacing.touchTargetMobile },
@@ -1099,7 +1290,9 @@ const styles = StyleSheet.create({
   filterSidebar: { flexShrink: 0, overflow: 'hidden', width: 252 },
   filterContent: { gap: spacing.lg, padding: spacing.md },
   filterSection: { gap: spacing.sm },
+  filterSectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   filterTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  filterManageLink: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
   filterOption: { alignItems: 'center', borderRadius: radii.sm, flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', minHeight: 36, paddingHorizontal: spacing.sm },
   filterOptionText: { flex: 1, fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
   filterCount: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, fontVariant: ['tabular-nums'] },
@@ -1155,6 +1348,15 @@ const styles = StyleSheet.create({
   modalTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, lineHeight: typography.lineHeights.xl },
   modalSubtitle: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
   modalBody: { gap: spacing.md, padding: spacing.lg },
+  categoryModalCard: { maxWidth: 720 },
+  categoryModalBody: { gap: spacing.md, padding: spacing.lg },
+  categoryFormActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
+  categoryList: { gap: spacing.sm },
+  categoryRow: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 64, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  categoryRowCopy: { flex: 1, gap: 2, minWidth: 0 },
+  categoryRowName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  categoryRowMeta: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  categoryRowActions: { alignItems: 'center', flexDirection: 'row', gap: 2 },
   formSection: { borderRadius: radii.md, borderWidth: 1, gap: spacing.md, padding: spacing.lg },
   sectionHeading: { flex: 1, gap: 2 },
   sectionTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md, lineHeight: typography.lineHeights.md },

@@ -100,6 +100,11 @@ export interface CategoryDto {
   menuItems?: MenuItemDto[];
 }
 
+export interface CategoryUpsertDto {
+  name: string;
+  displayOrder?: number;
+}
+
 export interface ModifierOptionUpsertDto {
   id?: number;
   name: string;

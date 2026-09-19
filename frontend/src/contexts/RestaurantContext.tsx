@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode, useCa
 import io, { Socket } from 'socket.io-client';
 import {
   CategoryDto,
+  CategoryUpsertDto,
   MenuItemDto,
   SelectedModifierDto,
   DiningTableDto,
@@ -40,6 +41,10 @@ interface RestaurantContextType {
   menuError: string | null;
   fetchMenu: () => Promise<void>;
   selectCategory: (categoryId: number | null) => void;
+  createCategory: (payload: CategoryUpsertDto) => Promise<{ success: boolean; category?: CategoryDto; error?: string }>;
+  updateCategory: (id: number, payload: CategoryUpsertDto) => Promise<{ success: boolean; category?: CategoryDto; error?: string }>;
+  deleteCategory: (id: number, moveToCategoryId?: number) => Promise<{ success: boolean; error?: string }>;
+  reorderCategories: (ids: number[]) => Promise<{ success: boolean; error?: string }>;
 
   // Modifier Modal State
   selectedMenuItemForModal: MenuItemDto | null;
@@ -152,6 +157,106 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       setIsLoadingMenu(false);
     }
   }, []);
+
+  const createCategory = async (
+    payload: CategoryUpsertDto
+  ): Promise<{ success: boolean; category?: CategoryDto; error?: string }> => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/menu/categories`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
+      const json = await response.json();
+      if (!response.ok) return { success: false, error: json.error?.message || 'Không thể tạo nhóm món' };
+      await fetchMenu();
+      return { success: true, category: json.data.category as CategoryDto };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi tạo nhóm món' };
+    }
+  };
+
+  const updateCategory = async (
+    id: number,
+    payload: CategoryUpsertDto
+  ): Promise<{ success: boolean; category?: CategoryDto; error?: string }> => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/menu/categories/${id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(payload)
+      });
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
+      const json = await response.json();
+      if (!response.ok) return { success: false, error: json.error?.message || 'Không thể cập nhật nhóm món' };
+      await fetchMenu();
+      return { success: true, category: json.data.category as CategoryDto };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi cập nhật nhóm món' };
+    }
+  };
+
+  const deleteCategory = async (
+    id: number,
+    moveToCategoryId?: number
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/menu/categories/${id}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify(moveToCategoryId === undefined ? {} : { moveToCategoryId })
+      });
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
+      const json = await response.json();
+      if (!response.ok) return { success: false, error: json.error?.message || 'Không thể xóa nhóm món' };
+      await fetchMenu();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi xóa nhóm món' };
+    }
+  };
+
+  const reorderCategories = async (ids: number[]): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/menu/categories/reorder`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ ids })
+      });
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
+      const json = await response.json();
+      if (!response.ok) return { success: false, error: json.error?.message || 'Không thể sắp xếp nhóm món' };
+      await fetchMenu();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi sắp xếp nhóm món' };
+    }
+  };
 
   // 2. Fetch Tables from Backend API
   const fetchTables = useCallback(async () => {
@@ -833,6 +938,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         menuError,
         fetchMenu,
         selectCategory,
+        createCategory,
+        updateCategory,
+        deleteCategory,
+        reorderCategories,
         selectedMenuItemForModal,
         isModifierModalOpen,
         openModifierModal,

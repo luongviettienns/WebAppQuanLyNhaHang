@@ -4,7 +4,6 @@ import path from 'path';
 import fs from 'fs';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger';
-import { env } from './config/env';
 import { systemRouter } from './modules/system/system.routes';
 import { authRouter } from './modules/auth/auth.routes';
 import { menuRouter } from './modules/menu/menu.routes';
