@@ -23,3 +23,6 @@ tablesRouter.get('/:id', authenticate, authorize('CASHIER', 'KITCHEN', 'ADMIN'),
 // PATCH /api/tables/:id/status (Chuyen trang thai don dep ban: CASHIER va ADMIN)
 tablesRouter.patch('/:id/status', authenticate, authorize('CASHIER', 'ADMIN'), TablesController.updateTableStatus);
 
+// POST /api/tables/transfer (Chuyen ban an linh hoat: CASHIER va ADMIN)
+tablesRouter.post('/transfer', authenticate, authorize('CASHIER', 'ADMIN'), TablesController.transferTable);
+

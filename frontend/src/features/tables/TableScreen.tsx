@@ -13,6 +13,7 @@ import {
   useWindowDimensions
 } from 'react-native';
 import {
+  ArrowRightLeft,
   Banknote,
   ChevronLeft,
   ChevronRight,
@@ -86,7 +87,7 @@ export const TableScreen: React.FC = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
   const { width } = useWindowDimensions();
-  const { tables, isLoadingTables, fetchTables, payOrder, updateTableStatus, voidOrder } = useRestaurant();
+  const { tables, isLoadingTables, fetchTables, payOrder, updateTableStatus, transferTable, voidOrder } = useRestaurant();
 
   const [filter, setFilter] = useState<TableFilter>('ALL');
   const [selectedTable, setSelectedTable] = useState<DiningTableDto | null>(null);
@@ -100,6 +101,11 @@ export const TableScreen: React.FC = () => {
   const [isProcessingVoid, setIsProcessingVoid] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
   const [isProcessingClean, setIsProcessingClean] = useState(false);
+
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [targetTableId, setTargetTableId] = useState<number | null>(null);
+  const [isProcessingTransfer, setIsProcessingTransfer] = useState(false);
+  const [transferError, setTransferError] = useState<string | null>(null);
   const orderScrollRef = useRef<ScrollView>(null);
 
   const scrollOrders = useCallback((offset: number) => {
@@ -241,6 +247,42 @@ export const TableScreen: React.FC = () => {
     setVoidReason('');
     setVoidError(null);
     setIsVoidModalOpen(true);
+  };
+
+  const handleOpenTransferModal = () => {
+    setTargetTableId(null);
+    setTransferError(null);
+    setIsTransferModalOpen(true);
+  };
+
+  const handleConfirmTransfer = async () => {
+    if (!selectedTable || !targetTableId) return;
+    setIsProcessingTransfer(true);
+    setTransferError(null);
+
+    const result = await transferTable(selectedTable.id, targetTableId);
+    setIsProcessingTransfer(false);
+
+    if (!result.success) {
+      setTransferError(result.error || 'Chuyển bàn thất bại');
+      showToast({
+        type: 'error',
+        title: 'Chuyển bàn thất bại',
+        message: result.error || 'Vui lòng kiểm tra lại.'
+      });
+      return;
+    }
+
+    const targetTable = tables.find((t) => t.id === targetTableId);
+    showToast({
+      type: 'success',
+      title: 'Chuyển bàn thành công! 🔀',
+      message: `Đã chuyển toàn bộ đơn từ Bàn ${formatTableNumber(selectedTable.tableNumber)} sang Bàn ${targetTable ? formatTableNumber(targetTable.tableNumber) : targetTableId}.`
+    });
+
+    setIsTransferModalOpen(false);
+    setIsDetailModalOpen(false);
+    setSelectedTable(null);
   };
 
   const handleConfirmVoid = async () => {
@@ -672,6 +714,18 @@ export const TableScreen: React.FC = () => {
             <View style={[styles.actionFooter, { backgroundColor: theme.surfaceBase, borderTopColor: theme.borderSubtle }]}>
               {activeOrder ? (
                 <View style={[styles.footerActions, isNarrow && styles.footerActionsNarrow]}>
+                  {(user?.role === 'CASHIER' || user?.role === 'ADMIN') && (
+                    <View style={styles.footerButton}>
+                      <Button
+                        testID="btn-open-transfer-modal"
+                        variant="secondary"
+                        label="Chuyển bàn"
+                        icon={ArrowRightLeft}
+                        disabled={isProcessingPay || isProcessingVoid || isProcessingTransfer}
+                        onPress={handleOpenTransferModal}
+                      />
+                    </View>
+                  )}
                   {user?.role === 'ADMIN' && (
                     <View style={styles.footerButton}>
                       <Button
@@ -679,7 +733,7 @@ export const TableScreen: React.FC = () => {
                         variant="danger"
                         label="Hủy đơn"
                         icon={Trash2}
-                        disabled={isProcessingPay || isProcessingVoid}
+                        disabled={isProcessingPay || isProcessingVoid || isProcessingTransfer}
                         onPress={handleOpenVoidModal}
                       />
                     </View>
@@ -790,6 +844,98 @@ export const TableScreen: React.FC = () => {
                   loading={isProcessingVoid}
                   disabled={voidReason.trim().length < 3}
                   onPress={() => void handleConfirmVoid()}
+                />
+              </View>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={isTransferModalOpen} transparent animationType="fade" onRequestClose={() => setIsTransferModalOpen(false)}>
+        <View style={[styles.modalBackdrop, { backgroundColor: theme.overlay }]}>
+          <View style={[styles.voidModal, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle, maxWidth: 520 }]}>
+            <View style={styles.voidHeader}>
+              <View style={[styles.dangerIcon, { backgroundColor: theme.interactiveSecondary }]}>
+                <AppIcon icon={ArrowRightLeft} color={theme.primary} size={22} />
+              </View>
+              <View style={styles.voidHeadingCopy}>
+                <Text style={[styles.voidTitle, { color: theme.textPrimary }]}>Chuyển Bàn Ăn 🔀</Text>
+                <Text style={[styles.voidDescription, { color: theme.textSecondary }]}>
+                  Chuyển đơn từ Bàn {selectedTable ? formatTableNumber(selectedTable.tableNumber) : ''} sang bàn trống mới.
+                </Text>
+              </View>
+            </View>
+
+            <Surface level="sunken" style={styles.voidOrderSummary}>
+              <View>
+                <Text style={[styles.metaLabel, { color: theme.textSecondary }]}>Bàn hiện tại</Text>
+                <Text style={[styles.voidOrderCode, { color: theme.textPrimary }]}>
+                  Bàn {selectedTable ? formatTableNumber(selectedTable.tableNumber) : ''} ({selectedTable?.orders?.length || 0} đơn)
+                </Text>
+              </View>
+              <Text style={[styles.voidOrderAmount, { color: theme.primary }]}>
+                {selectedTable?.orders ? formatVND(selectedTable.orders.reduce((sum, o) => sum + o.finalAmount, 0)) : ''}
+              </Text>
+            </Surface>
+
+            <View style={styles.voidField}>
+              <Text style={[styles.voidLabel, { color: theme.textPrimary }]}>Chọn bàn đích (chỉ hiển thị bàn trống)</Text>
+              {tables.filter((t) => t.id !== selectedTable?.id && t.status === 'AVAILABLE').length === 0 ? (
+                <InlineAlert message="Hiện tại không có bàn nào đang trống (AVAILABLE) để chuyển sang. Vui lòng dọn bàn hoặc đợi bàn khác thanh toán xong." />
+              ) : (
+                <ScrollView style={{ maxHeight: 200 }} contentContainerStyle={styles.transferGrid}>
+                  {tables
+                    .filter((t) => t.id !== selectedTable?.id && t.status === 'AVAILABLE')
+                    .map((target) => {
+                      const isSelected = targetTableId === target.id;
+                      return (
+                        <Pressable
+                          key={target.id}
+                          testID={`target-table-${target.tableNumber}`}
+                          accessibilityRole="button"
+                          accessibilityLabel={`Chọn Bàn ${formatTableNumber(target.tableNumber)}`}
+                          onPress={() => setTargetTableId(target.id)}
+                          style={[
+                            styles.transferTableCard,
+                            {
+                              borderColor: isSelected ? theme.primary : theme.borderSubtle,
+                              backgroundColor: isSelected ? theme.interactiveSecondary : theme.surfaceSunken
+                            }
+                          ]}
+                        >
+                          <Text style={[styles.transferTableNum, { color: isSelected ? theme.primary : theme.textPrimary }]}>
+                            Bàn {formatTableNumber(target.tableNumber)}
+                          </Text>
+                          <Text style={[styles.transferTableCap, { color: theme.textSecondary }]}>
+                            {target.capacity} chỗ ngồi
+                          </Text>
+                        </Pressable>
+                      );
+                    })}
+                </ScrollView>
+              )}
+            </View>
+
+            {transferError && <InlineAlert message={transferError} />}
+
+            <View style={[styles.voidActions, isNarrow && styles.voidActionsNarrow]}>
+              <View style={styles.footerButton}>
+                <Button
+                  variant="quiet"
+                  label="Đóng"
+                  disabled={isProcessingTransfer}
+                  onPress={() => setIsTransferModalOpen(false)}
+                />
+              </View>
+              <View style={styles.footerButtonPrimary}>
+                <Button
+                  testID="btn-confirm-transfer-submit"
+                  variant="primary"
+                  label={targetTableId ? `Chuyển sang Bàn ${formatTableNumber(tables.find(t => t.id === targetTableId)?.tableNumber || 0)}` : 'Chọn bàn đích'}
+                  icon={ArrowRightLeft}
+                  loading={isProcessingTransfer}
+                  disabled={!targetTableId}
+                  onPress={() => void handleConfirmTransfer()}
                 />
               </View>
             </View>
@@ -1088,5 +1234,29 @@ const styles = StyleSheet.create({
   },
   fieldHint: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
   voidActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
-  voidActionsNarrow: { alignItems: 'stretch', flexDirection: 'column-reverse' }
+  voidActionsNarrow: { alignItems: 'stretch', flexDirection: 'column-reverse' },
+  transferGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    paddingVertical: spacing.xs
+  },
+  transferTableCard: {
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    padding: spacing.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minWidth: '28%',
+    flexGrow: 1
+  },
+  transferTableNum: {
+    fontFamily: typography.families.operationalBold,
+    fontSize: typography.sizes.md
+  },
+  transferTableCap: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs,
+    marginTop: spacing.xs
+  }
 });

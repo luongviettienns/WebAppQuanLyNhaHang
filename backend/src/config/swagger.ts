@@ -331,6 +331,35 @@ const options: swaggerJSDoc.Options = {
           }
         }
       },
+      '/api/tables/transfer': {
+        post: {
+          tags: ['Tables & Operations'],
+          summary: 'Chuyển bàn ăn linh hoạt (Quyền CASHIER, ADMIN)',
+          description: 'Chuyển toàn bộ đơn hàng chưa thanh toán từ bàn nguồn sang bàn đích trống (AVAILABLE). Tự động đồng bộ trạng thái bàn và phát socket tới KDS Bếp.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['fromTableId', 'toTableId'],
+                  properties: {
+                    fromTableId: { type: 'integer', example: 1, description: 'ID bàn nguồn đang có khách' },
+                    toTableId: { type: 'integer', example: 3, description: 'ID bàn đích đang trống' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            200: { description: 'Chuyển bàn thành công' },
+            400: { description: 'Bàn nguồn và bàn đích trùng nhau' },
+            404: { description: 'Bàn không tồn tại' },
+            409: { description: 'Bàn nguồn không có đơn hoặc bàn đích không ở trạng thái AVAILABLE' }
+          }
+        }
+      },
       '/api/reports/daily': {
         get: {
           tags: ['Reports & Analytics'],
@@ -357,6 +386,50 @@ const options: swaggerJSDoc.Options = {
               description: 'File Excel template',
               content: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {} }
             }
+          }
+        }
+      },
+      '/api/inventory/kitchen-waste': {
+        post: {
+          tags: ['Inventory & BOM'],
+          summary: 'Ghi nhận hao hụt chế biến tại bếp (Quyền KITCHEN, ADMIN)',
+          description: 'Cho phép đầu bếp báo hỏng theo món ăn (tự động tra cứu BOM và trừ các nguyên liệu tương ứng) hoặc theo nguyên liệu trực tiếp. Hạch toán chi phí vào COGS giá vốn.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['type', 'quantity', 'reason'],
+                  properties: {
+                    type: { type: 'string', enum: ['MENU_ITEM', 'INGREDIENT'], example: 'MENU_ITEM' },
+                    menuItemId: { type: 'integer', example: 1, description: 'ID món ăn (khi type=MENU_ITEM)' },
+                    ingredientId: { type: 'integer', example: 2, description: 'ID nguyên liệu (khi type=INGREDIENT)' },
+                    quantity: { type: 'number', example: 1, description: 'Số phần món hoặc số lượng nguyên liệu' },
+                    reason: { type: 'string', example: 'Cháy khét trong lúc chiên' },
+                    note: { type: 'string', example: 'Khách đợi làm lại' }
+                  }
+                }
+              }
+            }
+          },
+          responses: {
+            201: { description: 'Ghi nhận hao hụt thành công' },
+            400: { description: 'Dữ liệu không hợp lệ hoặc món chưa có BOM' },
+            403: { description: 'Chỉ Bếp hoặc Admin mới có quyền thực hiện' }
+          }
+        }
+      },
+      '/api/inventory/low-stock-alerts': {
+        get: {
+          tags: ['Inventory & BOM'],
+          summary: 'Danh sách cảnh báo nguyên liệu chạm ngưỡng tối thiểu (Quyền KITCHEN, ADMIN)',
+          description: 'Lấy các nguyên liệu có tồn kho thực tế nhỏ hơn hoặc bằng ngưỡng cảnh báo (currentStock <= minThreshold) để hiển thị trên KDS Bếp.',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Danh sách cảnh báo nguyên liệu thấp' },
+            403: { description: 'Chỉ Bếp hoặc Admin mới có quyền truy cập' }
           }
         }
       },

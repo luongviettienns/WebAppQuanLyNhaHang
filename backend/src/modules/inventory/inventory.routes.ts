@@ -8,6 +8,10 @@ export const inventoryRouter = Router();
 // File mau Excel la tai nguyen mau khong chua du lieu nhay cam
 inventoryRouter.get('/excel/template', InventoryController.downloadTemplate);
 
+// Cac route danh cho Bep va Quan ly (KITCHEN & ADMIN)
+inventoryRouter.post('/kitchen-waste', authenticate, authorize('KITCHEN', 'ADMIN'), InventoryController.recordKitchenWaste);
+inventoryRouter.get('/low-stock-alerts', authenticate, authorize('KITCHEN', 'ADMIN'), InventoryController.getLowStockAlerts);
+
 // Tat ca cac route con lai quan ly kho va dinh luong yeu cau quyen ADMIN
 inventoryRouter.use(authenticate, authorize('ADMIN'));
 

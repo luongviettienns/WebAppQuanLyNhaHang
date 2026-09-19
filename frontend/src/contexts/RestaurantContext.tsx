@@ -79,6 +79,7 @@ interface RestaurantContextType {
   createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   payOrder: (orderId: number, paymentMethod: PaymentMethod) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   updateTableStatus: (tableId: number, status: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') => Promise<{ success: boolean; table?: DiningTableDto; error?: string }>;
+  transferTable: (fromTableId: number, toTableId: number) => Promise<{ success: boolean; data?: { fromTable: DiningTableDto; toTable: DiningTableDto }; error?: string }>;
   voidOrder: (orderId: number, reason: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
 
   // Real-time Updates
@@ -657,6 +658,38 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
+  const transferTable = async (
+    fromTableId: number,
+    toTableId: number
+  ): Promise<{ success: boolean; data?: { fromTable: DiningTableDto; toTable: DiningTableDto }; error?: string }> => {
+    try {
+      const response = await fetch(`${getApiBaseUrl()}/api/tables/transfer`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {})
+        },
+        body: JSON.stringify({ fromTableId, toTableId })
+      });
+
+      if (response.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+        return { success: false, error: 'Phiên đăng nhập đã hết hạn' };
+      }
+
+      const json = await response.json();
+      if (!response.ok) {
+        return { success: false, error: json.error?.message || 'Chuyển bàn thất bại' };
+      }
+
+      const result = (json as ApiResponse<{ fromTable: DiningTableDto; toTable: DiningTableDto }>).data;
+      await fetchTables();
+      return { success: true, data: result };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Lỗi kết nối khi chuyển bàn' };
+    }
+  };
+
   const voidOrder = async (
     orderId: number,
     reason: string
@@ -856,6 +889,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         createDineInOrder,
         payOrder,
         updateTableStatus,
+        transferTable,
         voidOrder,
         latestOrderStatusChanged,
         kdsOrders,

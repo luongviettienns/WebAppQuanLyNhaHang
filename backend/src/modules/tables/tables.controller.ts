@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { TablesService } from './tables.service';
-import { updateTableStatusSchema } from './tables.schemas';
+import { updateTableStatusSchema, transferTableSchema } from './tables.schemas';
 
 export class TablesController {
   static async getTables(_req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -56,6 +56,17 @@ export class TablesController {
       const id = parseInt(req.params.id, 10);
       const input = updateTableStatusSchema.parse(req.body);
       const data = await TablesService.updateTableStatus(id, input.status);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async transferTable(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const input = transferTableSchema.parse(req.body);
+      const actor = req.user ? { id: req.user.id, name: req.user.name } : { id: 0, name: 'System' };
+      const data = await TablesService.transferTable(input.fromTableId, input.toTableId, actor);
       res.status(200).json({ data });
     } catch (error) {
       next(error);

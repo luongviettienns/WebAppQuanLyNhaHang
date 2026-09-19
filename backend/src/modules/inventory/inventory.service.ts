@@ -7,7 +7,8 @@ import {
   CreateIngredientDto,
   UpdateIngredientDto,
   StockInDto,
-  ExcelCommitDto
+  ExcelCommitDto,
+  KitchenWasteDto
 } from './inventory.schemas';
 import {
   calculateNewWeightedAverageCost,
@@ -653,5 +654,167 @@ export class InventoryService {
     }
 
     return totalOrderCogs;
+  }
+
+  /**
+   * Ghi nhận hao hụt chế biến trong bếp (Kitchen Waste Log)
+   */
+  static async recordKitchenWaste(
+    dto: KitchenWasteDto,
+    actor: { id: number; name?: string | null },
+    db: PrismaClient = defaultPrisma
+  ) {
+    return await db.$transaction(async (tx) => {
+      let totalCostAmount = 0;
+      const deductedIngredients: Array<{ ingredientId: number; name: string; quantityDeducted: number; costAmount: number }> = [];
+
+      if (dto.type === 'INGREDIENT') {
+        const ingredient = await tx.ingredient.findUnique({
+          where: { id: dto.ingredientId }
+        });
+
+        if (!ingredient) {
+          throw ApiError.notFound(`Nguyên liệu ID ${dto.ingredientId} không tồn tại`);
+        }
+
+        const costAmount = Math.round(dto.quantity * ingredient.costPerUnit);
+        totalCostAmount += costAmount;
+
+        await tx.ingredient.update({
+          where: { id: ingredient.id },
+          data: {
+            currentStock: { decrement: dto.quantity }
+          }
+        });
+
+        await tx.inventoryTransaction.create({
+          data: {
+            ingredientId: ingredient.id,
+            type: 'KITCHEN_WASTE',
+            quantity: -dto.quantity,
+            costAmount,
+            createdByUserId: actor.id,
+            note: `${dto.reason}${dto.note ? ` - ${dto.note}` : ''}`
+          }
+        });
+
+        deductedIngredients.push({
+          ingredientId: ingredient.id,
+          name: ingredient.name,
+          quantityDeducted: dto.quantity,
+          costAmount
+        });
+
+        await AuditService.log({
+          action: 'KITCHEN_WASTE_RECORDED',
+          targetType: 'Ingredient',
+          targetId: ingredient.id,
+          actorId: actor.id,
+          actorName: actor.name,
+          metadata: {
+            wasteType: 'INGREDIENT',
+            ingredientName: ingredient.name,
+            quantity: dto.quantity,
+            unit: ingredient.unit,
+            costAmount,
+            reason: dto.reason
+          }
+        });
+      } else {
+        // MENU_ITEM
+        const menuItem = await tx.menuItem.findUnique({
+          where: { id: dto.menuItemId },
+          include: {
+            menuItemIngredients: {
+              include: { ingredient: true }
+            }
+          }
+        });
+
+        if (!menuItem) {
+          throw ApiError.notFound(`Món ăn ID ${dto.menuItemId} không tồn tại`);
+        }
+
+        if (menuItem.menuItemIngredients.length === 0) {
+          throw ApiError.badRequest(`Món "${menuItem.name}" chưa được cấu hình định lượng BOM nguyên liệu`);
+        }
+
+        for (const bom of menuItem.menuItemIngredients) {
+          const qtyNeeded = bom.quantityRequired * dto.quantity;
+          const costAmount = Math.round(qtyNeeded * bom.ingredient.costPerUnit);
+          totalCostAmount += costAmount;
+
+          await tx.ingredient.update({
+            where: { id: bom.ingredientId },
+            data: {
+              currentStock: { decrement: qtyNeeded }
+            }
+          });
+
+          await tx.inventoryTransaction.create({
+            data: {
+              ingredientId: bom.ingredientId,
+              type: 'KITCHEN_WASTE',
+              quantity: -qtyNeeded,
+              costAmount,
+              createdByUserId: actor.id,
+              note: `Hao hụt bếp [${menuItem.name} x${dto.quantity}]: ${dto.reason}${dto.note ? ` - ${dto.note}` : ''}`
+            }
+          });
+
+          deductedIngredients.push({
+            ingredientId: bom.ingredientId,
+            name: bom.ingredient.name,
+            quantityDeducted: qtyNeeded,
+            costAmount
+          });
+        }
+
+        await AuditService.log({
+          action: 'KITCHEN_WASTE_RECORDED',
+          targetType: 'MenuItem',
+          targetId: menuItem.id,
+          actorId: actor.id,
+          actorName: actor.name,
+          metadata: {
+            wasteType: 'MENU_ITEM',
+            menuItemName: menuItem.name,
+            portions: dto.quantity,
+            totalCostAmount,
+            reason: dto.reason,
+            ingredientsCount: deductedIngredients.length
+          }
+        });
+      }
+
+      return {
+        totalCostAmount,
+        deductedIngredients
+      };
+    });
+  }
+
+  /**
+   * Lấy danh sách cảnh báo tồn kho thấp (currentStock <= minThreshold)
+   */
+  static async getLowStockAlerts(db: PrismaClient = defaultPrisma) {
+    const ingredients = await db.ingredient.findMany({
+      where: {
+        isActive: true
+      },
+      orderBy: { currentStock: 'asc' }
+    });
+
+    return ingredients
+      .filter((ing) => ing.minThreshold > 0 && ing.currentStock <= ing.minThreshold)
+      .map((ing) => ({
+        id: ing.id,
+        sku: ing.sku,
+        name: ing.name,
+        unit: ing.unit,
+        currentStock: ing.currentStock,
+        minThreshold: ing.minThreshold,
+        isDepleted: ing.currentStock <= 0
+      }));
   }
 }

@@ -396,3 +396,36 @@ export interface ExcelPreviewResultDto {
   errorRows: ExcelErrorRowDto[];
 }
 
+// ==========================================
+// 10. TABLE TRANSFER & KITCHEN WASTE DTOs
+// ==========================================
+export interface TransferTableDto {
+  fromTableId: number;
+  toTableId: number;
+}
+
+export interface TransferTableResponseDto {
+  fromTable: DiningTableDto;
+  toTable: DiningTableDto;
+  transferredOrdersCount: number;
+}
+
+export interface KitchenWasteCreateDto {
+  type: 'MENU_ITEM' | 'INGREDIENT';
+  menuItemId?: number;
+  ingredientId?: number;
+  quantity: number;
+  reason: string;
+  note?: string;
+}
+
+export interface LowStockAlertDto {
+  id: number;
+  sku: string;
+  name: string;
+  unit: string;
+  currentStock: number;
+  minThreshold: number;
+  isDepleted: boolean;
+}
+

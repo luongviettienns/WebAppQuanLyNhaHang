@@ -2,7 +2,9 @@ import { getApiBaseUrl } from './config';
 import {
   IngredientDto,
   MenuItemRecipeDto,
-  ExcelPreviewResultDto
+  ExcelPreviewResultDto,
+  KitchenWasteCreateDto,
+  LowStockAlertDto
 } from './contracts';
 
 function getAuthHeaders(token?: string | null) {
@@ -194,6 +196,43 @@ export async function updateRecipeApi(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.error?.message || `Lỗi cập nhật công thức món (${res.status})`);
+  }
+
+  const json = await res.json();
+  return json.data;
+}
+
+export async function recordKitchenWasteApi(
+  token: string | null,
+  data: KitchenWasteCreateDto
+): Promise<{ totalCostAmount: number; deductedIngredients: any[] }> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/api/inventory/kitchen-waste`, {
+    method: 'POST',
+    headers: getAuthHeaders(token),
+    body: JSON.stringify(data)
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Lỗi ghi nhận hao hụt bếp (${res.status})`);
+  }
+
+  const json = await res.json();
+  return json.data;
+}
+
+export async function fetchLowStockAlertsApi(
+  token: string | null
+): Promise<LowStockAlertDto[]> {
+  const base = getApiBaseUrl();
+  const res = await fetch(`${base}/api/inventory/low-stock-alerts`, {
+    headers: getAuthHeaders(token)
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Lỗi tải cảnh báo tồn kho (${res.status})`);
   }
 
   const json = await res.json();

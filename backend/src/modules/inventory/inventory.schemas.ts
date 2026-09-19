@@ -55,3 +55,23 @@ export type UpdateIngredientDto = z.infer<typeof updateIngredientSchema>;
 export type StockInDto = z.infer<typeof stockInSchema>;
 export type UpdateRecipeDto = z.infer<typeof updateRecipeSchema>;
 export type ExcelCommitDto = z.infer<typeof excelCommitSchema>;
+
+export const kitchenWasteSchema = z.object({
+  type: z.enum(['MENU_ITEM', 'INGREDIENT'], {
+    required_error: 'Loại hao hụt là bắt buộc (MENU_ITEM | INGREDIENT)'
+  }),
+  menuItemId: z.number().int().positive().optional(),
+  ingredientId: z.number().int().positive().optional(),
+  quantity: z.number().positive('Số lượng hao hụt phải lớn hơn 0'),
+  reason: z.string().min(2, 'Lý do hao hụt phải có ít nhất 2 ký tự').trim(),
+  note: z.string().optional()
+}).refine(
+  (data) => (data.type === 'MENU_ITEM' ? !!data.menuItemId : !!data.ingredientId),
+  {
+    message: 'Phải chỉ định menuItemId khi type=MENU_ITEM hoặc ingredientId khi type=INGREDIENT',
+    path: ['type']
+  }
+);
+
+export type KitchenWasteDto = z.infer<typeof kitchenWasteSchema>;
+

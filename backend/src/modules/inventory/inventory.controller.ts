@@ -6,7 +6,8 @@ import {
   stockInSchema,
   updateRecipeSchema,
   excelPreviewSchema,
-  excelCommitSchema
+  excelCommitSchema,
+  kitchenWasteSchema
 } from './inventory.schemas';
 import { ApiError } from '../../lib/api-error';
 
@@ -166,6 +167,26 @@ export class InventoryController {
         req.user?.id,
         req.user?.name
       );
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async recordKitchenWaste(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validated = kitchenWasteSchema.parse(req.body);
+      const actor = req.user ? { id: req.user.id, name: req.user.name } : { id: 0, name: 'System' };
+      const data = await InventoryService.recordKitchenWaste(validated, actor);
+      res.status(201).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getLowStockAlerts(_req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const data = await InventoryService.getLowStockAlerts();
       res.status(200).json({ data });
     } catch (error) {
       next(error);

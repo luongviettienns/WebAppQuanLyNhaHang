@@ -126,12 +126,25 @@ export class ReportsService {
       }
     });
 
-    const totalCogs = inventoryTx.reduce((sum, tx) => sum + Math.abs(tx.costAmount), 0);
+    let salesCogs = 0;
+    let kitchenWasteCost = 0;
+
+    for (const tx of inventoryTx) {
+      if (tx.type === 'KITCHEN_WASTE') {
+        kitchenWasteCost += Math.abs(tx.costAmount);
+      } else {
+        salesCogs += Math.abs(tx.costAmount);
+      }
+    }
+
+    const totalCogs = salesCogs + kitchenWasteCost;
     const grossProfit = totalRevenue - totalCogs;
     const grossMargin = totalRevenue > 0 ? Math.round((grossProfit / totalRevenue) * 1000) / 10 : 0;
 
     const profitSummary = {
       totalRevenue,
+      salesCogs,
+      kitchenWasteCost,
       totalCogs,
       grossProfit,
       grossMargin
