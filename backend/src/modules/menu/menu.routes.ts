@@ -11,6 +11,7 @@ menuRouter.get('/', MenuController.getMenu);
 // Import/export menu (Chi ADMIN duoc phep)
 menuRouter.get('/export', authenticate, authorize('ADMIN'), MenuController.exportMenu);
 menuRouter.post('/import/preview', authenticate, authorize('ADMIN'), MenuController.previewMenuImport);
+menuRouter.post('/import/commit', authenticate, authorize('ADMIN'), MenuController.commitMenuImport);
 
 // Category administration (Chi ADMIN duoc phep quan ly nhom mon)
 menuRouter.post('/categories', authenticate, authorize('ADMIN'), MenuController.createCategory);

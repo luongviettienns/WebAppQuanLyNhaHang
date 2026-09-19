@@ -54,6 +54,22 @@ describe('Menu import/export API (Phase 5)', () => {
     return [headers.join(','), row.join(',')].join('\n');
   };
 
+  const makeCommitRow = (categoryName: string, overrides: Record<string, unknown> = {}) => ({
+    rowNumber: 2,
+    name: 'Món commit thử',
+    categoryName,
+    basePrice: 45000,
+    menuType: 'FOOD',
+    itemType: 'REGULAR',
+    isAvailable: true,
+    trackStock: false,
+    stockQuantity: 0,
+    position: 'Quầy nóng',
+    description: 'Món từ commit test',
+    imageUrl: null,
+    ...overrides
+  });
+
   beforeAll(() => {
     validateTestEnvironment();
     adminToken = makeToken('1', 'admin', 'Admin', 'ADMIN');
@@ -144,5 +160,126 @@ describe('Menu import/export API (Phase 5)', () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('creates a new menu item and generates its SKU when the row has no SKU', async () => {
+    const category = await prismaTest.category.findFirstOrThrow();
+    const response = await request(app)
+      .post('/api/menu/import/commit')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ sourceFileName: 'menu.csv', rows: [makeCommitRow(category.name)] });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ createdCount: 1, updatedCount: 0, categoryCreatedCount: 0 });
+
+    const created = await prismaTest.menuItem.findFirstOrThrow({ where: { name: 'Món commit thử' } });
+    expect(created.sku).toMatch(/^SP\d{6}$/);
+  });
+
+  it('updates an existing menu item by SKU', async () => {
+    const existing = await prismaTest.menuItem.findFirstOrThrow();
+    const category = await prismaTest.category.findUniqueOrThrow({ where: { id: existing.categoryId } });
+
+    const response = await request(app)
+      .post('/api/menu/import/commit')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        sourceFileName: 'menu.csv',
+        rows: [makeCommitRow(category.name, { sku: existing.sku, name: 'Tên món đã cập nhật', basePrice: 99000 })]
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ createdCount: 0, updatedCount: 1, categoryCreatedCount: 0 });
+    await expect(prismaTest.menuItem.findUniqueOrThrow({ where: { sku: existing.sku } })).resolves.toMatchObject({
+      name: 'Tên món đã cập nhật',
+      basePrice: 99000
+    });
+  });
+
+  it('creates a missing category only when createMissingCategories is enabled', async () => {
+    const categoryName = 'Danh mục import mới';
+    const response = await request(app)
+      .post('/api/menu/import/commit')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        sourceFileName: 'menu.csv',
+        createMissingCategories: true,
+        rows: [makeCommitRow(categoryName)]
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.categoryCreatedCount).toBe(1);
+    await expect(prismaTest.category.findFirstOrThrow({ where: { name: categoryName } })).resolves.toBeTruthy();
+    await expect(prismaTest.menuItem.findFirstOrThrow({ where: { name: 'Món commit thử' } })).resolves.toBeTruthy();
+  });
+
+  it('rejects a missing category when createMissingCategories is disabled', async () => {
+    const beforeItems = await prismaTest.menuItem.count();
+    const response = await request(app)
+      .post('/api/menu/import/commit')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ sourceFileName: 'menu.csv', rows: [makeCommitRow('Danh mục không tồn tại')] });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    expect(Object.values(response.body.error.details)).toEqual(
+      expect.arrayContaining([expect.stringContaining('categoryName')])
+    );
+    expect(await prismaTest.menuItem.count()).toBe(beforeItems);
+  });
+
+  it('rejects duplicate SKUs in the import payload without writing either row', async () => {
+    const category = await prismaTest.category.findFirstOrThrow();
+    const duplicateSku = 'SP999998';
+    const response = await request(app)
+      .post('/api/menu/import/commit')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        sourceFileName: 'menu.csv',
+        rows: [
+          makeCommitRow(category.name, { sku: duplicateSku, name: 'Dòng trùng 1' }),
+          makeCommitRow(category.name, { rowNumber: 3, sku: duplicateSku, name: 'Dòng trùng 2' })
+        ]
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    expect(await prismaTest.menuItem.findUnique({ where: { sku: duplicateSku } })).toBeNull();
+  });
+
+  it('does not partially write valid rows when another row fails preflight validation', async () => {
+    const category = await prismaTest.category.findFirstOrThrow();
+    const beforeItems = await prismaTest.menuItem.count();
+    const response = await request(app)
+      .post('/api/menu/import/commit')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        sourceFileName: 'menu.csv',
+        rows: [
+          makeCommitRow(category.name, { name: 'Dòng hợp lệ nhưng không được ghi' }),
+          makeCommitRow('Danh mục lỗi', { rowNumber: 3, name: 'Dòng lỗi' })
+        ]
+      });
+
+    expect(response.status).toBe(400);
+    expect(await prismaTest.menuItem.count()).toBe(beforeItems);
+    expect(await prismaTest.menuItem.findFirst({ where: { name: 'Dòng hợp lệ nhưng không được ghi' } })).toBeNull();
+  });
+
+  it('preserves modifier groups when updating an existing SKU', async () => {
+    const existing = await prismaTest.menuItem.findFirstOrThrow({ include: { modifierGroups: true } });
+    const category = await prismaTest.category.findUniqueOrThrow({ where: { id: existing.categoryId } });
+
+    const response = await request(app)
+      .post('/api/menu/import/commit')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        sourceFileName: 'menu.csv',
+        rows: [makeCommitRow(category.name, { sku: existing.sku, name: 'Cập nhật không xóa modifier' })]
+      });
+
+    expect(response.status).toBe(200);
+    const updated = await prismaTest.menuItem.findUniqueOrThrow({ include: { modifierGroups: true }, where: { sku: existing.sku } });
+    expect(updated.modifierGroups.map(group => group.id)).toEqual(existing.modifierGroups.map(group => group.id));
   });
 });

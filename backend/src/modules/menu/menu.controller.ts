@@ -7,6 +7,7 @@ import {
   createMenuItemSchema,
   deleteCategorySchema,
   menuExportQuerySchema,
+  menuImportCommitSchema,
   menuImportPreviewSchema,
   reorderCategoriesSchema,
   updateCategorySchema,
@@ -99,6 +100,16 @@ export class MenuController {
         validated.fileName,
         validated.createMissingCategories
       );
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async commitMenuImport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validated = menuImportCommitSchema.parse(req.body);
+      const data = await MenuService.commitMenuImport(validated, req.user?.id, req.user?.name);
       res.status(200).json({ data });
     } catch (error) {
       next(error);

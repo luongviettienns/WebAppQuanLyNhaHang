@@ -8,6 +8,8 @@ import {
   CreateMenuItemInput,
   DeleteCategoryInput,
   MenuExportFormat,
+  MenuImportCommitInput,
+  MenuImportRowInput,
   ReorderCategoriesInput,
   UpdateCategoryInput,
   UpdateMenuItemInput
@@ -109,6 +111,131 @@ export class MenuService {
       errorRows,
       canCommit: validRows.length > 0 && errorRows.length === 0
     };
+  }
+
+  static async commitMenuImport(input: MenuImportCommitInput, actorId?: number, actorName?: string) {
+    const rows: MenuImportRowInput[] = input.rows.map(row => ({
+      ...row,
+      sku: row.sku?.trim() || undefined,
+      name: row.name.trim(),
+      categoryName: row.categoryName.trim(),
+      position: row.position?.trim() || null,
+      description: row.description?.trim() || null,
+      imageUrl: row.imageUrl?.trim() || null
+    }));
+    const details: Record<string, string> = {};
+    const skuRows = new Map<string, number[]>();
+
+    rows.forEach(row => {
+      if (!row.sku) return;
+      const rowNumbers = skuRows.get(row.sku) ?? [];
+      rowNumbers.push(row.rowNumber);
+      skuRows.set(row.sku, rowNumbers);
+    });
+
+    skuRows.forEach((rowNumbers, sku) => {
+      if (rowNumbers.length > 1) {
+        details[`sku_${sku}`] = `SKU ${sku} bị trùng ở dòng ${rowNumbers.join(', ')}`;
+      }
+    });
+
+    const categories = await prisma.category.findMany({ select: { id: true, name: true, displayOrder: true } });
+    const categoryByName = new Map(categories.map(category => [category.name.trim().toLocaleLowerCase(), category]));
+    const missingCategoryNames = new Map<string, string>();
+    rows.forEach(row => {
+      const categoryKey = row.categoryName.toLocaleLowerCase();
+      if (!categoryByName.has(categoryKey)) missingCategoryNames.set(categoryKey, row.categoryName);
+    });
+
+    if (missingCategoryNames.size > 0 && !input.createMissingCategories) {
+      missingCategoryNames.forEach((categoryName, categoryKey) => {
+        details[`category_${categoryKey}`] = `categoryName "${categoryName}" không tồn tại`;
+      });
+    }
+
+    if (Object.keys(details).length > 0) {
+      throw ApiError.badRequest('Dữ liệu import không hợp lệ', details);
+    }
+
+    const requestedSkus = rows.flatMap(row => row.sku ? [row.sku] : []);
+    const existingItems = requestedSkus.length > 0
+      ? await prisma.menuItem.findMany({ where: { sku: { in: requestedSkus } }, select: { id: true, sku: true } })
+      : [];
+    const existingBySku = new Map(existingItems.map(item => [item.sku, item]));
+    rows.forEach(row => {
+      if (row.sku && !existingBySku.has(row.sku)) {
+        details[`sku_${row.sku}`] = `SKU "${row.sku}" không tồn tại để cập nhật`;
+      }
+    });
+
+    if (Object.keys(details).length > 0) {
+      throw ApiError.badRequest('Dữ liệu import không hợp lệ', details);
+    }
+
+    const result = await prisma.$transaction(async tx => {
+      const txCategoryByName = new Map(categoryByName);
+      let categoryCreatedCount = 0;
+      let nextDisplayOrder = categories.reduce((max, category) => Math.max(max, category.displayOrder), -1) + 1;
+
+      if (input.createMissingCategories) {
+        for (const [categoryKey, categoryName] of missingCategoryNames) {
+          const createdCategory = await tx.category.create({
+            data: { name: categoryName, displayOrder: nextDisplayOrder++ }
+          });
+          txCategoryByName.set(categoryKey, createdCategory);
+          categoryCreatedCount += 1;
+        }
+      }
+
+      let createdCount = 0;
+      let updatedCount = 0;
+
+      for (const row of rows) {
+        const category = txCategoryByName.get(row.categoryName.toLocaleLowerCase());
+        if (!category) {
+          throw ApiError.badRequest(`categoryName "${row.categoryName}" không tồn tại`);
+        }
+
+        const data = {
+          categoryId: category.id,
+          name: row.name,
+          description: row.description,
+          basePrice: row.basePrice,
+          imageUrl: row.imageUrl,
+          isAvailable: row.isAvailable,
+          menuType: row.menuType,
+          itemType: row.itemType,
+          trackStock: row.trackStock,
+          stockQuantity: row.stockQuantity,
+          position: row.position
+        };
+
+        if (row.sku) {
+          const existing = existingBySku.get(row.sku);
+          if (!existing) throw ApiError.badRequest(`SKU "${row.sku}" không tồn tại để cập nhật`);
+          await tx.menuItem.update({ where: { id: existing.id }, data });
+          updatedCount += 1;
+        } else {
+          const sku = await generateNextMenuSku(tx);
+          await tx.menuItem.create({ data: { ...data, sku } });
+          createdCount += 1;
+        }
+      }
+
+      return { createdCount, updatedCount, categoryCreatedCount };
+    });
+
+    await AuditService.log({
+      action: 'MENU_ITEMS_IMPORTED',
+      targetType: 'MenuItem',
+      targetId: null,
+      actorId,
+      actorName,
+      metadata: { sourceFileName: input.sourceFileName, ...result }
+    });
+    emitToAll('menu:changed', { source: 'import', ...result });
+
+    return result;
   }
 
   static async createCategory(input: CreateCategoryInput, actorId?: number, actorName?: string) {
