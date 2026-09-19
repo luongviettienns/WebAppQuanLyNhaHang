@@ -80,6 +80,11 @@ export class MenuService {
               imageUrl: input.imageUrl,
               isAvailable: input.isAvailable ?? true,
               displayOrder: input.displayOrder ?? 0,
+              menuType: input.menuType,
+              itemType: input.itemType,
+              trackStock: input.trackStock,
+              stockQuantity: input.stockQuantity,
+              position: input.position,
               modifierGroups: input.modifierGroups && input.modifierGroups.length > 0 ? {
                 create: input.modifierGroups.map(group => ({
                   name: group.name,
@@ -160,6 +165,11 @@ export class MenuService {
           ...(input.imageUrl !== undefined ? { imageUrl: input.imageUrl } : {}),
           ...(input.isAvailable !== undefined ? { isAvailable: input.isAvailable } : {}),
           ...(input.displayOrder !== undefined ? { displayOrder: input.displayOrder } : {}),
+          ...(input.menuType !== undefined ? { menuType: input.menuType } : {}),
+          ...(input.itemType !== undefined ? { itemType: input.itemType } : {}),
+          ...(input.trackStock !== undefined ? { trackStock: input.trackStock } : {}),
+          ...(input.stockQuantity !== undefined ? { stockQuantity: input.stockQuantity } : {}),
+          ...(input.position !== undefined ? { position: input.position } : {}),
           ...(input.modifierGroups !== undefined ? {
             modifierGroups: {
               create: input.modifierGroups.map(group => ({

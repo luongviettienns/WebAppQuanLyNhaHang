@@ -269,5 +269,82 @@ describe('Admin Menu Management API (Task 12 - Module M7)', () => {
       expect(updated?.basePrice).toBe(89000);
       expect(updated?.name).toBe('Burger Gà Giòn Sốt Phô Mai Đặc Biệt');
     });
+
+    it('creates a menu item with validated classification and stock metadata', async () => {
+      const res = await request(app)
+        .post('/api/menu')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          name: 'Trà đào Phase 2',
+          basePrice: 45000,
+          categoryId: validCategoryId,
+          menuType: 'DRINK',
+          itemType: 'REGULAR',
+          trackStock: true,
+          stockQuantity: 24,
+          position: 'Kho lạnh A1',
+          sku: 'ADMIN-CANNOT-SET'
+        });
+
+      expect(res.status).toBe(201);
+      expect(res.body.data.menuItem).toMatchObject({
+        menuType: 'DRINK',
+        itemType: 'REGULAR',
+        trackStock: true,
+        stockQuantity: 24,
+        position: 'Kho lạnh A1'
+      });
+      expect(res.body.data.menuItem.sku).toMatch(/^SP\d{6}$/);
+      expect(res.body.data.menuItem.sku).not.toBe('ADMIN-CANNOT-SET');
+    });
+
+    it('updates menu classification and stock metadata', async () => {
+      const res = await request(app)
+        .patch(`/api/menu/${itemToUpdateId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          menuType: 'SERVICE',
+          itemType: 'COMBO',
+          trackStock: true,
+          stockQuantity: 7,
+          position: 'Quầy phục vụ'
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.menuItem).toMatchObject({
+        menuType: 'SERVICE',
+        itemType: 'COMBO',
+        trackStock: true,
+        stockQuantity: 7,
+        position: 'Quầy phục vụ'
+      });
+
+      const updated = await prismaTest.menuItem.findUnique({ where: { id: itemToUpdateId } });
+      expect(updated).toMatchObject({
+        menuType: 'SERVICE',
+        itemType: 'COMBO',
+        trackStock: true,
+        stockQuantity: 7,
+        position: 'Quầy phục vụ'
+      });
+    });
+
+    it('rejects invalid menu metadata with a validation error', async () => {
+      const invalidEnum = await request(app)
+        .patch(`/api/menu/${itemToUpdateId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ menuType: 'INVALID_MENU_TYPE' });
+
+      expect(invalidEnum.status).toBe(400);
+      expect(invalidEnum.body.error.code).toBe('VALIDATION_ERROR');
+
+      const negativeStock = await request(app)
+        .patch(`/api/menu/${itemToUpdateId}`)
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ stockQuantity: -1 });
+
+      expect(negativeStock.status).toBe(400);
+      expect(negativeStock.body.error.code).toBe('VALIDATION_ERROR');
+    });
   });
 });

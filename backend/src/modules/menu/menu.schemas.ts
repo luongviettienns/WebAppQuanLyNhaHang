@@ -41,6 +41,10 @@ export const modifierGroupUpsertSchema = z
     }
   });
 
+const menuTypeSchema = z.enum(['FOOD', 'DRINK', 'SERVICE', 'OTHER']);
+const menuItemTypeSchema = z.enum(['REGULAR', 'TOPPING', 'COMBO', 'SERVICE']);
+const stockQuantitySchema = z.number().int('stockQuantity phải là số nguyên').min(0, 'stockQuantity không được âm');
+
 export const createMenuItemSchema = z.object({
   categoryId: z.number().int().positive('categoryId phải là số nguyên dương'),
   name: z.string().trim().min(1, 'Tên món ăn không được để trống'),
@@ -49,6 +53,11 @@ export const createMenuItemSchema = z.object({
   imageUrl: z.string().trim().optional().nullable(),
   isAvailable: z.boolean().optional().default(true),
   displayOrder: z.number().int().optional().default(0),
+  menuType: menuTypeSchema.optional().default('FOOD'),
+  itemType: menuItemTypeSchema.optional().default('REGULAR'),
+  trackStock: z.boolean().optional().default(false),
+  stockQuantity: stockQuantitySchema.optional().default(0),
+  position: z.string().trim().optional().nullable(),
   modifierGroups: z.array(modifierGroupUpsertSchema).optional().default([])
 });
 
@@ -60,6 +69,11 @@ export const updateMenuItemSchema = z.object({
   imageUrl: z.string().trim().optional().nullable(),
   isAvailable: z.boolean().optional(),
   displayOrder: z.number().int().optional(),
+  menuType: menuTypeSchema.optional(),
+  itemType: menuItemTypeSchema.optional(),
+  trackStock: z.boolean().optional(),
+  stockQuantity: stockQuantitySchema.optional(),
+  position: z.string().trim().optional().nullable(),
   modifierGroups: z.array(modifierGroupUpsertSchema).optional()
 });
 
