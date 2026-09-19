@@ -188,5 +188,17 @@
       3. `backend/test/audit/audit.spec.ts`: Kiểm chứng ghi và đọc audit log ngay lập tức sau thao tác kho không còn bị race condition.
     - *Kết quả nghiệm thu*: 163/163 backend tests PASS (100%), 39/39 frontend tests PASS (100%), expo-doctor 18/18 checks PASS.
 
+31. **Đồng bộ hóa Nhánh Phân tán & Gỡ Xung đột Toàn vẹn (Distributed Branch Synchronization & Conflict Resolution Gate)**:
+    - *Bối cảnh & Thách thức*: Nhánh `origin/pKhanh` tách rẽ từ mốc cũ (`6283b7a`) và phát triển song song trong khi `main` đã hoàn thành Phân hệ M-3 (Kho & BOM), Nhật ký hệ thống AuditLog, Upload ảnh món, DatePicker báo cáo và Swagger API. `pKhanh` bổ sung bộ sưu tập Postman (`postman/`), tối ưu regex nhận diện QR bàn, mở rộng metadata món ăn (`menuType`, `itemType`, `trackStock`, `stockQuantity`, `position`) và phân quyền KITCHEN xem bàn ăn.
+    - *Giải pháp triệt để*:
+      1. Tạo nhánh tích hợp an toàn `sync/pkhanh-to-main` để gộp và giải quyết xung đột mà không gây rủi ro cho nhánh `main`.
+      2. Hợp nhất `backend/src/app.ts`, `backend/src/config/swagger.ts`, `backend/src/server.ts`, giữ nguyên 100% routes và Swagger docs của Kho, BOM và AuditLog.
+      3. Kết hợp đầy đủ các trường Metadata món ăn mới của `pKhanh` vào `menu.schemas.ts`, `menu.service.ts` và đồng thời bảo tồn trọn vẹn việc ghi nhật ký `AuditService.log` của `main`.
+      4. Chuẩn hóa `frontend/package.json` giữ vững phiên bản tương thích Expo SDK 54 (`expo: ~54.0.37`), sửa khớp tài khoản seed demo trong `AuthContext.tsx`.
+    - *Kết quả nghiệm thu*:
+      - Backend: 22 test files, 166/166 tests PASS (100%), typecheck 0 lỗi, lint 0 lỗi.
+      - Frontend: 9 test files, 39/39 tests PASS (100%), typecheck 0 lỗi, lint 0 lỗi.
+      - Đã Fast-forward cập nhật hoàn tất vào `main`.
+
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
