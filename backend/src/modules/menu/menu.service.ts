@@ -3,6 +3,7 @@ import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { AuditService } from '../audit/audit.service';
+import { PriceListService } from '../price-lists/price-list.service';
 import {
   CreateCategoryInput,
   CreateMenuItemInput,
@@ -285,10 +286,12 @@ export class MenuService {
           const existing = existingBySku.get(row.sku);
           if (!existing) throw ApiError.badRequest(`SKU "${row.sku}" không tồn tại để cập nhật`);
           await tx.menuItem.update({ where: { id: existing.id }, data });
+          await PriceListService.syncMenuItemPrice(tx, existing.id, row.basePrice);
           updatedCount += 1;
         } else {
           const sku = await generateNextMenuSku(tx);
-          await tx.menuItem.create({ data: { ...data, sku } });
+          const created = await tx.menuItem.create({ data: { ...data, sku } });
+          await PriceListService.syncMenuItemPrice(tx, created.id, row.basePrice);
           createdCount += 1;
         }
       }
@@ -478,7 +481,17 @@ export class MenuService {
       }
     });
 
-    return { categories };
+    const menuItemIds = categories.flatMap(category => category.menuItems.map(item => item.id));
+    const resolvedPrices = await PriceListService.resolveEffectivePrices(prisma, menuItemIds);
+    return {
+      categories: categories.map(category => ({
+        ...category,
+        menuItems: category.menuItems.map(item => ({
+          ...item,
+          basePrice: resolvedPrices.get(item.id)?.salePrice ?? item.basePrice
+        }))
+      }))
+    };
   }
 
   /**
@@ -535,6 +548,7 @@ export class MenuService {
               }
             }
           });
+          await PriceListService.syncMenuItemPrice(tx, created.id, created.basePrice);
           return created;
         });
 
@@ -636,6 +650,10 @@ export class MenuService {
           }
         }
       });
+
+      if (input.basePrice !== undefined) {
+        await PriceListService.syncMenuItemPrice(tx, id, input.basePrice);
+      }
 
       return updated;
     });

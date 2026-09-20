@@ -5,6 +5,7 @@ import { CreateOrderInput, PayOrderInput, VoidOrderInput } from './orders.schema
 import { PaymentMethod } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { PriceListService } from '../price-lists/price-list.service';
 import { createHash } from 'crypto';
 
 function canonicalize(value: unknown): unknown {
@@ -292,8 +293,8 @@ export class OrdersService {
     }
 
     // 5. Tinh toan thue VAT 8% (800 BPS)
-    const vatAmount = Math.round(totalAmount * 0.08);
-    const finalAmount = totalAmount + vatAmount;
+    let vatAmount = Math.round(totalAmount * 0.08);
+    let finalAmount = totalAmount + vatAmount;
 
     // 6. Tao ma don hang duy nhat CRISPY-YYYYMMDD-XXXX
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -301,6 +302,7 @@ export class OrdersService {
     const code = `CRISPY-${dateStr}-${randomSuffix}`;
 
     // 7. Thuc hien Transaction tao Order va cap nhat Table
+    let resolvedPriceListId: number | null = null;
     let transactionResult: { order: any; isDuplicate: boolean; stockChanges: MenuStockChange[] };
     try {
       transactionResult = await prisma.$transaction(async (tx) => {
@@ -316,6 +318,29 @@ export class OrdersService {
           }
         }
 
+        const generalPriceList = await PriceListService.getGeneralPriceList(tx);
+        resolvedPriceListId = generalPriceList?.id ?? null;
+        const resolvedPrices = await PriceListService.resolveEffectivePrices(
+          tx,
+          input.items.map(item => item.menuItemId),
+          generalPriceList ? { priceListId: generalPriceList.id } : undefined
+        );
+        for (let index = 0; index < input.items.length; index += 1) {
+          const itemInput = input.items[index];
+          const resolved = resolvedPrices.get(itemInput.menuItemId);
+          if (!resolved) {
+            throw ApiError.notFound(`Không thể xác định giá món ID ${itemInput.menuItemId}`);
+          }
+          const selectedMods = (orderItemsData[index].selectedModifiersJson ?? []) as Array<{ priceDelta: number }>;
+          const modifierDelta = selectedMods.reduce((sum, modifier) => sum + modifier.priceDelta, 0);
+          const unitPrice = resolved.salePrice + modifierDelta;
+          orderItemsData[index].unitPrice = unitPrice;
+          orderItemsData[index].subtotal = unitPrice * itemInput.quantity;
+        }
+        totalAmount = orderItemsData.reduce((sum, item) => sum + item.subtotal, 0);
+        vatAmount = Math.round(totalAmount * 0.08);
+        finalAmount = totalAmount + vatAmount;
+
         const trackedMenuItemIds = new Set(
           dbMenuItems.filter((menuItem) => menuItem.trackStock).map((menuItem) => menuItem.id)
         );
@@ -327,6 +352,7 @@ export class OrdersService {
             orderType: input.orderType,
             status: 'PENDING',
             tableId: resolvedTableId,
+            priceListId: resolvedPriceListId,
             buzzerNumber: input.buzzerNumber,
             totalAmount,
             vatAmount,

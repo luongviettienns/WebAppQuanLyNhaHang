@@ -10,7 +10,8 @@ import {
   ShoppingCart,
   Sun,
   Utensils,
-  Warehouse
+  Warehouse,
+  Tags
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { useAuth } from '../contexts/AuthContext';
@@ -24,8 +25,9 @@ import { DashboardScreen } from '../features/reports/DashboardScreen';
 import { MenuManagementScreen } from '../features/admin/MenuManagementScreen';
 import { AuditLogScreen } from '../features/admin/AuditLogScreen';
 import { InventoryScreen } from '../features/admin/InventoryScreen';
+import { PriceListScreen } from '../features/admin/PriceListScreen';
 
-type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'inventory' | 'audit';
+type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'pricing' | 'inventory' | 'audit';
 
 interface TabItem {
   key: TabKey;
@@ -45,6 +47,7 @@ const tabsByRole = {
   ADMIN: [
     { key: 'reports', label: 'Báo cáo', icon: BarChart3, component: DashboardScreen },
     { key: 'menu', label: 'Thực đơn', icon: Utensils, component: MenuManagementScreen },
+    { key: 'pricing', label: 'Bảng giá', icon: Tags, component: PriceListScreen },
     { key: 'inventory', label: 'Kho hàng', icon: Warehouse, component: InventoryScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
     { key: 'audit', label: 'Nhật ký', icon: ClipboardList, component: AuditLogScreen }

@@ -12,6 +12,8 @@ export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD';
 export type PaymentStatus = 'UNPAID' | 'PAID' | 'VOIDED';
 export type MenuType = 'FOOD' | 'DRINK' | 'SERVICE' | 'OTHER';
 export type MenuItemType = 'REGULAR' | 'TOPPING' | 'COMBO' | 'SERVICE';
+export type PriceListType = 'GENERAL' | 'CUSTOM';
+export type PriceListScopeType = 'GLOBAL' | 'BRANCH' | 'CHANNEL' | 'CUSTOMER_GROUP';
 export type MenuBulkAction =
   | 'setAvailability'
   | 'setCategory'
@@ -200,6 +202,73 @@ export interface MenuImportCommitDto {
 export type MenuExportFormat = 'csv' | 'xlsx';
 
 // ==========================================
+// 5. PRICE LIST DTOs
+// ==========================================
+export interface PriceListDto {
+  id: number;
+  code: string;
+  name: string;
+  type: PriceListType;
+  scopeType: PriceListScopeType;
+  isDefault: boolean;
+  isActive: boolean;
+  effectiveFrom?: string | null;
+  effectiveTo?: string | null;
+}
+
+export interface PriceListItemDto {
+  id: number;
+  priceListId: number;
+  menuItemId: number;
+  sku: string;
+  name: string;
+  categoryId: number;
+  categoryName: string;
+  costPrice: number | null;
+  salePrice: number;
+  marginPercent: number | null;
+  version: number;
+  updatedAt: string;
+}
+
+export interface PriceListDataDto {
+  priceList: PriceListDto;
+  items: PriceListItemDto[];
+}
+
+export type PriceFormulaOperation =
+  | { mode: 'fixed'; value: number; rounding?: 100 | 1000 | 10000 }
+  | { mode: 'amount'; value: number; rounding?: 100 | 1000 | 10000 }
+  | { mode: 'percent'; value: number; rounding?: 100 | 1000 | 10000 };
+
+export interface PriceListImportRowDto {
+  rowNumber: number;
+  sku: string;
+  name: string;
+  menuItemId: number;
+  salePrice: number;
+}
+
+export interface PriceListImportErrorRowDto {
+  rowNumber: number;
+  sku: string;
+  message: string;
+}
+
+export interface PriceListImportPreviewDto {
+  fileName: string;
+  totalRows: number;
+  validRows: PriceListImportRowDto[];
+  errorRows: PriceListImportErrorRowDto[];
+  canCommit: boolean;
+}
+
+export interface PriceListImportCommitDto {
+  updatedCount: number;
+  createdCount: number;
+}
+
+// ==========================================
 // 5. TABLE DTOs
 // ==========================================
 export interface DiningTableDto {
@@ -255,6 +324,7 @@ export interface OrderItemDto {
 export interface OrderDto {
   id: number;
   code: string;
+  priceListId?: number | null;
   orderType: OrderType;
   status: OrderStatus;
   tableId?: number | null;
@@ -362,6 +432,20 @@ export interface SocketTableStatusChangedPayload {
   tableNumber: number;
   status: TableStatus;
   currentOrderId?: number | null;
+}
+
+export interface SocketPriceListItemChangedPayload {
+  priceListId: number;
+  menuItemId: number;
+  salePrice: number;
+  version: number;
+  updatedAt: string;
+}
+
+export interface SocketPriceListBulkChangedPayload {
+  priceListId: number;
+  menuItemIds: number[];
+  updatedAt: string;
 }
 
 // ==========================================

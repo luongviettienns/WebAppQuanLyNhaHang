@@ -12,6 +12,7 @@ import { ordersRouter } from './modules/orders/orders.routes';
 import { reportsRouter } from './modules/reports/reports.routes';
 import { auditRouter } from './modules/audit/audit.routes';
 import { inventoryRouter } from './modules/inventory/inventory.routes';
+import { priceListRouter } from './modules/price-lists/price-list.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
 import { getUploadsDir } from './lib/uploads';
@@ -77,6 +78,9 @@ app.use('/api/audit', auditRouter);
 
 // Inventory, BOM & Stock routes (Admin only)
 app.use('/api/inventory', inventoryRouter);
+
+// General price list management (Admin only)
+app.use('/api/price-lists', priceListRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);

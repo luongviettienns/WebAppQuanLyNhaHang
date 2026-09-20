@@ -20,12 +20,26 @@ import {
   DailyReportDto,
   MenuBulkAction,
   MenuBulkActionResultDto,
-  MenuBulkPayload
+  MenuBulkPayload,
+  PriceListDataDto,
+  PriceListImportCommitDto,
+  PriceListImportPreviewDto,
+  PriceFormulaOperation,
+  SocketPriceListBulkChangedPayload,
+  SocketPriceListItemChangedPayload
 } from '../api/contracts';
 import { useAuth } from './AuthContext';
 import { getApiBaseUrl, getSocketBaseUrl, onServerConfigChanged } from '../api/config';
 import { IdempotencyKeyStore } from '../lib/idempotency';
 import { bulkUpdateMenuItemsApi } from '../api/menuBulk';
+import {
+  bulkUpdatePriceListApi,
+  commitPriceListImportApi,
+  downloadPriceListExportApi,
+  fetchGeneralPriceListApi,
+  previewPriceListImportApi,
+  updatePriceListItemApi
+} from '../api/priceList';
 
 export interface CartItem {
   menuItem: MenuItemDto;
@@ -107,6 +121,17 @@ interface RestaurantContextType {
   updateMenuItem: (id: number, payload: MenuItemUpsertDto) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
   bulkUpdateMenuItems: (ids: number[], action: MenuBulkAction, payload: MenuBulkPayload) => Promise<{ success: boolean; result?: MenuBulkActionResultDto; error?: string }>;
   fetchDailyReport: (date?: string) => Promise<{ success: boolean; report?: DailyReportDto; error?: string }>;
+
+  // Admin Price List
+  priceListData: PriceListDataDto | null;
+  isLoadingPriceList: boolean;
+  priceListError: string | null;
+  fetchPriceList: () => Promise<void>;
+  updatePriceListItem: (menuItemId: number, salePrice: number, expectedVersion: number) => Promise<{ success: boolean; error?: string }>;
+  bulkUpdatePriceList: (menuItemIds: number[], operation: PriceFormulaOperation) => Promise<{ success: boolean; updatedCount?: number; error?: string }>;
+  previewPriceListImport: (fileName: string, fileBase64: string) => Promise<{ success: boolean; preview?: PriceListImportPreviewDto; error?: string }>;
+  commitPriceListImport: (fileName: string, fileBase64: string) => Promise<{ success: boolean; result?: PriceListImportCommitDto; error?: string }>;
+  downloadPriceListExport: () => Promise<{ success: boolean; blob?: Blob; error?: string }>;
 }
 
 const RestaurantContext = createContext<RestaurantContextType | undefined>(undefined);
@@ -142,6 +167,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [kdsOrders, setKdsOrders] = useState<OrderDto[]>([]);
   const [isLoadingKDS, setIsLoadingKDS] = useState<boolean>(false);
   const [kdsError, setKdsError] = useState<string | null>(null);
+
+  // General Price List State
+  const [priceListData, setPriceListData] = useState<PriceListDataDto | null>(null);
+  const [isLoadingPriceList, setIsLoadingPriceList] = useState(false);
+  const [priceListError, setPriceListError] = useState<string | null>(null);
 
   // 1. Fetch Menu from Backend API
   const fetchMenu = useCallback(async () => {
@@ -350,6 +380,22 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   }, [user?.role, token, handleUnauthorized]);
 
+  const fetchPriceList = useCallback(async () => {
+    if (user?.role !== 'ADMIN' || !token) {
+      setPriceListData(null);
+      return;
+    }
+    setIsLoadingPriceList(true);
+    setPriceListError(null);
+    try {
+      setPriceListData(await fetchGeneralPriceListApi(token));
+    } catch (err: any) {
+      setPriceListError(err.message || 'Không thể tải bảng giá');
+    } finally {
+      setIsLoadingPriceList(false);
+    }
+  }, [token, user?.role]);
+
   // 4. Update Order Status (FSM: PENDING -> PREPARING -> READY -> COMPLETED)
   const updateOrderStatus = useCallback(
     async (orderId: number, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED') => {
@@ -403,7 +449,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         fetchKDSOrders();
       }
     });
-  }, [fetchMenu, fetchTables, fetchKDSOrders, user?.role]);
+  }, [fetchMenu, fetchTables, fetchKDSOrders, fetchPriceList, user?.role]);
 
   useEffect(() => {
     fetchMenu();
@@ -413,7 +459,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     if (user?.role === 'KITCHEN' || user?.role === 'ADMIN') {
       fetchKDSOrders();
     }
-  }, [fetchMenu, fetchTables, fetchKDSOrders, user?.role]);
+    if (user?.role === 'ADMIN') {
+      fetchPriceList();
+    }
+  }, [fetchMenu, fetchTables, fetchKDSOrders, fetchPriceList, user?.role]);
 
   // 5. Real-time Socket.io listeners
   useEffect(() => {
@@ -464,6 +513,39 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
           })
         }))
       );
+    });
+
+    socket.on('priceList:itemChanged', (payload: SocketPriceListItemChangedPayload) => {
+      setPriceListData((current) => current && current.priceList.id === payload.priceListId
+        ? {
+            ...current,
+            items: current.items.map((item) => item.menuItemId === payload.menuItemId
+              ? { ...item, salePrice: payload.salePrice, version: payload.version, updatedAt: payload.updatedAt }
+              : item)
+          }
+        : current);
+      setCategories((prevCategories) => prevCategories.map((category) => ({
+        ...category,
+        menuItems: category.menuItems?.map((item) => item.id === payload.menuItemId
+          ? { ...item, basePrice: payload.salePrice }
+          : item)
+      })));
+      setCart((previousCart) => previousCart.map((cartItem) => {
+        if (cartItem.menuItem.id !== payload.menuItemId) return cartItem;
+        const modifierDelta = cartItem.selectedModifiers.reduce((sum, modifier) => sum + modifier.priceDelta, 0);
+        const unitPrice = payload.salePrice + modifierDelta;
+        return {
+          ...cartItem,
+          menuItem: { ...cartItem.menuItem, basePrice: payload.salePrice },
+          unitPrice,
+          subtotal: unitPrice * cartItem.quantity
+        };
+      }));
+    });
+
+    socket.on('priceList:bulkChanged', (_payload: SocketPriceListBulkChangedPayload) => {
+      if (user?.role === 'ADMIN') fetchPriceList();
+      fetchMenu();
     });
 
     // Table Status Changed
@@ -542,6 +624,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       if (user?.role === 'KITCHEN' || user?.role === 'ADMIN') {
         fetchKDSOrders();
       }
+      if (user?.role === 'ADMIN') {
+        fetchPriceList();
+      }
       if (payload?.order) {
         setKdsOrders((prev) => {
           const exists = prev.some((o) => o.id === payload.order.id);
@@ -554,7 +639,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     return () => {
       socket.disconnect();
     };
-  }, [token, fetchTables, fetchKDSOrders, user?.role]);
+  }, [token, fetchTables, fetchKDSOrders, fetchPriceList, fetchMenu, user?.role]);
 
   // 4. Computed Menu Items
   const allMenuItems = categories.flatMap((cat) => cat.menuItems || []);
@@ -939,6 +1024,65 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
+  const updatePriceListItem = async (menuItemId: number, salePrice: number, expectedVersion: number) => {
+    if (!token || !priceListData) return { success: false, error: 'Bạn cần đăng nhập quản trị' };
+    try {
+      const result = await updatePriceListItemApi(token, priceListData.priceList.id, menuItemId, salePrice, expectedVersion);
+      setPriceListData((current) => current ? {
+        ...current,
+        items: current.items.map((item) => item.menuItemId === menuItemId ? { ...item, ...result.item } : item)
+      } : current);
+      await fetchMenu();
+      return { success: true };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Không thể cập nhật giá bán' };
+    }
+  };
+
+  const bulkUpdatePriceList = async (menuItemIds: number[], operation: PriceFormulaOperation) => {
+    if (!token || !priceListData) return { success: false, error: 'Bạn cần đăng nhập quản trị' };
+    try {
+      const result = await bulkUpdatePriceListApi(token, priceListData.priceList.id, menuItemIds, operation);
+      await fetchPriceList();
+      await fetchMenu();
+      return { success: true, updatedCount: result.updatedCount };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Không thể cập nhật giá hàng loạt' };
+    }
+  };
+
+  const previewPriceListImport = async (fileName: string, fileBase64: string) => {
+    if (!token || !priceListData) return { success: false, error: 'Bạn cần đăng nhập quản trị' };
+    try {
+      const preview = await previewPriceListImportApi(token, priceListData.priceList.id, fileName, fileBase64);
+      return { success: true, preview };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Không thể đối soát file bảng giá' };
+    }
+  };
+
+  const commitPriceListImport = async (fileName: string, fileBase64: string) => {
+    if (!token || !priceListData) return { success: false, error: 'Bạn cần đăng nhập quản trị' };
+    try {
+      const result = await commitPriceListImportApi(token, priceListData.priceList.id, fileName, fileBase64);
+      await fetchPriceList();
+      await fetchMenu();
+      return { success: true, result };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Không thể áp dụng file bảng giá' };
+    }
+  };
+
+  const downloadPriceListExport = async () => {
+    if (!token || !priceListData) return { success: false, error: 'Bạn cần đăng nhập quản trị' };
+    try {
+      const blob = await downloadPriceListExportApi(token, priceListData.priceList.id);
+      return { success: true, blob };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Không thể tải bảng giá' };
+    }
+  };
+
   const fetchDailyReport = async (
     date?: string
   ): Promise<{ success: boolean; report?: DailyReportDto; error?: string }> => {
@@ -1018,7 +1162,16 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         createMenuItem,
         updateMenuItem,
         bulkUpdateMenuItems,
-        fetchDailyReport
+        fetchDailyReport,
+        priceListData,
+        isLoadingPriceList,
+        priceListError,
+        fetchPriceList,
+        updatePriceListItem,
+        bulkUpdatePriceList,
+        previewPriceListImport,
+        commitPriceListImport,
+        downloadPriceListExport
       }}
     >
       {children}
