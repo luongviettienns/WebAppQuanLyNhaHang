@@ -625,6 +625,7 @@ export interface SocketInventoryChangedPayload {
   sourceIds: number[];
   reason:
     | 'STOCK_IN'
+    | 'PURCHASE_RECEIPT_POSTED'
     | 'ORDER_PAID'
     | 'ORDER_VOIDED'
     | 'MANUAL_ADJUST'

@@ -56,6 +56,8 @@ Mỗi dòng phiếu gồm nguyên liệu, snapshot mã/tên/đơn vị, số lư
 
 `subtotalAmount` là tổng thành tiền sau giảm giá từng dòng. `payableAmount` là `subtotalAmount - discountAmount`. `paidAmount` và `outstandingAmount` chỉ ghi nhận nghĩa vụ phải trả trên phiếu; **không** sinh tiền mặt, bút toán quỹ hoặc giao dịch công nợ ngoài chứng từ.
 
+Quy tắc tính tiền Task 1: nhân số lượng thập phân với đơn giá nguyên VND, làm tròn từng dòng theo half-up (0,5 đồng lên 1 đồng) trước khi trừ giảm giá. Tránh sai số nhân floating-point ở biên như `1,005 × 100 = 100,5`, phải ra 101 đồng. Số lượng phải hữu hạn và dương; các giá trị tiền, thành tiền dòng và tổng phiếu nằm trong khoảng 0–2.147.483.647 VND tương ứng MySQL `Int`. Hàm tính trả cả `payableAmount` và `outstandingAmount` nhưng database chỉ lưu `subtotalAmount`, `discountAmount`, `paidAmount`. Các cột ghi chú dùng `VARCHAR(1000)` và địa chỉ supplier dùng `VARCHAR(255)` theo giới hạn nghiệp vụ.
+
 ### 3.3. Vòng đời
 
 ```text

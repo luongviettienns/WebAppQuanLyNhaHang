@@ -300,6 +300,7 @@ model Ingredient {
 
   menuItemIngredients   MenuItemIngredient[]
   inventoryTransactions InventoryTransaction[]
+  purchaseReceiptLines  PurchaseReceiptLine[]
 
   @@index([sku])
   @@index([isActive])
@@ -326,15 +327,92 @@ model InventoryTransaction {
   quantity        Float                    // + khi nhap kho, - khi xuat/hao hut
   costAmount      Int                      @default(0) // Gia tri VND giao dich
   orderId         Int?                     // Don hang lien quan (khi auto-deduct)
+  purchaseReceiptId Int?                   // Chung tu nhap; null cho ledger cu
   note            String?                  // Ghi chu
   createdByUserId Int?
   createdAt       DateTime                 @default(now())
 
   ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
   order      Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  purchaseReceipt PurchaseReceipt? @relation(fields: [purchaseReceiptId], references: [id], onDelete: Restrict)
 
   @@index([ingredientId])
   @@index([type])
   @@index([createdAt])
+  @@index([purchaseReceiptId])
+}
+
+enum PurchaseReceiptStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+model Supplier {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  phone     String?
+  email     String?
+  address   String?  @db.VarChar(255)
+  taxCode   String?
+  note      String?  @db.VarChar(1000)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchaseReceipts PurchaseReceipt[]
+
+  @@index([name])
+  @@index([isActive])
+}
+
+model PurchaseReceipt {
+  id                Int                   @id @default(autoincrement())
+  receiptCode       String                @unique
+  supplierId        Int?
+  receivedAt        DateTime
+  invoiceNumber     String?
+  invoiceDate       DateTime?
+  status            PurchaseReceiptStatus @default(DRAFT)
+  subtotalAmount    Int                   @default(0)
+  discountAmount    Int                   @default(0)
+  paidAmount        Int                   @default(0)
+  note              String?               @db.VarChar(1000)
+  createdByUserId   Int?
+  postedByUserId    Int?
+  postedAt          DateTime?
+  cancelledByUserId Int?
+  cancelledAt       DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  supplier              Supplier?            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  lines                 PurchaseReceiptLine[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([supplierId, receivedAt])
+  @@index([status, receivedAt])
+}
+
+model PurchaseReceiptLine {
+  id                Int      @id @default(autoincrement())
+  purchaseReceiptId Int
+  ingredientId      Int
+  ingredientSku     String
+  ingredientName    String
+  unit              String
+  quantity          Float
+  unitCost          Int
+  discountAmount    Int      @default(0)
+  note              String?  @db.VarChar(1000)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  purchaseReceipt PurchaseReceipt @relation(fields: [purchaseReceiptId], references: [id], onDelete: Cascade)
+  ingredient      Ingredient      @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@unique([purchaseReceiptId, ingredientId])
+  @@index([ingredientId])
 }
 

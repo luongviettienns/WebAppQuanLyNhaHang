@@ -66,7 +66,7 @@
 - Produces `PurchaseReceiptStatus = 'DRAFT' | 'POSTED' | 'CANCELLED'` and `calculatePurchaseReceiptTotals(input): PurchaseReceiptTotals`.
 - Produces nullable `InventoryTransaction.purchaseReceiptId` for Task 3.
 
-- [ ] **Step 1: Write failing calculation tests**
+- [x] **Step 1: Write failing calculation tests**
 
 ```ts
 it('calculates line, receipt discount, payable and outstanding in VND', () => {
@@ -86,13 +86,13 @@ it('rejects paid amount above payable amount', () => {
 });
 ```
 
-- [ ] **Step 2: Run the focused test to verify failure**
+- [x] **Step 2: Run the focused test to verify failure**
 
 Run: `npm test -- --run test/inventory/purchase-receipt.math.spec.ts` from `backend`.
 
 Expected: FAIL because `purchase-receipt.math.ts` does not exist.
 
-- [ ] **Step 3: Add schema, migration and pure calculation implementation**
+- [x] **Step 3: Add schema, migration and pure calculation implementation**
 
 ```ts
 export type PurchaseReceiptTotals = {
@@ -120,13 +120,13 @@ export function calculatePurchaseReceiptTotals(input: {
 
 Add `Supplier`, `PurchaseReceipt`, `PurchaseReceiptLine`, `PurchaseReceiptStatus`, `PurchaseReceiptLine @@unique([purchaseReceiptId, ingredientId])`, `InventoryTransaction.purchaseReceiptId` and its Restrict relation exactly as specified. Generate Prisma client after migration. Add `PURCHASE_RECEIPT_POSTED` to backend/frontend event unions.
 
-- [ ] **Step 4: Run focused tests and typecheck**
+- [x] **Step 4: Run focused tests and typecheck**
 
 Run: `npm test -- --run test/inventory/purchase-receipt.math.spec.ts` and `npm run typecheck` from `backend`.
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit and push Task 1**
+- [x] **Step 5: Commit and push Task 1**
 
 ```bash
 git add backend/prisma backend/src/modules/inventory/purchase-receipt.math.ts backend/src/modules/inventory/inventory.events.ts backend/test/inventory/purchase-receipt.math.spec.ts frontend/src/api/contracts.ts

@@ -3,6 +3,7 @@ import { emitToAll } from '../../lib/socket';
 export type InventoryChangedSourceType = 'INGREDIENT' | 'MENU_ITEM';
 export type InventoryChangedReason =
   | 'STOCK_IN'
+  | 'PURCHASE_RECEIPT_POSTED'
   | 'ORDER_PAID'
   | 'ORDER_VOIDED'
   | 'MANUAL_ADJUST'
