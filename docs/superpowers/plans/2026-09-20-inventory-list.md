@@ -225,25 +225,25 @@ type InventoryChangedPayload = {
 - Produces `emitInventoryChanged(payload): void`, which calls `emitToAll('inventory:changed', payload)`.
 - Changes `InventoryService.deductInventoryForOrder` to return `{ totalOrderCogs: number; ingredientIds: number[] }` so `payOrder` can emit after commit without another query.
 
-- [ ] **Step 1: Write failing event tests**
+- [x] **Step 1: Write failing event tests**
 
 Add tests that spy on the socket emitter seam and assert stock-in emits ingredient IDs only after success; a failed stock-in emits nothing; recipe update emits the menu item ID; menu stock adjustment emits menu item IDs; pay emits ingredient IDs with `ORDER_PAID`; void/auto-cancel emits restored menu IDs with `ORDER_VOIDED`.
 
-Run: `npm --prefix backend test -- --run backend/test/inventory/inventory.service.spec.ts backend/test/menu/menu-bulk.spec.ts backend/test/orders/menu-stock.spec.ts backend/test/orders/order-lifecycle.spec.ts`
+Run: `npm --prefix backend test -- --run test/inventory/inventory.service.spec.ts test/menu/menu-bulk.spec.ts test/orders/menu-stock.spec.ts test/orders/order-lifecycle.spec.ts`
 
 Expected: FAIL because the shared event helper and source ID return values are not wired.
 
-- [ ] **Step 2: Add the event helper and stock-in/recipe events**
+- [x] **Step 2: Add the event helper and stock-in/recipe events**
 
 Emit only after `stockIn`, Excel commit, ingredient update, and recipe update transactions resolve. For recipe updates, emit `MENU_ITEM`/`RECIPE_UPDATED`; changing the BOM affects catalog cost but not existing order snapshots.
 
-- [ ] **Step 3: Wire menu and order events**
+- [x] **Step 3: Wire menu and order events**
 
 Emit `MENU_ITEM`/`MANUAL_ADJUST` after successful menu bulk stock adjustment. In `payOrder`, capture the ingredient IDs from the transaction result and emit `INGREDIENT`/`ORDER_PAID` after commit. Reuse `stockChanges` from `voidOrder` and `autoCancelExpiredOrders` to emit `MENU_ITEM`/`ORDER_VOIDED` after commit. Preserve existing `menu:stockChanged` and order events for POS/KDS compatibility.
 
-- [ ] **Step 4: Run regression tests and commit**
+- [x] **Step 4: Run regression tests and commit**
 
-Run the focused command from Step 1, then `npm --prefix backend test -- --run backend/test/orders`.
+Run the focused command from Step 1, then `npm --prefix backend test -- --run test/orders`.
 
 Expected: existing stock reservation/restore and ingredient deduction behavior remains unchanged; only additional invalidation events are emitted.
 

@@ -1,7 +1,10 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { prismaTest, truncateAllTables } from '../helpers/database';
 import { InventoryService } from '../../src/modules/inventory/inventory.service';
+import * as socket from '../../src/lib/socket';
 import * as XLSX from 'xlsx';
+
+const inventoryEventSpy = vi.spyOn(socket, 'emitToAll');
 
 describe('InventoryService Integration Tests (TDD)', () => {
   let testMenuItemId: number;
@@ -29,6 +32,7 @@ describe('InventoryService Integration Tests (TDD)', () => {
     await prismaTest.inventoryTransaction.deleteMany();
     await prismaTest.menuItemIngredient.deleteMany();
     await prismaTest.ingredient.deleteMany();
+    inventoryEventSpy.mockClear();
   });
 
   it('tao nguyen lieu moi va tu dong ghi log STOCK_IN ban dau neu ton > 0', async () => {
@@ -95,6 +99,21 @@ describe('InventoryService Integration Tests (TDD)', () => {
     });
     expect(txList[0].note).toBe('Nhập lô hàng chiều');
     expect(txList[0].quantity).toBe(10000);
+    expect(inventoryEventSpy).toHaveBeenCalledWith('inventory:changed', expect.objectContaining({
+      sourceType: 'INGREDIENT',
+      sourceIds: [ing.id],
+      reason: 'STOCK_IN'
+    }));
+  });
+
+  it('khong phat su kien khi nhap kho that bai', async () => {
+    await expect(InventoryService.stockIn({
+      ingredientId: 999999,
+      quantity: 10,
+      costPerUnit: 20
+    }, undefined, undefined, prismaTest)).rejects.toThrow();
+
+    expect(inventoryEventSpy).not.toHaveBeenCalledWith('inventory:changed', expect.anything());
   });
 
   it('nhap kho khi dang ton am: bu tru am va tinh gia moi tren lo moi (Q3 Rule)', async () => {
@@ -150,6 +169,11 @@ describe('InventoryService Integration Tests (TDD)', () => {
     expect(recipe.ingredients).toHaveLength(2);
     // Gia von = 150*80 + 20*40 = 12.000 + 800 = 12.800d
     expect(recipe.totalCost).toBe(12800);
+    expect(inventoryEventSpy).toHaveBeenCalledWith('inventory:changed', expect.objectContaining({
+      sourceType: 'MENU_ITEM',
+      sourceIds: [testMenuItemId],
+      reason: 'RECIPE_UPDATED'
+    }));
   });
 
   it('preview file Excel nhap kho: phan loai ro dong hop le va dong loi', async () => {

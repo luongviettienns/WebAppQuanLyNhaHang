@@ -5,6 +5,7 @@ import { CreateOrderInput, PayOrderInput, VoidOrderInput } from './orders.schema
 import { PaymentMethod } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { InventoryService } from '../inventory/inventory.service';
+import { emitInventoryChanged } from '../inventory/inventory.events';
 import { PriceListService } from '../price-lists/price-list.service';
 import { createHash } from 'crypto';
 
@@ -437,7 +438,7 @@ export class OrdersService {
       throw ApiError.conflict(`Đơn hàng ID ${orderId} đã được thanh toán từ trước`);
     }
 
-    const { order: updatedOrder, tableState } = await prisma.$transaction(async (tx) => {
+    const { order: updatedOrder, tableState, inventoryChange } = await prisma.$transaction(async (tx) => {
       if (existingOrder.tableId) {
         // Serialize create/pay operations on the same table before reading its unpaid orders.
         await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${existingOrder.tableId} FOR UPDATE`;
@@ -473,7 +474,7 @@ export class OrdersService {
       });
 
       // Tu dong tru kho nguyen lieu theo cong thuc dinh luong BOM (Atomic Transaction)
-      await InventoryService.deductInventoryForOrder(tx, order.id, order.items);
+      const inventoryChange = await InventoryService.deductInventoryForOrder(tx, order.id, order.items);
 
       let nextTableState: { tableId: number; tableNumber: number; status: 'AVAILABLE' | 'OCCUPIED'; currentOrderId: number | null } | null = null;
       if (order.tableId) {
@@ -505,7 +506,14 @@ export class OrdersService {
         }
       }
 
-      return { order, tableState: nextTableState };
+      return { order, tableState: nextTableState, inventoryChange };
+    });
+
+    emitInventoryChanged({
+      sourceType: 'INGREDIENT',
+      sourceIds: inventoryChange.ingredientIds,
+      reason: 'ORDER_PAID',
+      updatedAt: new Date().toISOString()
     });
 
     // Phat su kien WebSocket realtime
@@ -727,6 +735,12 @@ export class OrdersService {
       return { order: updatedOrder, tableState: nextTableState, stockChanges: restoredStock };
     });
 
+    emitInventoryChanged({
+      sourceType: 'MENU_ITEM',
+      sourceIds: stockChanges.map(change => change.menuItemId),
+      reason: 'ORDER_VOIDED',
+      updatedAt: new Date().toISOString()
+    });
     emitMenuStockChanged(stockChanges);
     const orderDto = formatOrderDto(order);
 
@@ -865,6 +879,13 @@ export class OrdersService {
         const { order, tableState, stockChanges } = transactionResult;
 
         cancelledOrderIds.push(order.id);
+
+        emitInventoryChanged({
+          sourceType: 'MENU_ITEM',
+          sourceIds: stockChanges.map(change => change.menuItemId),
+          reason: 'ORDER_VOIDED',
+          updatedAt: new Date().toISOString()
+        });
 
         const orderDto = formatOrderDto(order);
         const socketPayload = {

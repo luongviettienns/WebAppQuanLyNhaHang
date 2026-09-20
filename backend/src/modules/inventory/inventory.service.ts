@@ -18,6 +18,7 @@ import {
   generateTemplateWorkbook,
   exportInventoryWorkbook
 } from './inventory.excel';
+import { emitInventoryChanged } from './inventory.events';
 
 export interface IngredientFilter {
   search?: string;
@@ -235,6 +236,13 @@ export class InventoryService {
       }
     });
 
+    emitInventoryChanged({
+      sourceType: 'INGREDIENT',
+      sourceIds: [updated.id],
+      reason: 'INGREDIENT_UPDATED',
+      updatedAt: updated.updatedAt.toISOString()
+    });
+
     return updated;
   }
 
@@ -247,7 +255,7 @@ export class InventoryService {
     userName?: string,
     db: PrismaClient = defaultPrisma
   ) {
-    return await db.$transaction(async (tx) => {
+    const updated = await db.$transaction(async (tx) => {
       const ing = await tx.ingredient.findUnique({
         where: { id: dto.ingredientId }
       });
@@ -306,6 +314,15 @@ export class InventoryService {
 
       return updated;
     });
+
+    emitInventoryChanged({
+      sourceType: 'INGREDIENT',
+      sourceIds: [updated.id],
+      reason: 'STOCK_IN',
+      updatedAt: updated.updatedAt.toISOString()
+    });
+
+    return updated;
   }
 
   /**
@@ -424,7 +441,7 @@ export class InventoryService {
     userName?: string,
     db: PrismaClient = defaultPrisma
   ) {
-    return await db.$transaction(async (tx) => {
+    const result = await db.$transaction(async (tx) => {
       const results = [];
       const timestampStr = new Date().toLocaleString('vi-VN', { timeZone: 'Asia/Ho_Chi_Minh' });
 
@@ -485,6 +502,15 @@ export class InventoryService {
         items: results
       };
     });
+
+    emitInventoryChanged({
+      sourceType: 'INGREDIENT',
+      sourceIds: result.items.map(item => item.id),
+      reason: 'STOCK_IN',
+      updatedAt: new Date().toISOString()
+    });
+
+    return result;
   }
 
   /**
@@ -546,7 +572,7 @@ export class InventoryService {
     userName?: string,
     db: PrismaClient = defaultPrisma
   ) {
-    return await db.$transaction(async (tx) => {
+    const recipe = await db.$transaction(async (tx) => {
       const menuItem = await tx.menuItem.findUnique({ where: { id: menuItemId } });
       if (!menuItem) {
         throw ApiError.notFound('Món ăn không tồn tại');
@@ -585,6 +611,15 @@ export class InventoryService {
 
       return await InventoryService.getRecipe(menuItemId, tx as any);
     });
+
+    emitInventoryChanged({
+      sourceType: 'MENU_ITEM',
+      sourceIds: [menuItemId],
+      reason: 'RECIPE_UPDATED',
+      updatedAt: new Date().toISOString()
+    });
+
+    return recipe;
   }
 
   /**
@@ -613,8 +648,9 @@ export class InventoryService {
     tx: Prisma.TransactionClient,
     orderId: number,
     orderItems: Array<{ menuItemId: number; quantity: number }>
-  ): Promise<number> {
+  ): Promise<{ totalOrderCogs: number; ingredientIds: number[] }> {
     let totalOrderCogs = 0;
+    const ingredientIds = new Set<number>();
 
     for (const orderItem of orderItems) {
       const boms = await tx.menuItemIngredient.findMany({
@@ -629,6 +665,7 @@ export class InventoryService {
         // Cho phep ban am (Q3 Rule) bang thao tac nguyen tu decrement
         const itemCogs = Math.round(qtyNeeded * ing.costPerUnit);
         totalOrderCogs += itemCogs;
+        ingredientIds.add(ing.id);
 
         await tx.ingredient.update({
           where: { id: ing.id },
@@ -652,6 +689,6 @@ export class InventoryService {
       }
     }
 
-    return totalOrderCogs;
+    return { totalOrderCogs, ingredientIds: [...ingredientIds].sort((left, right) => left - right) };
   }
 }

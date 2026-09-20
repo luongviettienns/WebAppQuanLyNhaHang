@@ -1,10 +1,13 @@
-import { beforeAll, beforeEach, afterAll, describe, expect, it } from 'vitest';
+import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from 'vitest';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { app } from '../../src/app';
 import { env } from '../../src/config/env';
 import { prismaTest, truncateAllTables, validateTestEnvironment } from '../helpers/database';
 import { seedDatabase } from '../../prisma/seed';
+import * as socket from '../../src/lib/socket';
+
+const inventoryEventSpy = vi.spyOn(socket, 'emitToAll');
 
 describe('Menu bulk actions API (Phase 6)', () => {
   let adminToken: string;
@@ -28,6 +31,7 @@ describe('Menu bulk actions API (Phase 6)', () => {
   beforeEach(async () => {
     await truncateAllTables();
     await seedDatabase(prismaTest);
+    inventoryEventSpy.mockClear();
   });
 
   afterAll(async () => {
@@ -82,6 +86,11 @@ describe('Menu bulk actions API (Phase 6)', () => {
     expect(response.status).toBe(200);
     const updated = await prismaTest.menuItem.findMany({ where: { id: { in: items.map(item => item.id) } }, orderBy: { id: 'asc' } });
     expect(updated.map(item => item.stockQuantity)).toEqual([1, 4]);
+    expect(inventoryEventSpy).toHaveBeenCalledWith('inventory:changed', expect.objectContaining({
+      sourceType: 'MENU_ITEM',
+      sourceIds: items.map(item => item.id),
+      reason: 'MANUAL_ADJUST'
+    }));
   });
 
   it('rejects a negative final stock without changing any selected item or audit log', async () => {

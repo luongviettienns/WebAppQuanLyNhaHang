@@ -1,7 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { prisma } from '../../src/config/prisma';
 import { OrdersService } from '../../src/modules/orders/orders.service';
 import { prismaTest, truncateAllTables, validateTestEnvironment } from '../helpers/database';
+import * as socket from '../../src/lib/socket';
+
+const inventoryEventSpy = vi.spyOn(socket, 'emitToAll');
 
 describe('Menu item stock reservation and restoration (Phase 7)', () => {
   let categoryId: number;
@@ -12,6 +15,10 @@ describe('Menu item stock reservation and restoration (Phase 7)', () => {
     await truncateAllTables();
     const category = await prismaTest.category.create({ data: { name: 'Phase 7 stock' } });
     categoryId = category.id;
+  });
+
+  beforeEach(() => {
+    inventoryEventSpy.mockClear();
   });
 
   afterAll(async () => {
@@ -98,6 +105,11 @@ describe('Menu item stock reservation and restoration (Phase 7)', () => {
 
     const storedItem = await prismaTest.menuItem.findUniqueOrThrow({ where: { id: item.id } });
     expect(storedItem.stockQuantity).toBe(4);
+    expect(inventoryEventSpy).toHaveBeenCalledWith('inventory:changed', expect.objectContaining({
+      sourceType: 'MENU_ITEM',
+      sourceIds: [item.id],
+      reason: 'ORDER_VOIDED'
+    }));
   });
 
   it('restores tracked stock when an expired unpaid order is auto-cancelled', async () => {
@@ -115,6 +127,31 @@ describe('Menu item stock reservation and restoration (Phase 7)', () => {
     expect(result.cancelledOrderIds).toContain(created.order.id);
     const storedItem = await prismaTest.menuItem.findUniqueOrThrow({ where: { id: item.id } });
     expect(storedItem.stockQuantity).toBe(4);
+    expect(inventoryEventSpy).toHaveBeenCalledWith('inventory:changed', expect.objectContaining({
+      sourceType: 'MENU_ITEM',
+      sourceIds: [item.id],
+      reason: 'ORDER_VOIDED'
+    }));
+  });
+
+  it('publishes ingredient invalidation after a paid order consumes a BOM', async () => {
+    const item = await createMenuItem(4);
+    const ingredient = await prismaTest.ingredient.create({
+      data: { sku: `P7-ING-${item.id}`, name: 'Phase 7 ingredient', unit: 'gram', currentStock: 100, costPerUnit: 80 }
+    });
+    await prismaTest.menuItemIngredient.create({
+      data: { menuItemId: item.id, ingredientId: ingredient.id, quantityRequired: 10 }
+    });
+
+    const created = await OrdersService.createOrder(takeAwayItem(item.id));
+    inventoryEventSpy.mockClear();
+    await OrdersService.payOrder(created.order.id, { paymentMethod: 'CASH' });
+
+    expect(inventoryEventSpy).toHaveBeenCalledWith('inventory:changed', expect.objectContaining({
+      sourceType: 'INGREDIENT',
+      sourceIds: [ingredient.id],
+      reason: 'ORDER_PAID'
+    }));
   });
 
   it('keeps consumed stock when a paid order cannot be voided', async () => {

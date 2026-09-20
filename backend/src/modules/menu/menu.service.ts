@@ -4,6 +4,7 @@ import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { AuditService } from '../audit/audit.service';
 import { PriceListService } from '../price-lists/price-list.service';
+import { emitInventoryChanged } from '../inventory/inventory.events';
 import {
   CreateCategoryInput,
   CreateMenuItemInput,
@@ -119,6 +120,12 @@ export class MenuService {
       metadata: { action: input.action, ids: input.ids, updatedCount: result.updatedCount }
     });
     emitToAll('menu:bulkChanged', result);
+    emitInventoryChanged({
+      sourceType: 'MENU_ITEM',
+      sourceIds: input.ids,
+      reason: input.action === 'adjustStock' ? 'MANUAL_ADJUST' : 'MENU_ITEM_UPDATED',
+      updatedAt: new Date().toISOString()
+    });
 
     return result;
   }
@@ -680,6 +687,13 @@ export class MenuService {
       }
     });
 
+    emitInventoryChanged({
+      sourceType: 'MENU_ITEM',
+      sourceIds: [menuItem.id],
+      reason: 'MENU_ITEM_UPDATED',
+      updatedAt: menuItem.updatedAt.toISOString()
+    });
+
     return { menuItem };
   }
 
@@ -724,6 +738,13 @@ export class MenuService {
         isAvailable,
         previousIsAvailable: existing.isAvailable
       }
+    });
+
+    emitInventoryChanged({
+      sourceType: 'MENU_ITEM',
+      sourceIds: [updated.id],
+      reason: 'MENU_ITEM_UPDATED',
+      updatedAt: updated.updatedAt.toISOString()
     });
 
     return { menuItem: updated };
