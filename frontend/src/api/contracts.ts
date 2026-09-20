@@ -348,6 +348,15 @@ export interface SocketMenuItemSoldOutChangedPayload {
   isAvailable: boolean;
 }
 
+export interface SocketMenuStockChangedPayload {
+  items: Array<{
+    menuItemId: number;
+    stockQuantity: number;
+    trackStock: boolean;
+    isAvailable: boolean;
+  }>;
+}
+
 export interface SocketTableStatusChangedPayload {
   tableId: number;
   tableNumber: number;

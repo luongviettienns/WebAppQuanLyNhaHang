@@ -11,6 +11,7 @@ import {
   PaymentMethod,
   OrderType,
   SocketMenuItemSoldOutChangedPayload,
+  SocketMenuStockChangedPayload,
   SocketTableStatusChangedPayload,
   SocketOrderStatusChangedPayload,
   SocketOrderNewPayload,
@@ -441,6 +442,26 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
           menuItems: cat.menuItems?.map((item) =>
             item.id === payload.menuItemId ? { ...item, isAvailable: payload.isAvailable } : item
           )
+        }))
+      );
+    });
+
+    socket.on('menu:stockChanged', (payload: SocketMenuStockChangedPayload) => {
+      const changes = new Map(payload.items.map((change) => [change.menuItemId, change]));
+      setCategories((prevCategories) =>
+        prevCategories.map((cat) => ({
+          ...cat,
+          menuItems: cat.menuItems?.map((item) => {
+            const change = changes.get(item.id);
+            return change
+              ? {
+                  ...item,
+                  stockQuantity: change.stockQuantity,
+                  trackStock: change.trackStock,
+                  isAvailable: change.isAvailable
+                }
+              : item;
+          })
         }))
       );
     });

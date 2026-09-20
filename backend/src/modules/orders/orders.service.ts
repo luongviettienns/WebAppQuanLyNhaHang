@@ -30,6 +30,113 @@ function isUniqueConstraintError(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
 }
 
+type MenuStockChange = {
+  menuItemId: number;
+  stockQuantity: number;
+  trackStock: boolean;
+  isAvailable: boolean;
+};
+
+type StockOrderItem = {
+  menuItemId: number;
+  quantity: number;
+};
+
+function aggregateQuantities(items: StockOrderItem[]) {
+  const quantities = new Map<number, number>();
+  for (const item of items) {
+    quantities.set(item.menuItemId, (quantities.get(item.menuItemId) ?? 0) + item.quantity);
+  }
+  return quantities;
+}
+
+async function reserveMenuStockForOrder(
+  tx: any,
+  items: StockOrderItem[],
+  trackedMenuItemIds: Set<number>
+): Promise<MenuStockChange[]> {
+  const stockChanges: MenuStockChange[] = [];
+  const quantities = aggregateQuantities(items);
+
+  for (const menuItemId of [...quantities.keys()].sort((left, right) => left - right)) {
+    const quantity = quantities.get(menuItemId)!;
+    if (!trackedMenuItemIds.has(menuItemId)) continue;
+
+    const rows = await tx.$queryRaw<Array<{
+      id: number;
+      name: string;
+      trackStock: boolean;
+      stockQuantity: number;
+      isAvailable: boolean;
+    }>>`SELECT id, name, trackStock, stockQuantity, isAvailable FROM MenuItem WHERE id = ${menuItemId} FOR UPDATE`;
+    const menuItem = rows[0];
+
+    if (!menuItem) {
+      throw ApiError.notFound(`Món ăn ID ${menuItemId} không tồn tại trong thực đơn`);
+    }
+
+    if (!menuItem.trackStock) continue;
+
+    if (menuItem.stockQuantity < quantity) {
+      throw ApiError.badRequest(
+        `Món ăn "${menuItem.name}" không đủ tồn kho (còn ${menuItem.stockQuantity}, cần ${quantity})`
+      );
+    }
+
+    const updated = await tx.menuItem.update({
+      where: { id: menuItemId },
+      data: { stockQuantity: { decrement: quantity } },
+      select: { id: true, stockQuantity: true, trackStock: true, isAvailable: true }
+    });
+
+    stockChanges.push({
+      menuItemId: updated.id,
+      stockQuantity: updated.stockQuantity,
+      trackStock: updated.trackStock,
+      isAvailable: updated.isAvailable
+    });
+  }
+
+  return stockChanges;
+}
+
+async function restoreMenuStockForOrder(tx: any, items: StockOrderItem[]): Promise<MenuStockChange[]> {
+  const stockChanges: MenuStockChange[] = [];
+  const quantities = aggregateQuantities(items);
+
+  for (const menuItemId of [...quantities.keys()].sort((left, right) => left - right)) {
+    const quantity = quantities.get(menuItemId)!;
+    const rows = await tx.$queryRaw<Array<{
+      id: number;
+      trackStock: boolean;
+    }>>`SELECT id, trackStock FROM MenuItem WHERE id = ${menuItemId} FOR UPDATE`;
+    const menuItem = rows[0];
+
+    if (!menuItem || !menuItem.trackStock) continue;
+
+    const updated = await tx.menuItem.update({
+      where: { id: menuItemId },
+      data: { stockQuantity: { increment: quantity } },
+      select: { id: true, stockQuantity: true, trackStock: true, isAvailable: true }
+    });
+
+    stockChanges.push({
+      menuItemId: updated.id,
+      stockQuantity: updated.stockQuantity,
+      trackStock: updated.trackStock,
+      isAvailable: updated.isAvailable
+    });
+  }
+
+  return stockChanges;
+}
+
+function emitMenuStockChanged(stockChanges: MenuStockChange[]) {
+  if (stockChanges.length > 0) {
+    emitToAll('menu:stockChanged', { items: stockChanges });
+  }
+}
+
 export class OrdersService {
   /**
    * Tao don hang moi (Dat tai ban qua QR hoac POS)
@@ -194,7 +301,7 @@ export class OrdersService {
     const code = `CRISPY-${dateStr}-${randomSuffix}`;
 
     // 7. Thuc hien Transaction tao Order va cap nhat Table
-    let transactionResult: { order: any; isDuplicate: boolean };
+    let transactionResult: { order: any; isDuplicate: boolean; stockChanges: MenuStockChange[] };
     try {
       transactionResult = await prisma.$transaction(async (tx) => {
         if (input.orderType === 'DINE_IN' && resolvedTableId) {
@@ -205,9 +312,14 @@ export class OrdersService {
           const existing = await findExisting(tx);
           if (existing) {
             assertMatchingRequest(existing.requestHash);
-            return { order: existing, isDuplicate: true };
+            return { order: existing, isDuplicate: true, stockChanges: [] };
           }
         }
+
+        const trackedMenuItemIds = new Set(
+          dbMenuItems.filter((menuItem) => menuItem.trackStock).map((menuItem) => menuItem.id)
+        );
+        const stockChanges = await reserveMenuStockForOrder(tx, input.items, trackedMenuItemIds);
 
         const order = await tx.order.create({
           data: {
@@ -249,17 +361,20 @@ export class OrdersService {
           });
         }
 
-        return { order, isDuplicate: false };
+        return { order, isDuplicate: false, stockChanges };
       });
     } catch (error) {
       if (!input.idempotencyKey || !isUniqueConstraintError(error)) throw error;
       const existing = await findExisting(prisma);
       if (!existing) throw error;
       assertMatchingRequest(existing.requestHash);
-      transactionResult = { order: existing, isDuplicate: true };
+      transactionResult = { order: existing, isDuplicate: true, stockChanges: [] };
     }
 
-    if (transactionResult.isDuplicate) return transactionResult;
+    if (transactionResult.isDuplicate) {
+      return { order: transactionResult.order, isDuplicate: true };
+    }
+    emitMenuStockChanged(transactionResult.stockChanges);
     const createdOrder = formatOrderDto(transactionResult.order);
 
     // Phat su kien don hang moi chi vao phong KDS bep va toan he thong
@@ -275,7 +390,7 @@ export class OrdersService {
       });
     }
 
-    return transactionResult;
+    return { order: transactionResult.order, isDuplicate: false };
   }
 
   /**
@@ -301,6 +416,8 @@ export class OrdersService {
         // Serialize create/pay operations on the same table before reading its unpaid orders.
         await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${existingOrder.tableId} FOR UPDATE`;
       }
+
+      await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
 
       const lockedOrder = await tx.order.findUnique({
         where: { id: orderId },
@@ -485,7 +602,8 @@ export class OrdersService {
     const existingOrder = await prisma.order.findUnique({
       where: { id: orderId },
       include: {
-        table: true
+        table: true,
+        items: true
       }
     });
 
@@ -501,7 +619,35 @@ export class OrdersService {
       throw ApiError.orderStateInvalid('Không thể hủy đơn hàng đã hoàn tất phục vụ');
     }
 
-    const { order, tableState } = await prisma.$transaction(async (tx) => {
+    if (existingOrder.paymentStatus === 'PAID') {
+      throw ApiError.orderStateInvalid('Không thể hủy đơn hàng đã thanh toán');
+    }
+
+    const { order, tableState, stockChanges } = await prisma.$transaction(async (tx) => {
+      if (existingOrder.tableId) {
+        await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${existingOrder.tableId} FOR UPDATE`;
+      }
+
+      await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
+      const lockedOrder = await tx.order.findUnique({
+        where: { id: orderId },
+        include: { items: true, table: true }
+      });
+
+      if (!lockedOrder) {
+        throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
+      }
+      if (lockedOrder.status === 'CANCELLED') {
+        throw ApiError.orderStateInvalid('Đơn hàng đã bị hủy trước đó');
+      }
+      if (lockedOrder.status === 'COMPLETED') {
+        throw ApiError.orderStateInvalid('Không thể hủy đơn hàng đã hoàn tất phục vụ');
+      }
+      if (lockedOrder.paymentStatus === 'PAID') {
+        throw ApiError.orderStateInvalid('Không thể hủy đơn hàng đã thanh toán');
+      }
+
+      const restoredStock = await restoreMenuStockForOrder(tx, lockedOrder.items);
       const now = new Date();
       const updatedOrder = await tx.order.update({
         where: { id: orderId },
@@ -520,10 +666,10 @@ export class OrdersService {
       });
 
       let nextTableState: any = null;
-      if (existingOrder.tableId) {
+      if (lockedOrder.tableId) {
         const remainingOrder = await tx.order.findFirst({
           where: {
-            tableId: existingOrder.tableId,
+            tableId: lockedOrder.tableId,
             paymentStatus: 'UNPAID',
             status: { not: 'CANCELLED' },
             id: { not: orderId }
@@ -535,7 +681,7 @@ export class OrdersService {
         const currentOrderId = remainingOrder?.id ?? null;
 
         await tx.diningTable.update({
-          where: { id: existingOrder.tableId },
+          where: { id: lockedOrder.tableId },
           data: {
             status,
             currentOrderId
@@ -552,9 +698,10 @@ export class OrdersService {
         }
       }
 
-      return { order: updatedOrder, tableState: nextTableState };
+      return { order: updatedOrder, tableState: nextTableState, stockChanges: restoredStock };
     });
 
+    emitMenuStockChanged(stockChanges);
     const orderDto = formatOrderDto(order);
 
     const socketPayload = {
@@ -621,9 +768,24 @@ export class OrdersService {
 
     for (const expOrder of expiredOrders) {
       try {
-        const { order, tableState } = await prisma.$transaction(async (tx) => {
-          const updatedOrder = await tx.order.update({
+        const transactionResult = await prisma.$transaction(async (tx) => {
+          if (expOrder.tableId) {
+            await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${expOrder.tableId} FOR UPDATE`;
+          }
+
+          await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${expOrder.id} FOR UPDATE`;
+          const lockedOrder = await tx.order.findUnique({
             where: { id: expOrder.id },
+            include: { items: true, table: true }
+          });
+
+          if (!lockedOrder || lockedOrder.status !== 'PENDING' || lockedOrder.paymentStatus === 'PAID') {
+            return null;
+          }
+
+          const restoredStock = await restoreMenuStockForOrder(tx, lockedOrder.items);
+          const updatedOrder = await tx.order.update({
+            where: { id: lockedOrder.id },
             data: {
               status: 'CANCELLED',
               paymentStatus: 'VOIDED',
@@ -638,13 +800,13 @@ export class OrdersService {
           });
 
           let nextTableState: any = null;
-          if (expOrder.tableId) {
+          if (lockedOrder.tableId) {
             const remainingOrder = await tx.order.findFirst({
               where: {
-                tableId: expOrder.tableId,
+                tableId: lockedOrder.tableId,
                 paymentStatus: 'UNPAID',
                 status: { not: 'CANCELLED' },
-                id: { not: expOrder.id }
+                id: { not: lockedOrder.id }
               },
               select: { id: true }
             });
@@ -653,7 +815,7 @@ export class OrdersService {
             const currentOrderId = remainingOrder?.id ?? null;
 
             await tx.diningTable.update({
-              where: { id: expOrder.tableId },
+              where: { id: lockedOrder.tableId },
               data: {
                 status,
                 currentOrderId
@@ -670,8 +832,11 @@ export class OrdersService {
             }
           }
 
-          return { order: updatedOrder, tableState: nextTableState };
+          return { order: updatedOrder, tableState: nextTableState, stockChanges: restoredStock };
         });
+
+        if (!transactionResult) continue;
+        const { order, tableState, stockChanges } = transactionResult;
 
         cancelledOrderIds.push(order.id);
 
@@ -688,6 +853,7 @@ export class OrdersService {
 
         emitToRoom('restaurant:kds', 'order:statusChanged', socketPayload);
         emitToAll('order:statusChanged', socketPayload);
+        emitMenuStockChanged(stockChanges);
 
         if (tableState) {
           emitToAll('table:statusChanged', tableState);
