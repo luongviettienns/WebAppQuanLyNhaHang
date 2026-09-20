@@ -31,6 +31,9 @@ export async function truncateAllTables() {
   await prismaTest.$executeRawUnsafe(`SET FOREIGN_KEY_CHECKS = 0;`);
   const tables = [
     'InventoryTransaction',
+    'PurchaseReceiptLine',
+    'PurchaseReceipt',
+    'Supplier',
     'MenuItemIngredient',
     'Ingredient',
     'AuditLog',

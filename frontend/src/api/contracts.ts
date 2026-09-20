@@ -461,7 +461,9 @@ export type AuditAction =
   | 'INGREDIENT_CREATED'
   | 'INGREDIENT_UPDATED'
   | 'INVENTORY_STOCK_IN'
-  | 'INVENTORY_EXCEL_IMPORT';
+  | 'INVENTORY_EXCEL_IMPORT'
+  | 'SUPPLIER_CREATED'
+  | 'SUPPLIER_UPDATED';
 
 export interface AuditLogDto {
   id: number;
@@ -505,6 +507,32 @@ export interface IngredientDto {
   totalValue: number;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface SupplierDto {
+  id: number;
+  code: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  taxCode: string | null;
+  note: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SupplierPaginationDto {
+  page: number;
+  pageSize: number;
+  totalRows: number;
+  totalPages: number;
+}
+
+export interface SupplierListDataDto {
+  items: SupplierDto[];
+  pagination: SupplierPaginationDto;
 }
 
 export interface RecipeIngredientDto {

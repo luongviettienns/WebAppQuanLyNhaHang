@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { InventoryController } from './inventory.controller';
+import { SupplierController } from './supplier.controller';
 import { authenticate } from '../../middlewares/authenticate';
 import { authorize } from '../../middlewares/authorize';
 
@@ -14,6 +15,11 @@ inventoryRouter.use(authenticate, authorize('ADMIN'));
 // Danh sach kho hop nhat (read-only)
 inventoryRouter.get('/catalog', InventoryController.getCatalog);
 inventoryRouter.get('/catalog/export', InventoryController.exportCatalog);
+
+// Nha cung cap toi thieu cho phieu nhap hang
+inventoryRouter.get('/suppliers', SupplierController.list);
+inventoryRouter.post('/suppliers', SupplierController.create);
+inventoryRouter.patch('/suppliers/:id', SupplierController.update);
 
 // Nguyen vat lieu
 inventoryRouter.get('/ingredients', InventoryController.getIngredients);
