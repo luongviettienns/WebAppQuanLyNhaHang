@@ -61,7 +61,7 @@ interface InventoryCatalogDataDto {
 
 - Consumes existing `calculateRecipeCost`, `MenuItem`, `Ingredient`, and price-list BOM projections.
 
-- [ ] **Step 1: Write failing math/contract tests**
+- [x] **Step 1: Write failing math/contract tests**
 
 Add tests asserting a non-empty BOM rounds to the existing integer VND total, an empty BOM returns `null` from the new helper, and the existing `calculateRecipeCost([]) === 0` behavior remains unchanged for legacy callers until migrated. Add a price-list regression asserting a menu with no BOM exposes `costPrice: null`.
 
@@ -69,11 +69,11 @@ Run: `npm --prefix backend test -- --run backend/test/inventory/inventory.math.s
 
 Expected: FAIL because `calculateRecipeCostOrNull` and the shared price-list call do not exist yet.
 
-- [ ] **Step 2: Implement the helper and DTO types**
+- [x] **Step 2: Implement the helper and DTO types**
 
 Implement `calculateRecipeCostOrNull` as `bom.length === 0 ? null : calculateRecipeCost(bom)`. Keep `calculateRecipeCost` unchanged for existing order/report behavior. Update `PriceListService` read/export paths to use the new helper so price-list and catalog agree on empty-BOM semantics. Add the TypeScript DTOs, including nullable `costPrice`, `stockQuantity`, and `minStock`.
 
-- [ ] **Step 3: Run focused tests and commit**
+- [x] **Step 3: Run focused tests and commit**
 
 Run the command from Step 1 and `npm --prefix backend run typecheck`.
 

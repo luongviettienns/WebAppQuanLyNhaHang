@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { calculateNewWeightedAverageCost, calculateRecipeCost } from '../../src/modules/inventory/inventory.math';
+import { calculateNewWeightedAverageCost, calculateRecipeCost, calculateRecipeCostOrNull } from '../../src/modules/inventory/inventory.math';
 
 describe('Inventory Math - Weighted Average & Negative Stock Offsetting (TDD)', () => {
   describe('calculateNewWeightedAverageCost', () => {
@@ -103,6 +103,13 @@ describe('Inventory Math - Weighted Average & Negative Stock Offsetting (TDD)', 
 
     it('tra ve 0 neu cong thuc BOM rong', () => {
       expect(calculateRecipeCost([])).toBe(0);
+    });
+
+    it('tra ve null khi BOM rong de catalog hien thi chua co gia von', () => {
+      expect(calculateRecipeCostOrNull([])).toBeNull();
+      expect(calculateRecipeCostOrNull([
+        { quantityRequired: 2, costPerUnit: 1250 }
+      ])).toBe(2500);
     });
   });
 });

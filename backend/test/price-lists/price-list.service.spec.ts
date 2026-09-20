@@ -38,4 +38,15 @@ describe('PriceListService', () => {
     expect(prices.get(item.id)?.salePrice).toBe(item.basePrice);
     expect(prices.get(item.id)?.source).toBe('BASE_PRICE');
   });
+
+  it('returns null BOM cost for a menu item without ingredients', async () => {
+    const priceRow = await prismaTest.priceListItem.findFirstOrThrow();
+    await prismaTest.menuItemIngredient.deleteMany({ where: { menuItemId: priceRow.menuItemId } });
+
+    const data = await PriceListService.getGeneralPriceListData();
+    const row = data.items.find((candidate) => candidate.menuItemId === priceRow.menuItemId);
+
+    expect(row).toBeDefined();
+    expect(row?.costPrice).toBeNull();
+  });
 });

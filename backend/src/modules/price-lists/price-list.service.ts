@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { PriceDataClient, PriceResolveContext, ResolvedPrice } from './price-list.types';
 import { BulkPriceOperation } from './price-list.schemas';
 import { parsePriceImportBuffer, serializePriceListCsv } from './price-list.import';
+import { calculateRecipeCostOrNull } from '../inventory/inventory.math';
 
 function isWithinEffectiveWindow(priceList: { effectiveFrom: Date | null; effectiveTo: Date | null }, at: Date) {
   if (priceList.effectiveFrom && priceList.effectiveFrom > at) return false;
@@ -71,11 +72,10 @@ export class PriceListService {
         effectiveTo: priceList.effectiveTo
       },
       items: items.map(item => {
-        const costPrice = item.menuItem.menuItemIngredients.reduce(
-          (sum, recipe) => sum + recipe.quantityRequired * recipe.ingredient.costPerUnit,
-          0
-        );
-        const roundedCostPrice = Math.round(costPrice);
+        const costPrice = calculateRecipeCostOrNull(item.menuItem.menuItemIngredients.map(recipe => ({
+          quantityRequired: recipe.quantityRequired,
+          costPerUnit: recipe.ingredient.costPerUnit
+        })));
         return {
           id: item.id,
           priceListId: item.priceListId,
@@ -84,10 +84,10 @@ export class PriceListService {
           name: item.menuItem.name,
           categoryId: item.menuItem.categoryId,
           categoryName: item.menuItem.category.name,
-          costPrice: roundedCostPrice > 0 ? roundedCostPrice : null,
+          costPrice: costPrice !== null && costPrice > 0 ? costPrice : null,
           salePrice: item.salePrice,
-          marginPercent: roundedCostPrice > 0
-            ? Number((((item.salePrice - roundedCostPrice) / item.salePrice) * 100).toFixed(2))
+          marginPercent: costPrice !== null && costPrice > 0
+            ? Number((((item.salePrice - costPrice) / item.salePrice) * 100).toFixed(2))
             : null,
           version: item.version,
           updatedAt: item.updatedAt
@@ -179,15 +179,15 @@ export class PriceListService {
     if (rows.length === 0) throw ApiError.notFound('Bảng giá không có món để xuất');
 
     return serializePriceListCsv(rows.map(row => {
-      const costPrice = Math.round(row.menuItem.menuItemIngredients.reduce(
-        (sum, recipe) => sum + recipe.quantityRequired * recipe.ingredient.costPerUnit,
-        0
-      ));
+      const costPrice = calculateRecipeCostOrNull(row.menuItem.menuItemIngredients.map(recipe => ({
+        quantityRequired: recipe.quantityRequired,
+        costPerUnit: recipe.ingredient.costPerUnit
+      })));
       return {
         sku: row.menuItem.sku,
         name: row.menuItem.name,
         categoryName: row.menuItem.category.name,
-        costPrice: costPrice > 0 ? costPrice : null,
+        costPrice: costPrice !== null && costPrice > 0 ? costPrice : null,
         salePrice: row.salePrice
       };
     }));
