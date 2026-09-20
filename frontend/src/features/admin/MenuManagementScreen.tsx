@@ -1,5 +1,5 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { ArrowDown, ArrowUp, Check, Eye, ImageIcon, Pencil, Plus, Search, Sparkles, Trash2, Upload, X, Zap } from 'lucide-react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { ArrowDown, ArrowUp, Check, Download, Eye, FileSpreadsheet, ImageIcon, Pencil, Plus, Search, Sparkles, Trash2, Upload, X } from 'lucide-react-native';
 import {
   StyleSheet,
   Text,
@@ -21,6 +21,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
 import { CategoryDto, MenuItemDto, MenuItemType, MenuItemUpsertDto, MenuType } from '../../api/contracts';
 import { getApiBaseUrl, resolveImageUrl } from '../../api/config';
+import { downloadMenuExportApi } from '../../api/menuImport';
 import { elevation, radii, spacing, statusColors, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, Field, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import {
@@ -33,6 +34,7 @@ import {
   MenuTypeFilter
 } from './menuManagementFilters';
 import { moveCategory, normalizeCategoryDraft } from './categoryManagement';
+import { MenuImportModal } from './MenuImportModal';
 
 interface ModifierOptionForm {
   id?: number;
@@ -151,6 +153,7 @@ export const MenuManagementScreen: React.FC = () => {
     updateCategory,
     deleteCategory,
     reorderCategories,
+    fetchMenu,
     isLoadingMenu
   } = useRestaurant();
 
@@ -176,7 +179,7 @@ export const MenuManagementScreen: React.FC = () => {
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [isCategorySaving, setIsCategorySaving] = useState(false);
   const [isCategoryReordering, setIsCategoryReordering] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const isMobile = width < 768;
   const switchAppearance = {
     style: styles.switchTarget,
@@ -693,6 +696,28 @@ export const MenuManagementScreen: React.FC = () => {
     );
   };
 
+  const downloadMenu = async (format: 'csv' | 'xlsx') => {
+    if (Platform.OS !== 'web') {
+      showToast({ type: 'info', title: 'Export trên web', message: 'Hãy mở trang quản trị trên trình duyệt web để tải file menu.' });
+      return;
+    }
+
+    try {
+      const blob = await downloadMenuExportApi(token, format);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `menu_${new Date().toISOString().slice(0, 10)}.${format}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      showToast({ type: 'success', title: 'Đã export menu', message: `File ${format.toUpperCase()} đã sẵn sàng.` });
+    } catch (error) {
+      showToast({ type: 'error', title: 'Không thể export menu', message: error instanceof Error ? error.message : 'Lỗi tải file menu.' });
+    }
+  };
+
   const getCategoryName = (catId: number) => {
     return categories.find((c) => c.id === catId)?.name || 'Khác';
   };
@@ -734,6 +759,9 @@ export const MenuManagementScreen: React.FC = () => {
           actions={(
             <View style={styles.headerActions}>
               <Button testID="admin-btn-manage-categories" variant="secondary" label="Nhóm món" icon={Pencil} onPress={openCategoryManagement} />
+              <Button testID="admin-btn-import-menu" variant="secondary" label="Import menu" icon={Upload} onPress={() => setIsImportModalOpen(true)} />
+              <Button testID="admin-btn-export-csv" variant="secondary" label="Export CSV" icon={Download} onPress={() => void downloadMenu('csv')} />
+              <Button testID="admin-btn-export-xlsx" variant="secondary" label="Export Excel" icon={FileSpreadsheet} onPress={() => void downloadMenu('xlsx')} />
               <Button testID="admin-btn-add-item" variant="primary" label="Món mới" icon={Plus} onPress={openCreateModal} />
             </View>
           )}
@@ -1131,6 +1159,12 @@ export const MenuManagementScreen: React.FC = () => {
           )}
         </View>
       </View>
+
+      <MenuImportModal
+        visible={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onCommitted={() => void fetchMenu()}
+      />
 
       <Modal visible={isCategoryModalOpen} animationType="slide" transparent onRequestClose={() => setIsCategoryModalOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
