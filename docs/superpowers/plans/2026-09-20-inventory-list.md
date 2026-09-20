@@ -301,7 +301,7 @@ Commit: `git add frontend/src/api/inventoryCatalog.ts frontend/src/api/inventory
 - `inventoryCatalogViewModel` produces pure functions for status labels, filter serialization, row action target, summary formatting and stable row keys.
 - `InventoryScreen` remains the RoleTabs entry point and preserves the existing ingredient/BOM operations behind the “Quản lý nguyên liệu/BOM” section.
 
-- [ ] **Step 1: Write failing view-model tests**
+- [x] **Step 1: Write failing view-model tests**
 
 Test status precedence, labels for `LOW`, `NEGATIVE`, `NOT_TRACKED`, missing cost display, row keys `${sourceType}:${sourceId}`, row action mapping, and summary formatting without adding business logic to JSX.
 
@@ -309,27 +309,27 @@ Run: `npm --prefix frontend test -- --run src/features/admin/inventoryCatalogVie
 
 Expected: FAIL because the view-model does not exist.
 
-- [ ] **Step 2: Implement the catalog screen shell**
+- [x] **Step 2: Implement the catalog screen shell**
 
 Render the title “Kho hàng”, search field, management-group filters, category/menu type/status filters, summary cards, data table, loading/empty/error states, and export action. Keep columns aligned to the reference image: SKU, name, management group/category, cost, stock, min stock, status, and row action. Use existing theme tokens, `Button`, `Surface`, `StatusBadge`, `ScreenHeader`, icons and 44px touch targets.
 
-- [ ] **Step 3: Implement read-only row actions and reserved sections**
+- [x] **Step 3: Implement read-only row actions and reserved sections**
 
 For `INGREDIENT`, navigate/open the existing ingredient detail or stock-in path; for `MENU_ITEM`, navigate/open existing menu management and recipe/BOM path. Do not update catalog rows inline. Show reserved menu labels as disabled/non-navigable “Chưa triển khai” entries only; do not create routes or screens for them. “Thêm mới” and “Import” must open the existing ingredient/menu flows rather than writing through the catalog.
 
-- [ ] **Step 4: Preserve existing InventoryScreen operations**
+- [x] **Step 4: Preserve existing InventoryScreen operations**
 
 Refactor the current ingredient/BOM UI into a section component or keep it as the legacy section under the new shell. Verify ingredient create/edit, stock-in, Excel preview/commit, and recipe update retain their current API calls and behavior. The catalog is the default section, but the existing operations remain reachable from explicit navigation.
 
-- [ ] **Step 5: Add revision-driven refetch and export**
+- [x] **Step 5: Add revision-driven refetch and export**
 
 When `inventoryRevision` changes, refetch using the current filters/page and retain the current scroll/filter state. Export uses the current filters and downloads the server snapshot; it must not create a transaction. Reset page to 1 when search or a filter changes, and show an empty-page fallback if the current page becomes invalid after an update.
 
-- [ ] **Step 6: Run frontend tests and typecheck**
+- [x] **Step 6: Run frontend tests and typecheck**
 
 Run the view-model/API tests, `npm --prefix frontend test`, and `npm --prefix frontend run typecheck`.
 
-Expected: PASS; RoleTabs still renders the Admin Kho hàng tab and the existing menu/price/POS screens are unaffected.
+Expected: Focused/full frontend tests PASS and the new catalog files typecheck cleanly. Full project typecheck remains blocked by pre-existing `priceList.ts`/PriceList UI/theme contract errors; RoleTabs already rendered the Admin Kho hàng tab and remains unchanged.
 
 Commit: `git add frontend/src/features/admin frontend/src/navigation/RoleTabs.tsx frontend/src/ui/index.ts && git commit -m "feat(inventory): add unified catalog screen"`
 

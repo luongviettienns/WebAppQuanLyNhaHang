@@ -34,7 +34,8 @@ import { useRestaurant } from '../../contexts/RestaurantContext';
 import {
   IngredientDto,
   MenuItemRecipeDto,
-  ExcelPreviewResultDto
+  ExcelPreviewResultDto,
+  InventoryCatalogRowDto
 } from '../../api/contracts';
 import {
   fetchIngredientsApi,
@@ -49,18 +50,22 @@ import {
 import { getApiBaseUrl } from '../../api/config';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
+import { InventoryCatalogScreen } from './InventoryCatalogScreen';
 
 type ActiveTab = 'inventory' | 'bom';
 type StockFilter = 'ALL' | 'LOW' | 'NEGATIVE';
 
-export const InventoryScreen: React.FC = () => {
+const LegacyInventoryOperations: React.FC<{ initialTab?: ActiveTab; initialMenuItemId?: number }> = ({
+  initialTab = 'inventory',
+  initialMenuItemId
+}) => {
   const { theme } = useTheme();
   const { token } = useAuth();
   const { allMenuItems } = useRestaurant();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('inventory');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   const [ingredients, setIngredients] = useState<IngredientDto[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -95,7 +100,7 @@ export const InventoryScreen: React.FC = () => {
 
   // BOM Recipe State
 
-  const [selectedMenuItemId, setSelectedMenuItemId] = useState<number | null>(null);
+  const [selectedMenuItemId, setSelectedMenuItemId] = useState<number | null>(initialMenuItemId ?? null);
   const [currentRecipe, setCurrentRecipe] = useState<MenuItemRecipeDto | null>(null);
   const [isLoadingRecipe, setIsLoadingRecipe] = useState<boolean>(false);
   const [isSavingRecipe, setIsSavingRecipe] = useState<boolean>(false);
@@ -1171,6 +1176,42 @@ export const InventoryScreen: React.FC = () => {
     </SafeAreaView>
   );
 };
+
+export const InventoryScreen: React.FC = () => {
+  const { theme } = useTheme();
+  const [section, setSection] = useState<'catalog' | 'operations'>('catalog');
+  const [legacyTab, setLegacyTab] = useState<ActiveTab>('inventory');
+  const [legacyMenuItemId, setLegacyMenuItemId] = useState<number | undefined>();
+
+  const openLegacyOperations = (row?: InventoryCatalogRowDto) => {
+    setLegacyTab(row?.sourceType === 'MENU_ITEM' ? 'bom' : 'inventory');
+    setLegacyMenuItemId(row?.sourceType === 'MENU_ITEM' ? row.sourceId : undefined);
+    setSection('operations');
+  };
+
+  return (
+    <View style={[shellStyles.container, { backgroundColor: theme.surfaceCanvas }]}>
+      <View style={[shellStyles.sectionNav, { borderBottomColor: theme.borderSubtle, backgroundColor: theme.surfaceBase }]}>
+        <Pressable onPress={() => setSection('catalog')} style={[shellStyles.sectionButton, section === 'catalog' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: section === 'catalog' ? theme.primary : theme.textSecondary }]}>Danh sách kho hàng</Text>
+        </Pressable>
+        <Pressable onPress={() => setSection('operations')} style={[shellStyles.sectionButton, section === 'operations' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: section === 'operations' ? theme.primary : theme.textSecondary }]}>Quản lý nguyên liệu / BOM</Text>
+        </Pressable>
+      </View>
+      {section === 'catalog'
+        ? <InventoryCatalogScreen onOpenLegacyOperations={openLegacyOperations} />
+        : <LegacyInventoryOperations initialTab={legacyTab} initialMenuItemId={legacyMenuItemId} />}
+    </View>
+  );
+};
+
+const shellStyles = StyleSheet.create({
+  container: { flex: 1 },
+  sectionNav: { borderBottomWidth: 1, flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  sectionButton: { borderColor: 'transparent', borderRadius: radii.md, borderWidth: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
+  sectionButtonText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm }
+});
 
 const styles = StyleSheet.create({
   container: {
