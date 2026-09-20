@@ -19,7 +19,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
-import { CategoryDto, MenuItemDto, MenuItemType, MenuItemUpsertDto, MenuType } from '../../api/contracts';
+import { CategoryDto, MenuBulkAction, MenuBulkPayload, MenuItemDto, MenuItemType, MenuItemUpsertDto, MenuType } from '../../api/contracts';
 import { getApiBaseUrl, resolveImageUrl } from '../../api/config';
 import { downloadMenuExportApi } from '../../api/menuImport';
 import { elevation, radii, spacing, statusColors, typography } from '../../theme';
@@ -35,6 +35,7 @@ import {
 } from './menuManagementFilters';
 import { moveCategory, normalizeCategoryDraft } from './categoryManagement';
 import { MenuImportModal } from './MenuImportModal';
+import { MenuBulkActions } from './MenuBulkActions';
 
 interface ModifierOptionForm {
   id?: number;
@@ -153,6 +154,7 @@ export const MenuManagementScreen: React.FC = () => {
     updateCategory,
     deleteCategory,
     reorderCategories,
+    bulkUpdateMenuItems,
     fetchMenu,
     isLoadingMenu
   } = useRestaurant();
@@ -259,6 +261,19 @@ export const MenuManagementScreen: React.FC = () => {
     setMenuTypeFilter('all');
     setItemTypeFilter('all');
     setStockStatusFilter('all');
+  };
+
+  const handleBulkSubmit = async (action: MenuBulkAction, payload: MenuBulkPayload): Promise<boolean> => {
+    const result = await bulkUpdateMenuItems(selectedItemIds, action, payload);
+    if (!result.success) {
+      showToast({ type: 'error', title: 'Không thể cập nhật hàng loạt', message: result.error || 'Vui lòng thử lại.' });
+      return false;
+    }
+
+    await fetchMenu();
+    setSelectedItemIds([]);
+    showToast({ type: 'success', title: 'Đã cập nhật menu', message: `Đã áp dụng cho ${result.result?.updatedCount ?? selectedItemIds.length} món.` });
+    return true;
   };
 
   const openCreateModal = () => {
@@ -787,6 +802,15 @@ export const MenuManagementScreen: React.FC = () => {
             <Button variant="secondary" label="Xóa lọc" onPress={clearFilters} />
           </View>
         </View>
+        {selectedItemIds.length > 0 && (
+          <MenuBulkActions
+            selectedIds={selectedItemIds}
+            categories={categories}
+            loading={isLoadingMenu}
+            onSubmit={handleBulkSubmit}
+            onClear={() => setSelectedItemIds([])}
+          />
+        )}
       </View>
 
       <View style={[styles.managementBody, isMobile && styles.managementBodyMobile]}>

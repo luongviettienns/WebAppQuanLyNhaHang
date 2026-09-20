@@ -148,3 +148,49 @@ export type MenuImportPreviewInput = z.infer<typeof menuImportPreviewSchema>;
 export type MenuImportRowInput = z.infer<typeof menuImportRowSchema>;
 export type MenuImportCommitInput = z.infer<typeof menuImportCommitSchema>;
 export type MenuExportFormat = z.infer<typeof menuExportQuerySchema>['format'];
+
+const bulkMenuItemIdsSchema = z
+  .array(z.number().int().positive('ID món ăn phải là số nguyên dương'))
+  .min(1, 'Phải chọn ít nhất một món ăn')
+  .max(200, 'Mỗi lần chỉ được chọn tối đa 200 món ăn')
+  .refine(ids => new Set(ids).size === ids.length, 'Danh sách món ăn không được chứa ID trùng lặp');
+
+export const menuBulkActionSchema = z.discriminatedUnion('action', [
+  z.object({
+    ids: bulkMenuItemIdsSchema,
+    action: z.literal('setAvailability'),
+    payload: z.object({ isAvailable: z.boolean() })
+  }),
+  z.object({
+    ids: bulkMenuItemIdsSchema,
+    action: z.literal('setCategory'),
+    payload: z.object({ categoryId: z.number().int().positive('categoryId phải là số nguyên dương') })
+  }),
+  z.object({
+    ids: bulkMenuItemIdsSchema,
+    action: z.literal('setMenuType'),
+    payload: z.object({ menuType: menuTypeSchema })
+  }),
+  z.object({
+    ids: bulkMenuItemIdsSchema,
+    action: z.literal('setItemType'),
+    payload: z.object({ itemType: menuItemTypeSchema })
+  }),
+  z.object({
+    ids: bulkMenuItemIdsSchema,
+    action: z.literal('setTrackStock'),
+    payload: z.object({ trackStock: z.boolean() })
+  }),
+  z.object({
+    ids: bulkMenuItemIdsSchema,
+    action: z.literal('adjustStock'),
+    payload: z.object({ delta: z.number().int('delta phải là số nguyên') })
+  }),
+  z.object({
+    ids: bulkMenuItemIdsSchema,
+    action: z.literal('delete'),
+    payload: z.object({}).optional().default({})
+  })
+]);
+
+export type MenuBulkActionInput = z.infer<typeof menuBulkActionSchema>;

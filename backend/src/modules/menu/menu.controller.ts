@@ -7,6 +7,7 @@ import {
   createMenuItemSchema,
   deleteCategorySchema,
   menuExportQuerySchema,
+  menuBulkActionSchema,
   menuImportCommitSchema,
   menuImportPreviewSchema,
   reorderCategoriesSchema,
@@ -146,6 +147,16 @@ export class MenuController {
       const { isAvailable } = updateSoldOutSchema.parse(req.body);
 
       const data = await MenuService.updateSoldOut(menuItemId, isAvailable, req.user?.id, req.user?.name);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async bulkUpdateMenuItems(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validated = menuBulkActionSchema.parse(req.body);
+      const data = await MenuService.bulkUpdateMenuItems(validated, req.user?.id, req.user?.name);
       res.status(200).json({ data });
     } catch (error) {
       next(error);

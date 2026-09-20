@@ -12,6 +12,28 @@ export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD';
 export type PaymentStatus = 'UNPAID' | 'PAID' | 'VOIDED';
 export type MenuType = 'FOOD' | 'DRINK' | 'SERVICE' | 'OTHER';
 export type MenuItemType = 'REGULAR' | 'TOPPING' | 'COMBO' | 'SERVICE';
+export type MenuBulkAction =
+  | 'setAvailability'
+  | 'setCategory'
+  | 'setMenuType'
+  | 'setItemType'
+  | 'setTrackStock'
+  | 'adjustStock'
+  | 'delete';
+
+export type MenuBulkPayload =
+  | { isAvailable: boolean }
+  | { categoryId: number }
+  | { menuType: MenuType }
+  | { itemType: MenuItemType }
+  | { trackStock: boolean }
+  | { delta: number }
+  | Record<string, never>;
+
+export interface MenuBulkActionResultDto {
+  updatedCount: number;
+  action: MenuBulkAction;
+}
 
 export type ErrorCode =
   | 'VALIDATION_ERROR'

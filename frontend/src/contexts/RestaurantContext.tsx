@@ -16,11 +16,15 @@ import {
   SocketOrderNewPayload,
   ApiResponse,
   MenuItemUpsertDto,
-  DailyReportDto
+  DailyReportDto,
+  MenuBulkAction,
+  MenuBulkActionResultDto,
+  MenuBulkPayload
 } from '../api/contracts';
 import { useAuth } from './AuthContext';
 import { getApiBaseUrl, getSocketBaseUrl, onServerConfigChanged } from '../api/config';
 import { IdempotencyKeyStore } from '../lib/idempotency';
+import { bulkUpdateMenuItemsApi } from '../api/menuBulk';
 
 export interface CartItem {
   menuItem: MenuItemDto;
@@ -100,6 +104,7 @@ interface RestaurantContextType {
   // Admin Menu Management & Reports
   createMenuItem: (payload: MenuItemUpsertDto) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
   updateMenuItem: (id: number, payload: MenuItemUpsertDto) => Promise<{ success: boolean; menuItem?: MenuItemDto; error?: string }>;
+  bulkUpdateMenuItems: (ids: number[], action: MenuBulkAction, payload: MenuBulkPayload) => Promise<{ success: boolean; result?: MenuBulkActionResultDto; error?: string }>;
   fetchDailyReport: (date?: string) => Promise<{ success: boolean; report?: DailyReportDto; error?: string }>;
 }
 
@@ -897,6 +902,22 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   };
 
+  const bulkUpdateMenuItems = async (
+    ids: number[],
+    action: MenuBulkAction,
+    payload: MenuBulkPayload
+  ): Promise<{ success: boolean; result?: MenuBulkActionResultDto; error?: string }> => {
+    try {
+      const result = await bulkUpdateMenuItemsApi(token, ids, action, payload);
+      return { success: true, result };
+    } catch (err: any) {
+      if (err?.status === 401) {
+        handleUnauthorized('Mã JWT Token không hợp lệ hoặc đã hết hạn.');
+      }
+      return { success: false, error: err.message || 'Lỗi kết nối khi cập nhật hàng loạt menu' };
+    }
+  };
+
   const fetchDailyReport = async (
     date?: string
   ): Promise<{ success: boolean; report?: DailyReportDto; error?: string }> => {
@@ -975,6 +996,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         toggleMenuItemSoldOut,
         createMenuItem,
         updateMenuItem,
+        bulkUpdateMenuItems,
         fetchDailyReport
       }}
     >

@@ -8,6 +8,7 @@ import {
   CreateMenuItemInput,
   DeleteCategoryInput,
   MenuExportFormat,
+  MenuBulkActionInput,
   MenuImportCommitInput,
   MenuImportRowInput,
   ReorderCategoriesInput,
@@ -51,6 +52,76 @@ function isSkuUniqueConstraintError(error: unknown) {
 }
 
 export class MenuService {
+  static async bulkUpdateMenuItems(input: MenuBulkActionInput, actorId?: number, actorName?: string) {
+    const items = await prisma.menuItem.findMany({
+      where: { id: { in: input.ids } },
+      select: { id: true, stockQuantity: true }
+    });
+
+    if (items.length !== input.ids.length) {
+      throw ApiError.badRequest('Một hoặc nhiều món ăn không tồn tại');
+    }
+
+    if (input.action === 'setCategory') {
+      const category = await prisma.category.findUnique({
+        where: { id: input.payload.categoryId },
+        select: { id: true }
+      });
+      if (!category) {
+        throw ApiError.badRequest(`Danh mục với ID ${input.payload.categoryId} không tồn tại`);
+      }
+    }
+
+    if (input.action === 'adjustStock') {
+      const hasNegativeStock = items.some(item => item.stockQuantity + input.payload.delta < 0);
+      if (hasNegativeStock) {
+        throw ApiError.badRequest('Tồn kho sau cập nhật không được âm');
+      }
+    }
+
+    const result = await prisma.$transaction(async tx => {
+      if (input.action === 'adjustStock') {
+        for (const item of items) {
+          await tx.menuItem.update({
+            where: { id: item.id },
+            data: { stockQuantity: item.stockQuantity + input.payload.delta }
+          });
+        }
+      } else {
+        const data = input.action === 'setAvailability'
+          ? { isAvailable: input.payload.isAvailable }
+          : input.action === 'setCategory'
+            ? { categoryId: input.payload.categoryId }
+            : input.action === 'setMenuType'
+              ? { menuType: input.payload.menuType }
+              : input.action === 'setItemType'
+                ? { itemType: input.payload.itemType }
+                : input.action === 'setTrackStock'
+                  ? { trackStock: input.payload.trackStock }
+                  : { isAvailable: false };
+
+        await tx.menuItem.updateMany({
+          where: { id: { in: input.ids } },
+          data
+        });
+      }
+
+      return { updatedCount: input.ids.length, action: input.action };
+    });
+
+    await AuditService.log({
+      action: 'MENU_ITEMS_BULK_UPDATED',
+      targetType: 'MenuItem',
+      targetId: null,
+      actorId,
+      actorName,
+      metadata: { action: input.action, ids: input.ids, updatedCount: result.updatedCount }
+    });
+    emitToAll('menu:bulkChanged', result);
+
+    return result;
+  }
+
   static async exportMenu(format: MenuExportFormat): Promise<Buffer> {
     const categories = await prisma.category.findMany({
       orderBy: { displayOrder: 'asc' },
