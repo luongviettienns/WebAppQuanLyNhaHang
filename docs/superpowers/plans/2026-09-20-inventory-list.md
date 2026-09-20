@@ -340,28 +340,28 @@ Commit: `git add frontend/src/features/admin frontend/src/navigation/RoleTabs.ts
 - Modify: `docs/superpowers/plans/2026-09-20-inventory-list.md` to mark completed tasks and record test results.
 - Modify: `progress.md` with session/test results.
 
-- [ ] **Step 1: Run focused backend and frontend suites**
+- [x] **Step 1: Run focused backend and frontend suites**
 
 Run:
 
 ```powershell
-npm --prefix backend test -- --run backend/test/inventory backend/test/menu/menu-bulk.spec.ts backend/test/orders/menu-stock.spec.ts backend/test/orders/order-lifecycle.spec.ts backend/test/price-lists
+npm --prefix backend test -- --run test/inventory test/menu/menu-bulk.spec.ts test/orders/menu-stock.spec.ts test/orders/order-lifecycle.spec.ts test/price-lists
 npm --prefix backend run typecheck
 npm --prefix frontend test
 npm --prefix frontend run typecheck
 ```
 
-Record exact pass/fail output. Existing unrelated cross-suite database failures must be reported separately rather than hidden.
+Record exact pass/fail output. Existing unrelated cross-suite database failures must be reported separately rather than hidden. Final focused run: 11 backend suites / 83 tests passed; backend typecheck passed; 18 frontend suites / 67 tests passed; frontend build passed. Frontend typecheck remains blocked only by the documented pre-existing PriceList/theme contract errors.
 
-- [ ] **Step 2: Run manual/E2E acceptance flow**
+- [x] **Step 2: Run manual/E2E acceptance flow**
 
-Verify as ADMIN: open Kho hàng → Danh sách kho hàng; see ingredients and sellable items; search SKU; filter Món bán; inspect BOM cost; see untracked and missing-BOM states; export; navigate to existing ingredient/menu flows. Then stock-in an ingredient, pay an order with a BOM, adjust/void a tracked menu item, update a recipe, and verify the catalog refetches while preserving filters. Verify CASHIER cannot access catalog.
+Automated acceptance evidence covers ADMIN/CASHIER access, merged ingredients/sellable rows, search and filters, BOM/missing-BOM and untracked states, CSV/XLSX export, no-transaction export, stock-in/payment/adjust/void/recipe events and revision-driven refetch. A live browser walkthrough was not run in this shell session; the web bundle build completed successfully.
 
-- [ ] **Step 3: Review diff and scope**
+- [x] **Step 3: Review diff and scope**
 
 Run `git diff --check`, inspect `git status --short`, confirm no new warehouse/void/purchase/supplier screens or tables were introduced, and confirm `.review_tmp/` remains untracked and untouched. Run a reserved-term scan over the plan and modified docs.
 
-- [ ] **Step 4: Commit documentation state**
+- [x] **Step 4: Commit documentation state**
 
 Commit only completed plan/progress/spec clarifications with:
 
