@@ -11,6 +11,10 @@ inventoryRouter.get('/excel/template', InventoryController.downloadTemplate);
 // Tat ca cac route con lai quan ly kho va dinh luong yeu cau quyen ADMIN
 inventoryRouter.use(authenticate, authorize('ADMIN'));
 
+// Danh sach kho hop nhat (read-only)
+inventoryRouter.get('/catalog', InventoryController.getCatalog);
+inventoryRouter.get('/catalog/export', InventoryController.exportCatalog);
+
 // Nguyen vat lieu
 inventoryRouter.get('/ingredients', InventoryController.getIngredients);
 inventoryRouter.post('/ingredients', InventoryController.createIngredient);

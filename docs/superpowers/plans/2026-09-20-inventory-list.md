@@ -173,23 +173,23 @@ Commit: `git add backend/src/modules/inventory/inventory-catalog.service.ts back
 - `GET /api/inventory/catalog/export?format=csv|xlsx&...filters` returns a snapshot file using the same filters but no pagination.
 - Both endpoints use existing `authenticate` + `authorize('ADMIN')` middleware.
 
-- [ ] **Step 1: Write failing API/auth/filter tests**
+- [x] **Step 1: Write failing API/auth/filter tests**
 
 Cover unauthenticated and CASHIER `401/403`, ADMIN default catalog, query validation, page metadata, `isActive=all`, empty result, and export. The export test must assert headers and that reading/exporting does not create an `InventoryTransaction`.
 
-Run: `npm --prefix backend test -- --run backend/test/inventory/inventory-catalog.api.spec.ts`
+Run: `npm --prefix backend test -- --run test/inventory/inventory-catalog.api.spec.ts`
 
 Expected: FAIL because routes/controller/exporter are not registered.
 
-- [ ] **Step 2: Implement controller and route registration**
+- [x] **Step 2: Implement controller and route registration**
 
 Parse the query with the catalog schema, call `getCatalog`, and return `{ data }`. Add a separate export handler that strips pagination, serializes the snapshot, and sets `Content-Disposition` with a timestamped filename. Do not reuse the existing ingredient-only `/excel/export` route for the merged export.
 
-- [ ] **Step 3: Implement CSV/XLSX serialization and Swagger**
+- [x] **Step 3: Implement CSV/XLSX serialization and Swagger**
 
 Serialize columns `sourceType`, `managementGroup`, `sku`, `name`, `categoryName`, `menuType`, `unit`, `costPrice`, `stockQuantity`, `minStock`, `stockStatus`, `isActive`, `position`, and `updatedAt`. Escape CSV cells and use the existing `xlsx` dependency for XLSX. Document query parameters, `data.rows`, `data.summary`, pagination and the ADMIN requirement in Swagger.
 
-- [ ] **Step 4: Run API tests and commit**
+- [x] **Step 4: Run API tests and commit**
 
 Run the focused API test and `npm --prefix backend run typecheck`.
 
