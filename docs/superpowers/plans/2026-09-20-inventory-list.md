@@ -262,7 +262,7 @@ Commit: `git add backend/src/modules/inventory backend/src/modules/menu/menu.ser
 - `downloadInventoryCatalogExportApi(token, filter, format): Promise<Blob>`.
 - Add `SocketInventoryChangedPayload` and catalog DTOs to `contracts.ts`.
 
-- [ ] **Step 1: Write failing API helper tests**
+- [x] **Step 1: Write failing API helper tests**
 
 Mock `fetch` like `frontend/src/api/priceList.test.ts` and assert query serialization for search, group, category, menu type, status, `isActive`, page, page size and sorting. Assert export URL/headers and error handling.
 
@@ -270,19 +270,19 @@ Run: `npm --prefix frontend test -- --run src/api/inventoryCatalog.test.ts`
 
 Expected: FAIL because the API module and DTOs do not exist.
 
-- [ ] **Step 2: Implement typed API helpers**
+- [x] **Step 2: Implement typed API helpers**
 
 Use the existing `getApiBaseUrl`, auth header and API error envelope. Omit default/empty query parameters, preserve `page` and `pageSize`, and expose a separate blob download helper for CSV/XLSX.
 
-- [ ] **Step 3: Add shared invalidation state**
+- [x] **Step 3: Add shared invalidation state**
 
 Register `socket.on('inventory:changed')` in `RestaurantContext`. Expose a monotonically increasing `inventoryRevision` or callback that `InventoryCatalogScreen` can subscribe to; do not refetch the catalog from the global context itself because its filters and pagination are screen-local. Keep existing menu stock and price-list listeners unchanged.
 
-- [ ] **Step 4: Run frontend tests and typecheck**
+- [x] **Step 4: Run frontend tests and typecheck**
 
 Run `npm --prefix frontend test -- --run src/api/inventoryCatalog.test.ts` and `npm --prefix frontend run typecheck`.
 
-Expected: PASS with no changes to POS/QR pricing behavior.
+Expected: Focused API tests PASS with no changes to POS/QR pricing behavior. Full frontend typecheck is currently blocked by pre-existing `priceList.ts`/PriceList UI contract errors outside this task.
 
 Commit: `git add frontend/src/api/inventoryCatalog.ts frontend/src/api/inventoryCatalog.test.ts frontend/src/api/contracts.ts frontend/src/contexts/RestaurantContext.tsx && git commit -m "feat(inventory): add catalog client contract"`
 

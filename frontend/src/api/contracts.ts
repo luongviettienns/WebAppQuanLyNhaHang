@@ -604,3 +604,33 @@ export interface InventoryCatalogDataDto {
   pagination: InventoryCatalogPaginationDto;
 }
 
+export type InventoryCatalogExportFormat = 'csv' | 'xlsx';
+
+export interface InventoryCatalogFilter {
+  search?: string;
+  managementGroup?: InventoryManagementGroup;
+  categoryId?: number;
+  menuType?: MenuType;
+  stockStatus?: 'ALL' | InventoryStockStatus;
+  position?: string;
+  isActive?: 'true' | 'false' | 'all';
+  page?: number;
+  pageSize?: number;
+  sortBy?: 'sku' | 'name' | 'costPrice' | 'stockQuantity' | 'updatedAt';
+  sortOrder?: 'asc' | 'desc';
+}
+
+export interface SocketInventoryChangedPayload {
+  sourceType: 'INGREDIENT' | 'MENU_ITEM';
+  sourceIds: number[];
+  reason:
+    | 'STOCK_IN'
+    | 'ORDER_PAID'
+    | 'ORDER_VOIDED'
+    | 'MANUAL_ADJUST'
+    | 'RECIPE_UPDATED'
+    | 'INGREDIENT_UPDATED'
+    | 'MENU_ITEM_UPDATED';
+  updatedAt: string;
+}
+

@@ -26,7 +26,8 @@ import {
   PriceListImportPreviewDto,
   PriceFormulaOperation,
   SocketPriceListBulkChangedPayload,
-  SocketPriceListItemChangedPayload
+  SocketPriceListItemChangedPayload,
+  SocketInventoryChangedPayload
 } from '../api/contracts';
 import { useAuth } from './AuthContext';
 import { getApiBaseUrl, getSocketBaseUrl, onServerConfigChanged } from '../api/config';
@@ -107,6 +108,7 @@ interface RestaurantContextType {
 
   // Real-time Updates
   latestOrderStatusChanged?: SocketOrderStatusChangedPayload | null;
+  inventoryRevision: number;
 
   // KDS State (Bếp thời gian thực)
   kdsOrders: OrderDto[];
@@ -172,6 +174,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [priceListData, setPriceListData] = useState<PriceListDataDto | null>(null);
   const [isLoadingPriceList, setIsLoadingPriceList] = useState(false);
   const [priceListError, setPriceListError] = useState<string | null>(null);
+  const [inventoryRevision, setInventoryRevision] = useState(0);
 
   // 1. Fetch Menu from Backend API
   const fetchMenu = useCallback(async () => {
@@ -546,6 +549,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     socket.on('priceList:bulkChanged', (_payload: SocketPriceListBulkChangedPayload) => {
       if (user?.role === 'ADMIN') fetchPriceList();
       fetchMenu();
+    });
+
+    socket.on('inventory:changed', (_payload: SocketInventoryChangedPayload) => {
+      setInventoryRevision((revision) => revision + 1);
     });
 
     // Table Status Changed
@@ -1153,6 +1160,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         updateTableStatus,
         voidOrder,
         latestOrderStatusChanged,
+        inventoryRevision,
         kdsOrders,
         isLoadingKDS,
         kdsError,
