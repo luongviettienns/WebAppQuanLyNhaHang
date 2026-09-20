@@ -60,6 +60,18 @@ enum MenuItemType {
   SERVICE
 }
 
+enum PriceListType {
+  GENERAL
+  CUSTOM
+}
+
+enum PriceListScopeType {
+  GLOBAL
+  BRANCH
+  CHANNEL
+  CUSTOMER_GROUP
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
@@ -83,6 +95,29 @@ model Category {
   menuItems    MenuItem[]
 }
 
+model PriceList {
+  id              Int                 @id @default(autoincrement())
+  code            String              @unique
+  name            String
+  type            PriceListType       @default(GENERAL)
+  scopeType       PriceListScopeType  @default(GLOBAL)
+  scopeKey        String?
+  isDefault       Boolean             @default(false)
+  isActive        Boolean             @default(true)
+  effectiveFrom   DateTime?
+  effectiveTo     DateTime?
+  createdByUserId Int?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  items PriceListItem[]
+  orders Order[]
+
+  @@index([scopeType, scopeKey])
+  @@index([isDefault, isActive])
+  @@index([effectiveFrom, effectiveTo])
+}
+
 model MenuItem {
   id            Int          @id @default(autoincrement())
   categoryId    Int
@@ -104,7 +139,24 @@ model MenuItem {
   category       Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   modifierGroups ModifierGroup[]
   orderItems     OrderItem[]
+  priceListItems PriceListItem[]
   menuItemIngredients MenuItemIngredient[]
+}
+
+model PriceListItem {
+  id          Int      @id @default(autoincrement())
+  priceListId Int
+  menuItemId  Int
+  salePrice   Int
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  priceList PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  menuItem  MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  @@unique([priceListId, menuItemId])
+  @@index([menuItemId])
 }
 
 model ModifierGroup {
@@ -152,6 +204,7 @@ model Order {
   orderType     OrderType      @default(DINE_IN)
   status        OrderStatus    @default(PENDING)
   tableId       Int?
+  priceListId   Int?
   buzzerNumber  Int?
   totalAmount   Int // Tong tien truoc thue (VND)
   vatAmount     Int // Tien thue VAT 8% (VND)
@@ -182,6 +235,7 @@ model Order {
   updatedAt DateTime @updatedAt
 
   table         DiningTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  priceList     PriceList?   @relation(fields: [priceListId], references: [id], onDelete: SetNull)
   createdByUser User?        @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
   voidedByUser  User?        @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
   items         OrderItem[]

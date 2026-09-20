@@ -466,7 +466,46 @@ export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
 
   console.log('✅ Da tao thanh cong 5 Danh muc va 21+ Mon an kem Modifiers');
 
-  // 4. Seed 8 Nguyen vat lieu trong yeu (BOM & Kho)
+  // 4. Seed bang gia chung va backfill gia ban tu MenuItem
+  const generalPriceList = await prisma.priceList.upsert({
+    where: { code: 'GENERAL' },
+    update: {
+      name: 'Bảng giá chung',
+      type: 'GENERAL',
+      scopeType: 'GLOBAL',
+      isDefault: true,
+      isActive: true
+    },
+    create: {
+      code: 'GENERAL',
+      name: 'Bảng giá chung',
+      type: 'GENERAL',
+      scopeType: 'GLOBAL',
+      isDefault: true,
+      isActive: true
+    }
+  });
+
+  const seededMenuItems = await prisma.menuItem.findMany({ select: { id: true, basePrice: true } });
+  for (const item of seededMenuItems) {
+    await prisma.priceListItem.upsert({
+      where: {
+        priceListId_menuItemId: {
+          priceListId: generalPriceList.id,
+          menuItemId: item.id
+        }
+      },
+      update: {},
+      create: {
+        priceListId: generalPriceList.id,
+        menuItemId: item.id,
+        salePrice: item.basePrice
+      }
+    });
+  }
+  console.log(`✅ Đã seed Bảng giá chung cho ${seededMenuItems.length} món`);
+
+  // 5. Seed 8 Nguyen vat lieu trong yeu (BOM & Kho)
   console.log('📦 Bat dau seed Danh muc Nguyen vat lieu va Dinh luong BOM...');
   const sampleIngredients = [
     {

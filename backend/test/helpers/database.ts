@@ -36,6 +36,8 @@ export async function truncateAllTables() {
     'AuditLog',
     'OrderItem',
     'Order',
+    'PriceListItem',
+    'PriceList',
     'ModifierOption',
     'ModifierGroup',
     'MenuItem',
