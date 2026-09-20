@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { InventoryController } from './inventory.controller';
 import { SupplierController } from './supplier.controller';
+import { PurchaseReceiptController } from './purchase-receipt.controller';
 import { authenticate } from '../../middlewares/authenticate';
 import { authorize } from '../../middlewares/authorize';
 
@@ -20,6 +21,14 @@ inventoryRouter.get('/catalog/export', InventoryController.exportCatalog);
 inventoryRouter.get('/suppliers', SupplierController.list);
 inventoryRouter.post('/suppliers', SupplierController.create);
 inventoryRouter.patch('/suppliers/:id', SupplierController.update);
+
+// Phieu nhap hang theo vong doi draft -> posted/cancelled
+inventoryRouter.get('/purchase-receipts', PurchaseReceiptController.list);
+inventoryRouter.post('/purchase-receipts', PurchaseReceiptController.create);
+inventoryRouter.get('/purchase-receipts/:id', PurchaseReceiptController.detail);
+inventoryRouter.patch('/purchase-receipts/:id', PurchaseReceiptController.update);
+inventoryRouter.post('/purchase-receipts/:id/post', PurchaseReceiptController.post);
+inventoryRouter.post('/purchase-receipts/:id/cancel', PurchaseReceiptController.cancel);
 
 // Nguyen vat lieu
 inventoryRouter.get('/ingredients', InventoryController.getIngredients);
