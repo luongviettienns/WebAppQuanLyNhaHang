@@ -110,7 +110,7 @@ type InventoryCatalogFilter = {
 - Produces `InventoryCatalogService.getCatalog(filter, db = prisma): Promise<InventoryCatalogDataDto>`.
 - Produces `InventoryCatalogService.getCatalogSnapshot(filter, db = prisma): Promise<InventoryCatalogRowDto[]>` for export.
 
-- [ ] **Step 1: Write failing mapping and pagination tests**
+- [x] **Step 1: Write failing mapping and pagination tests**
 
 Seed or create one ingredient, one tracked menu item with a BOM, one untracked menu item, and one menu item without a BOM. Assert:
 
@@ -125,15 +125,15 @@ expect(data.pagination.totalRows).toBe(4);
 
 Add a page-boundary test with mixed SKUs and assert stable order across page 1/page 2, plus summary counts over all four rows. Add filter tests for `managementGroup`, `categoryId`, `menuType`, `stockStatus`, `position`, search, and `isActive=all`.
 
-Run: `npm --prefix backend test -- --run backend/test/inventory/inventory-catalog.service.spec.ts`
+Run: `npm --prefix backend test -- --run test/inventory/inventory-catalog.service.spec.ts`
 
 Expected: FAIL because the service and schemas do not exist.
 
-- [ ] **Step 2: Implement filter parsing and source queries**
+- [x] **Step 2: Implement filter parsing and source queries**
 
 Add Zod query validation with defaults `page=1`, `pageSize=50`, `sortBy=sku`, `sortOrder=asc`, clamp/reject `pageSize > 100`, and reject negative page values. Query ingredients and menu items separately with Prisma. Apply source-native filters in the database where possible; include menu category and `menuItemIngredients.ingredient.costPerUnit` in one batch query per source, never query a BOM inside a row loop.
 
-- [ ] **Step 3: Implement row mapping and status rules**
+- [x] **Step 3: Implement row mapping and status rules**
 
 Map fields exactly as follows:
 
@@ -151,7 +151,7 @@ MenuItem -> sourceType MENU_ITEM, managementGroup SELLABLE,
 
 Use status precedence `NEGATIVE` then `LOW` then `NORMAL`; untracked always wins as `NOT_TRACKED`. Filter computed status after mapping, merge both source arrays, sort with the requested field plus `sourceType`/`sourceId` tie-breakers, compute full summary, and slice the requested page.
 
-- [ ] **Step 4: Run focused tests and commit**
+- [x] **Step 4: Run focused tests and commit**
 
 Run the service test and `npm --prefix backend run typecheck`.
 
