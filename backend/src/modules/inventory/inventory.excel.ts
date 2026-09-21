@@ -100,6 +100,15 @@ export function parseExcelBuffer(buffer: Buffer): ParsedExcelRow[] {
 }
 
 /**
+ * Parse the shared stock-in workbook format for a purchase-receipt preview.
+ * Keeping this entry point separate makes it explicit that the caller only
+ * parses rows; it does not commit stock or create a ledger transaction.
+ */
+export function parsePurchaseReceiptExcelBuffer(buffer: Buffer): ParsedExcelRow[] {
+  return parseExcelBuffer(buffer);
+}
+
+/**
  * Xuat toan bo danh muc ton kho hien tai ra file Excel
  */
 export function exportInventoryWorkbook(

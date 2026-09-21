@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from 'express';
 import { ApiError } from '../../lib/api-error';
 import {
   createPurchaseReceiptSchema,
+  purchaseReceiptImportPreviewSchema,
   purchaseReceiptListQuerySchema,
   updatePurchaseReceiptSchema
 } from './purchase-receipt.schemas';
@@ -22,6 +23,36 @@ export class PurchaseReceiptController {
   static async list(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       res.status(200).json({ data: await PurchaseReceiptService.list(purchaseReceiptListQuerySchema.parse(req.query)) });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async export(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const format = req.query.format === undefined ? 'xlsx' : String(req.query.format);
+      if (format !== 'csv' && format !== 'xlsx') {
+        throw ApiError.badRequest('Định dạng export không hợp lệ', { format: 'Chọn csv hoặc xlsx' });
+      }
+      const query = purchaseReceiptListQuerySchema.parse(req.query);
+      const buffer = await PurchaseReceiptService.export(query, format);
+      const extension = format === 'csv' ? 'csv' : 'xlsx';
+      res.setHeader(
+        'Content-Type',
+        format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="purchase_receipts_${Date.now()}.${extension}"`);
+      res.send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async previewImport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const input = purchaseReceiptImportPreviewSchema.parse(req.body);
+      const data = await PurchaseReceiptService.previewImport(input.fileBase64, input.fileName);
+      res.status(200).json({ data });
     } catch (error) {
       next(error);
     }

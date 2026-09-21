@@ -5,6 +5,12 @@ import { AuditService } from '../audit/audit.service';
 import { emitInventoryChanged } from './inventory.events';
 import { calculateNewWeightedAverageCost } from './inventory.math';
 import { calculatePurchaseReceiptTotals } from './purchase-receipt.math';
+import { parsePurchaseReceiptExcelBuffer } from './inventory.excel';
+import {
+  PurchaseReceiptExportRow,
+  serializePurchaseReceiptCsv,
+  serializePurchaseReceiptWorkbook
+} from './purchase-receipt.export';
 import {
   CreatePurchaseReceiptInput,
   PurchaseReceiptLineInput,
@@ -14,6 +20,7 @@ import {
 import {
   PurchaseReceiptActor,
   PurchaseReceiptDto,
+  PurchaseReceiptImportPreviewDto,
   PurchaseReceiptListDataDto
 } from './purchase-receipt.types';
 
@@ -59,6 +66,64 @@ function calculateTotals(lines: ReadonlyArray<{ quantity: number; unitCost: numb
 
 function calculateLineAmount(line: { quantity: number; unitCost: number; discountAmount: number }): number {
   return calculateTotals([line], 0, 0).subtotalAmount;
+}
+
+function receiptWhere(query: PurchaseReceiptListQuery): Prisma.PurchaseReceiptWhereInput {
+  const statuses = query.statuses ?? (query.status ? [query.status] : undefined);
+  const where: Prisma.PurchaseReceiptWhereInput = {};
+
+  if (statuses?.length) where.status = { in: statuses };
+  if (query.from || query.to) {
+    const receivedAt: Prisma.DateTimeFilter = {};
+    if (query.from) {
+      const from = new Date(query.from);
+      from.setUTCHours(0, 0, 0, 0);
+      receivedAt.gte = from;
+    }
+    if (query.to) {
+      const to = new Date(query.to);
+      to.setUTCHours(23, 59, 59, 999);
+      receivedAt.lte = to;
+    }
+    where.receivedAt = receivedAt;
+  }
+  if (query.search) {
+    const search = query.search.trim();
+    where.OR = [
+      { receiptCode: { contains: search } },
+      { invoiceNumber: { contains: search } },
+      { supplier: { is: { code: { contains: search } } } },
+      { supplier: { is: { name: { contains: search } } } }
+    ];
+  }
+  return where;
+}
+
+function payableAmount(subtotalAmount: number, discountAmount: number): number {
+  return Math.max(0, subtotalAmount - discountAmount);
+}
+
+function toExportRow(receipt: {
+  receiptCode: string;
+  receivedAt: Date;
+  subtotalAmount: number;
+  discountAmount: number;
+  paidAmount: number;
+  status: string;
+  supplier: { name: string } | null;
+}): PurchaseReceiptExportRow {
+  const payable = payableAmount(receipt.subtotalAmount, receipt.discountAmount);
+  return {
+    receiptCode: receipt.receiptCode,
+    receivedAt: receipt.receivedAt,
+    supplierName: receipt.supplier?.name ?? '',
+    subtotalAmount: receipt.subtotalAmount,
+    discountAmount: receipt.discountAmount,
+    payableAmount: payable,
+    paidAmount: receipt.paidAmount,
+    outstandingAmount: Math.max(0, payable - receipt.paidAmount),
+    status: receipt.status
+  };
 }
 
 function toReceiptDto(receipt: ReceiptRecord): PurchaseReceiptDto {
@@ -135,16 +200,21 @@ async function getTransitionFailure(id: number): Promise<never> {
 
 export class PurchaseReceiptService {
   static async list(query: PurchaseReceiptListQuery): Promise<PurchaseReceiptListDataDto> {
+    if (query.from && query.to && query.from > query.to) {
+      throw ApiError.badRequest('Khoảng thời gian lọc không hợp lệ');
+    }
+    const where = receiptWhere(query);
     const skip = (query.page - 1) * query.pageSize;
     const [totalRows, receipts, totals] = await Promise.all([
-      prisma.purchaseReceipt.count(),
+      prisma.purchaseReceipt.count({ where }),
       prisma.purchaseReceipt.findMany({
+        where,
         skip,
         take: query.pageSize,
         include: receiptInclude,
         orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }]
       }),
-      prisma.purchaseReceipt.aggregate({ _sum: { subtotalAmount: true, discountAmount: true } })
+      prisma.purchaseReceipt.aggregate({ where, _sum: { subtotalAmount: true, discountAmount: true } })
     ]);
     return {
       items: receipts.map(toReceiptDto),
@@ -154,8 +224,95 @@ export class PurchaseReceiptService {
         totalRows,
         totalPages: Math.max(1, Math.ceil(totalRows / query.pageSize))
       },
-      totalPayableAmount: (totals._sum.subtotalAmount ?? 0) - (totals._sum.discountAmount ?? 0)
+      totalPayableAmount: payableAmount(totals._sum.subtotalAmount ?? 0, totals._sum.discountAmount ?? 0)
     };
+  }
+
+  static async export(query: PurchaseReceiptListQuery, format: 'csv' | 'xlsx'): Promise<Buffer> {
+    if (query.from && query.to && query.from > query.to) {
+      throw ApiError.badRequest('Khoảng thời gian lọc không hợp lệ');
+    }
+    const rows = await prisma.purchaseReceipt.findMany({
+      where: receiptWhere(query),
+      select: {
+        receiptCode: true,
+        receivedAt: true,
+        subtotalAmount: true,
+        discountAmount: true,
+        paidAmount: true,
+        status: true,
+        supplier: { select: { name: true } }
+      },
+      orderBy: [{ receivedAt: 'desc' }, { id: 'desc' }]
+    });
+    const exportRows = rows.map(toExportRow);
+    return format === 'csv'
+      ? serializePurchaseReceiptCsv(exportRows)
+      : serializePurchaseReceiptWorkbook(exportRows);
+  }
+
+  static async previewImport(fileBase64: string, fileName: string): Promise<PurchaseReceiptImportPreviewDto> {
+    const parsedRows = parsePurchaseReceiptExcelBuffer(Buffer.from(fileBase64, 'base64'));
+    if (parsedRows.length === 0) {
+      throw ApiError.badRequest('File Excel không có dữ liệu hợp lệ để nhập');
+    }
+
+    const ingredients = await prisma.ingredient.findMany({
+      where: { isActive: true },
+      select: { id: true, sku: true, name: true, unit: true }
+    });
+    const ingredientBySku = new Map(ingredients.map(ingredient => [ingredient.sku.toUpperCase(), ingredient]));
+    const validRows: PurchaseReceiptImportPreviewDto['validRows'] = [];
+    const errorRows: PurchaseReceiptImportPreviewDto['errorRows'] = [];
+
+    for (const row of parsedRows) {
+      const ingredient = ingredientBySku.get(row.sku.toUpperCase());
+      if (!ingredient) {
+        errorRows.push({
+          rowNumber: row.rowNumber, sku: row.sku, name: row.name, unit: row.unit,
+          quantity: row.quantity, costPerUnit: row.costPerUnit,
+          error: `Mã nguyên liệu '${row.sku}' không tồn tại hoặc đã ngừng hoạt động`
+        });
+        continue;
+      }
+      if (row.unit && row.unit.toLowerCase() !== ingredient.unit.toLowerCase()) {
+        errorRows.push({
+          rowNumber: row.rowNumber, sku: row.sku, name: row.name, unit: row.unit,
+          quantity: row.quantity, costPerUnit: row.costPerUnit,
+          error: `Đơn vị tính '${row.unit}' không khớp với hệ thống ('${ingredient.unit}')`
+        });
+        continue;
+      }
+      if (!Number.isFinite(row.quantity) || row.quantity <= 0) {
+        errorRows.push({
+          rowNumber: row.rowNumber, sku: row.sku, name: row.name, unit: row.unit,
+          quantity: row.quantity, costPerUnit: row.costPerUnit,
+          error: 'Số lượng nhập phải lớn hơn 0'
+        });
+        continue;
+      }
+      if (!Number.isInteger(row.costPerUnit) || row.costPerUnit < 0) {
+        errorRows.push({
+          rowNumber: row.rowNumber, sku: row.sku, name: row.name, unit: row.unit,
+          quantity: row.quantity, costPerUnit: row.costPerUnit,
+          error: 'Đơn giá phải là số nguyên và không được nhỏ hơn 0'
+        });
+        continue;
+      }
+      validRows.push({
+        rowNumber: row.rowNumber,
+        ingredientId: ingredient.id,
+        ingredientSku: ingredient.sku,
+        ingredientName: ingredient.name,
+        unit: ingredient.unit,
+        quantity: row.quantity,
+        unitCost: row.costPerUnit,
+        discountAmount: 0,
+        note: row.note ?? null
+      });
+    }
+
+    return { fileName, totalRows: parsedRows.length, validRows, errorRows };
   }
 
   static async getById(id: number): Promise<PurchaseReceiptDto> {

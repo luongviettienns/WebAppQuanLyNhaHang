@@ -60,3 +60,32 @@ export type PurchaseReceiptListDataDto = {
   };
   totalPayableAmount: number;
 };
+
+export type PurchaseReceiptImportValidRowDto = {
+  rowNumber: number;
+  ingredientId: number;
+  ingredientSku: string;
+  ingredientName: string;
+  unit: string;
+  quantity: number;
+  unitCost: number;
+  discountAmount: 0;
+  note: string | null;
+};
+
+export type PurchaseReceiptImportErrorRowDto = {
+  rowNumber: number;
+  sku: string;
+  name?: string;
+  unit?: string;
+  quantity: number;
+  costPerUnit: number;
+  error: string;
+};
+
+export type PurchaseReceiptImportPreviewDto = {
+  fileName: string;
+  totalRows: number;
+  validRows: PurchaseReceiptImportValidRowDto[];
+  errorRows: PurchaseReceiptImportErrorRowDto[];
+};

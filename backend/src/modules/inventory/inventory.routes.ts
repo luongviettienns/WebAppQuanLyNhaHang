@@ -25,6 +25,8 @@ inventoryRouter.patch('/suppliers/:id', SupplierController.update);
 // Phieu nhap hang theo vong doi draft -> posted/cancelled
 inventoryRouter.get('/purchase-receipts', PurchaseReceiptController.list);
 inventoryRouter.post('/purchase-receipts', PurchaseReceiptController.create);
+inventoryRouter.get('/purchase-receipts/export', PurchaseReceiptController.export);
+inventoryRouter.post('/purchase-receipts/import/preview', PurchaseReceiptController.previewImport);
 inventoryRouter.get('/purchase-receipts/:id', PurchaseReceiptController.detail);
 inventoryRouter.patch('/purchase-receipts/:id', PurchaseReceiptController.update);
 inventoryRouter.post('/purchase-receipts/:id/post', PurchaseReceiptController.post);

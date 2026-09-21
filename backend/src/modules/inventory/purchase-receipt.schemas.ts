@@ -55,7 +55,21 @@ export const updatePurchaseReceiptSchema = z.object({
 
 export const purchaseReceiptListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).default(50)
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+  status: z.enum(['DRAFT', 'POSTED', 'CANCELLED']).optional(),
+  statuses: z.preprocess(value => {
+    if (value === undefined) return undefined;
+    const values = Array.isArray(value) ? value : String(value).split(',');
+    return values.flatMap(item => String(item).split(',')).map(item => item.trim()).filter(Boolean);
+  }, z.array(z.enum(['DRAFT', 'POSTED', 'CANCELLED'])).min(1).optional()),
+  from: z.coerce.date().optional(),
+  to: z.coerce.date().optional(),
+  search: z.string().trim().min(1).optional()
+});
+
+export const purchaseReceiptImportPreviewSchema = z.object({
+  fileBase64: z.string().min(1, 'Dữ liệu file Excel không được để trống'),
+  fileName: z.string().trim().min(1, 'Tên file không được để trống')
 });
 
 export type PurchaseReceiptLineInput = z.infer<typeof purchaseReceiptLineInputSchema>;
