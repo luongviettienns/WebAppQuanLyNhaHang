@@ -50,6 +50,7 @@ import {
 
 interface InventoryCatalogScreenProps {
   onOpenLegacyOperations: (row?: InventoryCatalogRowDto) => void;
+  onOpenPurchaseReceipts: () => void;
 }
 
 const initialFilter: InventoryCatalogFilter = {
@@ -61,7 +62,7 @@ const initialFilter: InventoryCatalogFilter = {
   isActive: 'true'
 };
 
-const reservedInventoryMenus = ['Kiểm kho', 'Xuất hủy', 'Nhập hàng', 'Hóa đơn đầu vào', 'Trả hàng nhập', 'Nhà cung cấp'];
+const reservedInventoryMenus = ['Kiểm kho', 'Xuất hủy', 'Hóa đơn đầu vào', 'Trả hàng nhập', 'Nhà cung cấp'];
 
 function formatStock(row: InventoryCatalogRowDto): string {
   if (row.stockQuantity === null) return '—';
@@ -72,7 +73,7 @@ function formatCost(row: InventoryCatalogRowDto): string {
   return row.costPrice === null ? '—' : `${row.costPrice.toLocaleString('vi-VN')} đ`;
 }
 
-export const InventoryCatalogScreen: React.FC<InventoryCatalogScreenProps> = ({ onOpenLegacyOperations }) => {
+export const InventoryCatalogScreen: React.FC<InventoryCatalogScreenProps> = ({ onOpenLegacyOperations, onOpenPurchaseReceipts }) => {
   const { theme } = useTheme();
   const { token } = useAuth();
   const { categories, inventoryRevision } = useRestaurant();
@@ -158,6 +159,9 @@ export const InventoryCatalogScreen: React.FC<InventoryCatalogScreenProps> = ({ 
           </Pressable>
           <Pressable onPress={() => onOpenLegacyOperations()} style={[styles.reservedItem, { borderColor: theme.borderSubtle, backgroundColor: theme.interactiveSecondary }]}>
             <Text style={[styles.reservedLabel, { color: theme.primary }]}>Nhập Excel</Text>
+          </Pressable>
+          <Pressable onPress={onOpenPurchaseReceipts} style={[styles.reservedItem, { borderColor: theme.primary, backgroundColor: theme.interactiveSecondary }]}>
+            <Text style={[styles.reservedLabel, { color: theme.primary }]}>Nhập hàng</Text>
           </Pressable>
           {reservedInventoryMenus.map(menu => (
             <View key={menu} style={[styles.reservedItem, { borderColor: theme.borderSubtle, backgroundColor: theme.surfaceSunken, opacity: 0.65 }]}>

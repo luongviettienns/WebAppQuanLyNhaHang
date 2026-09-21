@@ -51,6 +51,7 @@ import { getApiBaseUrl } from '../../api/config';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import { InventoryCatalogScreen } from './InventoryCatalogScreen';
+import { PurchaseReceiptListScreen } from './PurchaseReceiptListScreen';
 
 type ActiveTab = 'inventory' | 'bom';
 type StockFilter = 'ALL' | 'LOW' | 'NEGATIVE';
@@ -1179,7 +1180,7 @@ const LegacyInventoryOperations: React.FC<{ initialTab?: ActiveTab; initialMenuI
 
 export const InventoryScreen: React.FC = () => {
   const { theme } = useTheme();
-  const [section, setSection] = useState<'catalog' | 'operations'>('catalog');
+  const [section, setSection] = useState<'catalog' | 'operations' | 'receipts'>('catalog');
   const [legacyTab, setLegacyTab] = useState<ActiveTab>('inventory');
   const [legacyMenuItemId, setLegacyMenuItemId] = useState<number | undefined>();
 
@@ -1188,6 +1189,8 @@ export const InventoryScreen: React.FC = () => {
     setLegacyMenuItemId(row?.sourceType === 'MENU_ITEM' ? row.sourceId : undefined);
     setSection('operations');
   };
+
+  const openPurchaseReceipts = () => setSection('receipts');
 
   return (
     <View style={[shellStyles.container, { backgroundColor: theme.surfaceCanvas }]}>
@@ -1198,10 +1201,15 @@ export const InventoryScreen: React.FC = () => {
         <Pressable onPress={() => setSection('operations')} style={[shellStyles.sectionButton, section === 'operations' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
           <Text style={[shellStyles.sectionButtonText, { color: section === 'operations' ? theme.primary : theme.textSecondary }]}>Quản lý nguyên liệu / BOM</Text>
         </Pressable>
+        <Pressable onPress={openPurchaseReceipts} style={[shellStyles.sectionButton, section === 'receipts' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: section === 'receipts' ? theme.primary : theme.textSecondary }]}>Phiếu nhập hàng</Text>
+        </Pressable>
       </View>
       {section === 'catalog'
-        ? <InventoryCatalogScreen onOpenLegacyOperations={openLegacyOperations} />
-        : <LegacyInventoryOperations initialTab={legacyTab} initialMenuItemId={legacyMenuItemId} />}
+        ? <InventoryCatalogScreen onOpenLegacyOperations={openLegacyOperations} onOpenPurchaseReceipts={openPurchaseReceipts} />
+        : section === 'operations'
+          ? <LegacyInventoryOperations initialTab={legacyTab} initialMenuItemId={legacyMenuItemId} />
+          : <PurchaseReceiptListScreen onCreateReceipt={openPurchaseReceipts} onOpenReceipt={() => openPurchaseReceipts()} />}
     </View>
   );
 };
