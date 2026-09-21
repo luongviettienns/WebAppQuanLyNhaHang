@@ -52,6 +52,7 @@ import { radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import { InventoryCatalogScreen } from './InventoryCatalogScreen';
 import { PurchaseReceiptListScreen } from './PurchaseReceiptListScreen';
+import { PurchaseReceiptComposerScreen } from './PurchaseReceiptComposerScreen';
 
 type ActiveTab = 'inventory' | 'bom';
 type StockFilter = 'ALL' | 'LOW' | 'NEGATIVE';
@@ -1180,9 +1181,10 @@ const LegacyInventoryOperations: React.FC<{ initialTab?: ActiveTab; initialMenuI
 
 export const InventoryScreen: React.FC = () => {
   const { theme } = useTheme();
-  const [section, setSection] = useState<'catalog' | 'operations' | 'receipts'>('catalog');
+  const [section, setSection] = useState<'catalog' | 'operations' | 'receipts' | 'receipt-composer'>('catalog');
   const [legacyTab, setLegacyTab] = useState<ActiveTab>('inventory');
   const [legacyMenuItemId, setLegacyMenuItemId] = useState<number | undefined>();
+  const [receiptComposer, setReceiptComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
 
   const openLegacyOperations = (row?: InventoryCatalogRowDto) => {
     setLegacyTab(row?.sourceType === 'MENU_ITEM' ? 'bom' : 'inventory');
@@ -1190,7 +1192,25 @@ export const InventoryScreen: React.FC = () => {
     setSection('operations');
   };
 
-  const openPurchaseReceipts = () => setSection('receipts');
+  const openPurchaseReceipts = () => {
+    setReceiptComposer(null);
+    setSection('receipts');
+  };
+
+  const createPurchaseReceipt = () => {
+    setReceiptComposer({ mode: 'create', id: null });
+    setSection('receipt-composer');
+  };
+
+  const openPurchaseReceipt = (id: number) => {
+    setReceiptComposer({ mode: 'edit', id });
+    setSection('receipt-composer');
+  };
+
+  const finishPurchaseReceipt = () => {
+    setReceiptComposer(null);
+    setSection('receipts');
+  };
 
   return (
     <View style={[shellStyles.container, { backgroundColor: theme.surfaceCanvas }]}>
@@ -1201,15 +1221,24 @@ export const InventoryScreen: React.FC = () => {
         <Pressable onPress={() => setSection('operations')} style={[shellStyles.sectionButton, section === 'operations' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
           <Text style={[shellStyles.sectionButtonText, { color: section === 'operations' ? theme.primary : theme.textSecondary }]}>Quản lý nguyên liệu / BOM</Text>
         </Pressable>
-        <Pressable onPress={openPurchaseReceipts} style={[shellStyles.sectionButton, section === 'receipts' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
-          <Text style={[shellStyles.sectionButtonText, { color: section === 'receipts' ? theme.primary : theme.textSecondary }]}>Phiếu nhập hàng</Text>
+        <Pressable onPress={openPurchaseReceipts} style={[shellStyles.sectionButton, (section === 'receipts' || section === 'receipt-composer') && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: (section === 'receipts' || section === 'receipt-composer') ? theme.primary : theme.textSecondary }]}>Phiếu nhập hàng</Text>
         </Pressable>
       </View>
       {section === 'catalog'
         ? <InventoryCatalogScreen onOpenLegacyOperations={openLegacyOperations} onOpenPurchaseReceipts={openPurchaseReceipts} />
         : section === 'operations'
           ? <LegacyInventoryOperations initialTab={legacyTab} initialMenuItemId={legacyMenuItemId} />
-          : <PurchaseReceiptListScreen onCreateReceipt={openPurchaseReceipts} onOpenReceipt={() => openPurchaseReceipts()} />}
+          : section === 'receipts'
+            ? <PurchaseReceiptListScreen onCreateReceipt={createPurchaseReceipt} onOpenReceipt={openPurchaseReceipt} />
+            : receiptComposer
+              ? <PurchaseReceiptComposerScreen
+                mode={receiptComposer.mode}
+                receiptId={receiptComposer.id}
+                onFinished={finishPurchaseReceipt}
+                onCancel={openPurchaseReceipts}
+              />
+              : <PurchaseReceiptListScreen onCreateReceipt={createPurchaseReceipt} onOpenReceipt={openPurchaseReceipt} />}
     </View>
   );
 };
