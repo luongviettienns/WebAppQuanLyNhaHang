@@ -14,6 +14,7 @@ export type MenuType = 'FOOD' | 'DRINK' | 'SERVICE' | 'OTHER';
 export type MenuItemType = 'REGULAR' | 'TOPPING' | 'COMBO' | 'SERVICE';
 export type PriceListType = 'GENERAL' | 'CUSTOM';
 export type PriceListScopeType = 'GLOBAL' | 'BRANCH' | 'CHANNEL' | 'CUSTOMER_GROUP';
+export type PurchaseReceiptStatus = 'DRAFT' | 'POSTED' | 'CANCELLED';
 export type MenuBulkAction =
   | 'setAvailability'
   | 'setCategory'
@@ -533,6 +534,121 @@ export interface SupplierPaginationDto {
 export interface SupplierListDataDto {
   items: SupplierDto[];
   pagination: SupplierPaginationDto;
+}
+
+export interface PurchaseReceiptSupplierDto {
+  id: number;
+  code: string;
+  name: string;
+  isActive: boolean;
+}
+
+export interface PurchaseReceiptLineDto {
+  id: number;
+  ingredientId: number;
+  ingredientSku: string;
+  ingredientName: string;
+  unit: string;
+  quantity: number;
+  unitCost: number;
+  discountAmount: number;
+  lineAmount: number;
+  note: string | null;
+}
+
+export interface PurchaseReceiptDto {
+  id: number;
+  receiptCode: string;
+  supplierId: number | null;
+  supplier: PurchaseReceiptSupplierDto | null;
+  receivedAt: string;
+  invoiceNumber: string | null;
+  invoiceDate: string | null;
+  status: PurchaseReceiptStatus;
+  subtotalAmount: number;
+  discountAmount: number;
+  payableAmount: number;
+  paidAmount: number;
+  outstandingAmount: number;
+  note: string | null;
+  createdByUserId: number | null;
+  postedByUserId: number | null;
+  postedAt: string | null;
+  cancelledByUserId: number | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: PurchaseReceiptLineDto[];
+}
+
+export type PurchaseReceiptDetailDto = PurchaseReceiptDto;
+
+export interface PurchaseReceiptListDataDto {
+  items: PurchaseReceiptDto[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalRows: number;
+    totalPages: number;
+  };
+  totalPayableAmount: number;
+}
+
+export interface PurchaseReceiptListFilter {
+  status?: PurchaseReceiptStatus[];
+  from?: string;
+  to?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PurchaseReceiptLineInput {
+  ingredientId: number;
+  quantity: number;
+  unitCost: number;
+  discountAmount?: number;
+  note?: string | null;
+}
+
+export interface PurchaseReceiptDraftInput {
+  supplierId?: number | null;
+  receivedAt?: string;
+  invoiceNumber?: string | null;
+  invoiceDate?: string | null;
+  discountAmount?: number;
+  paidAmount?: number;
+  note?: string | null;
+  lines: PurchaseReceiptLineInput[];
+}
+
+export interface PurchaseReceiptImportValidRowDto {
+  rowNumber: number;
+  ingredientId: number;
+  ingredientSku: string;
+  ingredientName: string;
+  unit: string;
+  quantity: number;
+  unitCost: number;
+  discountAmount: 0;
+  note: string | null;
+}
+
+export interface PurchaseReceiptImportErrorRowDto {
+  rowNumber: number;
+  sku: string;
+  name?: string;
+  unit?: string;
+  quantity: number;
+  costPerUnit: number;
+  error: string;
+}
+
+export interface PurchaseReceiptImportPreviewDto {
+  fileName: string;
+  totalRows: number;
+  validRows: PurchaseReceiptImportValidRowDto[];
+  errorRows: PurchaseReceiptImportErrorRowDto[];
 }
 
 export interface RecipeIngredientDto {
