@@ -7,6 +7,7 @@ export type InventoryChangedReason =
   | 'ORDER_PAID'
   | 'ORDER_VOIDED'
   | 'MANUAL_ADJUST'
+  | 'KITCHEN_WASTE'
   | 'RECIPE_UPDATED'
   | 'INGREDIENT_UPDATED'
   | 'MENU_ITEM_UPDATED';

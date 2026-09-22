@@ -3,6 +3,7 @@ import { InventoryController } from './inventory.controller';
 import { SupplierController } from './supplier.controller';
 import { PurchaseReceiptController } from './purchase-receipt.controller';
 import { InventoryCheckController } from './inventory-check.controller';
+import { InventoryWasteController } from './inventory-waste.controller';
 import { authenticate } from '../../middlewares/authenticate';
 import { authorize } from '../../middlewares/authorize';
 
@@ -42,6 +43,16 @@ inventoryRouter.get('/checks/:id', InventoryCheckController.detail);
 inventoryRouter.patch('/checks/:id', InventoryCheckController.update);
 inventoryRouter.post('/checks/:id/balance', InventoryCheckController.balance);
 inventoryRouter.post('/checks/:id/cancel', InventoryCheckController.cancel);
+
+// Phieu xuat huy theo vong doi draft -> completed/cancelled
+inventoryRouter.get('/wastes', InventoryWasteController.list);
+inventoryRouter.post('/wastes', InventoryWasteController.create);
+inventoryRouter.get('/wastes/export', InventoryWasteController.export);
+inventoryRouter.post('/wastes/import/preview', InventoryWasteController.previewImport);
+inventoryRouter.get('/wastes/:id', InventoryWasteController.detail);
+inventoryRouter.patch('/wastes/:id', InventoryWasteController.update);
+inventoryRouter.post('/wastes/:id/complete', InventoryWasteController.complete);
+inventoryRouter.post('/wastes/:id/cancel', InventoryWasteController.cancel);
 
 // Nguyen vat lieu
 inventoryRouter.get('/ingredients', InventoryController.getIngredients);
