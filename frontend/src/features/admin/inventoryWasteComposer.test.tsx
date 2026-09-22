@@ -60,6 +60,11 @@ vi.mock('../../api/inventoryWastes', () => ({
 }));
 
 import { InventoryWasteComposerScreen } from './InventoryWasteComposerScreen';
+import {
+  completeInventoryWasteApi,
+  fetchInventoryWasteDetailApi,
+  saveInventoryWasteDraftApi
+} from '../../api/inventoryWastes';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -85,5 +90,64 @@ describe('inventory waste composer', () => {
       screen.root.findByProps({ testID: 'inventory-waste-note' }).props.onChangeText('Hàng hỏng');
     });
     expect(screen.root.findByProps({ testID: 'inventory-waste-complete' }).props.disabled).toBe(false);
+  });
+
+  it('saves edited draft lines before completing an existing voucher', async () => {
+    const draft = {
+      id: 7,
+      wasteCode: 'XH000007',
+      status: 'DRAFT' as const,
+      wastedAt: '2026-09-22T05:00:00.000Z',
+      completedAt: null,
+      note: 'Hàng hỏng',
+      totalValue: 12000,
+      totalQuantity: 1,
+      createdByUserId: 1,
+      completedByUserId: null,
+      cancelledByUserId: null,
+      cancelledAt: null,
+      createdAt: '2026-09-22T05:00:00.000Z',
+      updatedAt: '2026-09-22T05:00:00.000Z',
+      lines: [{
+        id: 70,
+        ingredientId: 2,
+        ingredientSku: 'NL-02',
+        ingredientName: 'Dầu ăn',
+        unit: 'lít',
+        systemQuantity: 3,
+        quantity: 1,
+        costPerUnit: 12000,
+        lineValue: 12000
+      }]
+    };
+    vi.mocked(fetchInventoryWasteDetailApi).mockResolvedValue(draft);
+    vi.mocked(saveInventoryWasteDraftApi).mockResolvedValue({
+      ...draft,
+      totalValue: 24000,
+      totalQuantity: 2,
+      lines: [{ ...draft.lines[0], quantity: 2, lineValue: 24000 }]
+    });
+    vi.mocked(completeInventoryWasteApi).mockResolvedValue({ ...draft, status: 'COMPLETED' });
+
+    let screen: any;
+    await act(async () => {
+      screen = create(<InventoryWasteComposerScreen mode="edit" wasteId={7} onFinished={vi.fn()} onCancel={vi.fn()} />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    await act(async () => {
+      screen.root.findByProps({ accessibilityLabel: 'Số lượng hủy Dầu ăn' }).props.onChangeText('2');
+    });
+    await act(async () => {
+      screen.root.findByProps({ testID: 'inventory-waste-complete' }).props.onPress();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(saveInventoryWasteDraftApi).toHaveBeenCalledWith('token', 7, {
+      note: 'Hàng hỏng',
+      lines: [{ ingredientId: 2, quantity: 2 }]
+    });
+    expect(completeInventoryWasteApi).toHaveBeenCalledWith('token', 7);
   });
 });

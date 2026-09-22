@@ -183,9 +183,8 @@ export const InventoryWasteComposerScreen: React.FC<InventoryWasteComposerScreen
       setErrorMessage(completionErrors[0]);
       return;
     }
-    const saved = wasteId ? null : await saveDraft();
-    const targetId = wasteId || saved?.id;
-    if (targetId) void complete(targetId);
+    const saved = await saveDraft();
+    if (saved) void complete(saved.id);
   };
 
   const pickImportFile = () => {
