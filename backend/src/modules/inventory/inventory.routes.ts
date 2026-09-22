@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { InventoryController } from './inventory.controller';
 import { SupplierController } from './supplier.controller';
 import { PurchaseReceiptController } from './purchase-receipt.controller';
+import { InventoryCheckController } from './inventory-check.controller';
 import { authenticate } from '../../middlewares/authenticate';
 import { authorize } from '../../middlewares/authorize';
 
@@ -31,6 +32,16 @@ inventoryRouter.get('/purchase-receipts/:id', PurchaseReceiptController.detail);
 inventoryRouter.patch('/purchase-receipts/:id', PurchaseReceiptController.update);
 inventoryRouter.post('/purchase-receipts/:id/post', PurchaseReceiptController.post);
 inventoryRouter.post('/purchase-receipts/:id/cancel', PurchaseReceiptController.cancel);
+
+// Phieu kiem kho theo vong doi draft -> balanced/cancelled
+inventoryRouter.get('/checks', InventoryCheckController.list);
+inventoryRouter.post('/checks', InventoryCheckController.create);
+inventoryRouter.get('/checks/export', InventoryCheckController.export);
+inventoryRouter.post('/checks/import/preview', InventoryCheckController.previewImport);
+inventoryRouter.get('/checks/:id', InventoryCheckController.detail);
+inventoryRouter.patch('/checks/:id', InventoryCheckController.update);
+inventoryRouter.post('/checks/:id/balance', InventoryCheckController.balance);
+inventoryRouter.post('/checks/:id/cancel', InventoryCheckController.cancel);
 
 // Nguyen vat lieu
 inventoryRouter.get('/ingredients', InventoryController.getIngredients);
