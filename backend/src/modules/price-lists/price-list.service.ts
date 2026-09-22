@@ -30,6 +30,7 @@ export class PriceListService {
   }
 
   static async getGeneralPriceList(client: PriceDataClient = prisma) {
+    if (!client?.priceList) return null;
     return client.priceList.findFirst({
       where: {
         code: 'GENERAL',
@@ -316,11 +317,26 @@ export class PriceListService {
     if (uniqueIds.length === 0) return new Map();
 
     const at = context.at ?? new Date();
-    const menuItems = await client.menuItem.findMany({
+    const menuItemsClient = client?.menuItem ?? prisma.menuItem;
+    const menuItems = await menuItemsClient.findMany({
       where: { id: { in: uniqueIds } },
       select: { id: true, basePrice: true }
     });
     const itemById = new Map(menuItems.map(item => [item.id, item]));
+
+    if (!client?.priceList) {
+      return new Map(uniqueIds.flatMap(menuItemId => {
+        const menuItem = itemById.get(menuItemId);
+        if (!menuItem) return [];
+        return [[menuItemId, {
+          menuItemId,
+          salePrice: menuItem.basePrice,
+          priceListId: null,
+          version: null,
+          source: 'BASE_PRICE'
+        } satisfies ResolvedPrice]] as const;
+      }));
+    }
 
     const priceList = context.priceListId
       ? await client.priceList.findFirst({
