@@ -50,12 +50,25 @@ export const excelCommitSchema = z.object({
   sourceFileName: z.string().default('import.xlsx')
 });
 
+export const inventoryCatalogQuerySchema = z.object({
+  search: z.string().trim().min(1).optional(),
+  managementGroup: z.enum(['MATERIAL', 'SELLABLE', 'TOOL']).optional(),
+  categoryId: z.coerce.number().int().positive().optional(),
+  menuType: z.enum(['FOOD', 'DRINK', 'SERVICE', 'OTHER']).optional(),
+  stockStatus: z.enum(['ALL', 'NORMAL', 'LOW', 'NEGATIVE', 'NOT_TRACKED']).default('ALL'),
+  position: z.string().trim().min(1).optional(),
+  isActive: z.enum(['true', 'false', 'all']).default('true'),
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+  sortBy: z.enum(['sku', 'name', 'costPrice', 'stockQuantity', 'updatedAt']).default('sku'),
+  sortOrder: z.enum(['asc', 'desc']).default('asc')
+});
+
 export type CreateIngredientDto = z.input<typeof createIngredientSchema>;
 export type UpdateIngredientDto = z.infer<typeof updateIngredientSchema>;
 export type StockInDto = z.infer<typeof stockInSchema>;
 export type UpdateRecipeDto = z.infer<typeof updateRecipeSchema>;
 export type ExcelCommitDto = z.infer<typeof excelCommitSchema>;
-
 export const kitchenWasteSchema = z.object({
   type: z.enum(['MENU_ITEM', 'INGREDIENT'], {
     required_error: 'Loại hao hụt là bắt buộc (MENU_ITEM | INGREDIENT)'
@@ -75,3 +88,17 @@ export const kitchenWasteSchema = z.object({
 
 export type KitchenWasteDto = z.infer<typeof kitchenWasteSchema>;
 
+export type InventoryCatalogFilter = {
+  search?: string;
+  managementGroup?: 'MATERIAL' | 'SELLABLE' | 'TOOL';
+  categoryId?: number;
+  menuType?: 'FOOD' | 'DRINK' | 'SERVICE' | 'OTHER';
+  stockStatus?: 'ALL' | 'NORMAL' | 'LOW' | 'NEGATIVE' | 'NOT_TRACKED';
+  position?: string;
+  isActive?: 'true' | 'false' | 'all';
+  page: number;
+  pageSize: number;
+  sortBy: 'sku' | 'name' | 'costPrice' | 'stockQuantity' | 'updatedAt';
+  sortOrder: 'asc' | 'desc';
+};
+export type ParsedInventoryCatalogQuery = z.infer<typeof inventoryCatalogQuerySchema>;

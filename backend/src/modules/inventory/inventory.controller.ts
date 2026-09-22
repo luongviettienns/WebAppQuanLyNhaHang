@@ -10,8 +10,50 @@ import {
   kitchenWasteSchema
 } from './inventory.schemas';
 import { ApiError } from '../../lib/api-error';
+import { inventoryCatalogQuerySchema } from './inventory.schemas';
+import { InventoryCatalogService } from './inventory-catalog.service';
+import { serializeInventoryCatalogCsv, serializeInventoryCatalogWorkbook } from './inventory-catalog.export';
 
 export class InventoryController {
+  static async getCatalog(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const filter = inventoryCatalogQuerySchema.parse(req.query);
+      const data = await InventoryCatalogService.getCatalog(filter);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async exportCatalog(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const format = req.query.format === undefined ? 'xlsx' : String(req.query.format);
+      if (format !== 'csv' && format !== 'xlsx') {
+        throw ApiError.badRequest('Định dạng export không hợp lệ', { format: 'Chọn csv hoặc xlsx' });
+      }
+
+      const filter = inventoryCatalogQuerySchema.parse(req.query);
+      const rows = await InventoryCatalogService.getCatalogSnapshot(filter);
+      const timestamp = Date.now();
+
+      if (format === 'csv') {
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="inventory_catalog_${timestamp}.csv"`);
+        res.send(serializeInventoryCatalogCsv(rows));
+        return;
+      }
+
+      res.setHeader(
+        'Content-Type',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="inventory_catalog_${timestamp}.xlsx"`);
+      res.send(serializeInventoryCatalogWorkbook(rows));
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getIngredients(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const { search, lowStock, negativeStock } = req.query;

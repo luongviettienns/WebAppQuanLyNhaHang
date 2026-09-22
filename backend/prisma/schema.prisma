@@ -65,6 +65,18 @@ enum DiscountType {
   FIXED_AMOUNT
 }
 
+enum PriceListType {
+  GENERAL
+  CUSTOM
+}
+
+enum PriceListScopeType {
+  GLOBAL
+  BRANCH
+  CHANNEL
+  CUSTOMER_GROUP
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
@@ -88,6 +100,29 @@ model Category {
   menuItems    MenuItem[]
 }
 
+model PriceList {
+  id              Int                 @id @default(autoincrement())
+  code            String              @unique
+  name            String
+  type            PriceListType       @default(GENERAL)
+  scopeType       PriceListScopeType  @default(GLOBAL)
+  scopeKey        String?
+  isDefault       Boolean             @default(false)
+  isActive        Boolean             @default(true)
+  effectiveFrom   DateTime?
+  effectiveTo     DateTime?
+  createdByUserId Int?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  items PriceListItem[]
+  orders Order[]
+
+  @@index([scopeType, scopeKey])
+  @@index([isDefault, isActive])
+  @@index([effectiveFrom, effectiveTo])
+}
+
 model MenuItem {
   id            Int          @id @default(autoincrement())
   categoryId    Int
@@ -109,7 +144,24 @@ model MenuItem {
   category       Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   modifierGroups ModifierGroup[]
   orderItems     OrderItem[]
+  priceListItems PriceListItem[]
   menuItemIngredients MenuItemIngredient[]
+}
+
+model PriceListItem {
+  id          Int      @id @default(autoincrement())
+  priceListId Int
+  menuItemId  Int
+  salePrice   Int
+  version     Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  priceList PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  menuItem  MenuItem  @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+
+  @@unique([priceListId, menuItemId])
+  @@index([menuItemId])
 }
 
 model ModifierGroup {
@@ -157,6 +209,7 @@ model Order {
   orderType     OrderType      @default(DINE_IN)
   status        OrderStatus    @default(PENDING)
   tableId       Int?
+  priceListId   Int?
   buzzerNumber  Int?
   totalAmount    Int // Tong tien truoc thue (VND)
   discountAmount Int            @default(0) // Tien giam gia tu voucher (VND)
@@ -190,6 +243,7 @@ model Order {
   updatedAt DateTime @updatedAt
 
   table         DiningTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  priceList     PriceList?   @relation(fields: [priceListId], references: [id], onDelete: SetNull)
   createdByUser User?        @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
   voidedByUser  User?        @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
   voucher       Voucher?     @relation(fields: [voucherId], references: [id], onDelete: SetNull)
@@ -242,6 +296,18 @@ enum InventoryTransactionType {
   VOID_RESTORE
 }
 
+enum InventoryCheckStatus {
+  DRAFT
+  BALANCED
+  CANCELLED
+}
+
+enum InventoryWasteStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+}
+
 model Ingredient {
   id           Int      @id @default(autoincrement())
   sku          String   @unique // Ma nguyen lieu (VD: ING-CHICKEN-01)
@@ -256,6 +322,9 @@ model Ingredient {
 
   menuItemIngredients   MenuItemIngredient[]
   inventoryTransactions InventoryTransaction[]
+  inventoryCheckLines   InventoryCheckLine[]
+  inventoryWasteLines   InventoryWasteLine[]
+  purchaseReceiptLines  PurchaseReceiptLine[]
 
   @@index([sku])
   @@index([isActive])
@@ -282,16 +351,201 @@ model InventoryTransaction {
   quantity        Float                    // + khi nhap kho, - khi xuat/hao hut
   costAmount      Int                      @default(0) // Gia tri VND giao dich
   orderId         Int?                     // Don hang lien quan (khi auto-deduct)
+  purchaseReceiptId Int?                   // Chung tu nhap; null cho ledger cu
+  inventoryCheckId Int?                    // Chung tu kiem kho; null cho ledger khac
+  inventoryWasteId Int?                    // Chung tu xuat huy; null cho ledger khac
   note            String?                  // Ghi chu
   createdByUserId Int?
   createdAt       DateTime                 @default(now())
 
   ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
   order      Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  purchaseReceipt PurchaseReceipt? @relation(fields: [purchaseReceiptId], references: [id], onDelete: Restrict)
+  inventoryCheck InventoryCheck? @relation(fields: [inventoryCheckId], references: [id], onDelete: Restrict)
+  inventoryWaste InventoryWaste? @relation(fields: [inventoryWasteId], references: [id], onDelete: Restrict)
 
   @@index([ingredientId])
   @@index([type])
   @@index([createdAt])
+  @@index([purchaseReceiptId])
+  @@index([inventoryCheckId])
+  @@index([inventoryWasteId])
+}
+
+model InventoryCheck {
+  id                  Int                  @id @default(autoincrement())
+  checkCode           String               @unique
+  status              InventoryCheckStatus @default(DRAFT)
+  countedAt           DateTime             @default(now())
+  balancedAt          DateTime?
+  note                String?              @db.VarChar(1000)
+  createdByUserId     Int?
+  balancedByUserId    Int?
+  cancelledByUserId   Int?
+  cancelledAt         DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  lines                 InventoryCheckLine[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([status, countedAt])
+  @@index([countedAt])
+}
+
+model InventoryCheckLine {
+  id               Int      @id @default(autoincrement())
+  inventoryCheckId Int
+  ingredientId     Int
+  ingredientSku    String
+  ingredientName   String
+  unit             String
+  systemQuantity   Float
+  actualQuantity   Float?
+  varianceQuantity Float?
+  costPerUnit      Int
+  varianceValue    Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  inventoryCheck InventoryCheck @relation(fields: [inventoryCheckId], references: [id], onDelete: Cascade)
+  ingredient     Ingredient     @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@unique([inventoryCheckId, ingredientId])
+  @@index([ingredientId])
+}
+
+model InventoryWaste {
+  id                    Int                  @id @default(autoincrement())
+  wasteCode             String               @unique
+  status                InventoryWasteStatus @default(DRAFT)
+  wastedAt              DateTime             @default(now())
+  completedAt           DateTime?
+  note                  String?              @db.VarChar(1000)
+  totalValue            Int                  @default(0)
+  createdByUserId       Int?
+  completedByUserId     Int?
+  cancelledByUserId     Int?
+  cancelledAt           DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  lines                 InventoryWasteLine[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([status, wastedAt])
+  @@index([wastedAt])
+}
+
+model InventoryWasteLine {
+  id               Int      @id @default(autoincrement())
+  inventoryWasteId Int
+  ingredientId     Int
+  ingredientSku    String
+  ingredientName   String
+  unit             String
+  systemQuantity   Float
+  quantity         Float
+  costPerUnit      Int
+  lineValue        Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  inventoryWaste InventoryWaste @relation(fields: [inventoryWasteId], references: [id], onDelete: Cascade)
+  ingredient     Ingredient     @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@unique([inventoryWasteId, ingredientId])
+  @@index([ingredientId])
+}
+
+enum PurchaseReceiptStatus {
+  DRAFT
+  POSTED
+  CANCELLED
+}
+
+model Supplier {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  phone     String?
+  email     String?
+  address   String?  @db.VarChar(255)
+  taxCode   String?
+  note      String?  @db.VarChar(1000)
+  identityNumber String? @db.VarChar(20)
+  province       String? @db.VarChar(100)
+  district       String? @db.VarChar(100)
+  ward           String? @db.VarChar(100)
+  companyName    String? @db.VarChar(200)
+  groupId        Int?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  purchaseReceipts PurchaseReceipt[]
+  group SupplierGroup? @relation(fields: [groupId], references: [id], onDelete: Restrict)
+
+  @@index([name])
+  @@index([isActive])
+  @@index([groupId])
+}
+
+model SupplierGroup {
+  id        Int @id @default(autoincrement())
+  name      String @unique @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  suppliers Supplier[]
+}
+
+model PurchaseReceipt {
+  id                Int                   @id @default(autoincrement())
+  receiptCode       String                @unique
+  supplierId        Int?
+  receivedAt        DateTime
+  invoiceNumber     String?
+  invoiceDate       DateTime?
+  status            PurchaseReceiptStatus @default(DRAFT)
+  subtotalAmount    Int                   @default(0)
+  discountAmount    Int                   @default(0)
+  paidAmount        Int                   @default(0)
+  note              String?               @db.VarChar(1000)
+  createdByUserId   Int?
+  postedByUserId    Int?
+  postedAt          DateTime?
+  cancelledByUserId Int?
+  cancelledAt       DateTime?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  supplier              Supplier?            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  lines                 PurchaseReceiptLine[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([supplierId, receivedAt])
+  @@index([status, receivedAt])
+}
+
+model PurchaseReceiptLine {
+  id                Int      @id @default(autoincrement())
+  purchaseReceiptId Int
+  ingredientId      Int
+  ingredientSku     String
+  ingredientName    String
+  unit              String
+  quantity          Float
+  unitCost          Int
+  discountAmount    Int      @default(0)
+  note              String?  @db.VarChar(1000)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  purchaseReceipt PurchaseReceipt @relation(fields: [purchaseReceiptId], references: [id], onDelete: Cascade)
+  ingredient      Ingredient      @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@unique([purchaseReceiptId, ingredientId])
+  @@index([ingredientId])
 }
 
 model Voucher {

@@ -433,6 +433,78 @@ const options: swaggerJSDoc.Options = {
           }
         }
       },
+      '/api/inventory/catalog': {
+        get: {
+          tags: ['Inventory & BOM'],
+          summary: 'Danh sách kho hàng hợp nhất (Quyền ADMIN)',
+          description: 'Read-only catalog hợp nhất nguyên vật liệu và món bán, phân trang sau khi hợp nhất hai nguồn dữ liệu.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'search', in: 'query', required: false, schema: { type: 'string' }, description: 'Tìm theo SKU hoặc tên' },
+            { name: 'managementGroup', in: 'query', required: false, schema: { type: 'string', enum: ['MATERIAL', 'SELLABLE', 'TOOL'] } },
+            { name: 'categoryId', in: 'query', required: false, schema: { type: 'integer', minimum: 1 } },
+            { name: 'menuType', in: 'query', required: false, schema: { type: 'string', enum: ['FOOD', 'DRINK', 'SERVICE', 'OTHER'] } },
+            { name: 'stockStatus', in: 'query', required: false, schema: { type: 'string', enum: ['ALL', 'NORMAL', 'LOW', 'NEGATIVE', 'NOT_TRACKED'], default: 'ALL' } },
+            { name: 'position', in: 'query', required: false, schema: { type: 'string' } },
+            { name: 'isActive', in: 'query', required: false, schema: { type: 'string', enum: ['true', 'false', 'all'], default: 'true' } },
+            { name: 'page', in: 'query', required: false, schema: { type: 'integer', minimum: 1, default: 1 } },
+            { name: 'pageSize', in: 'query', required: false, schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 } },
+            { name: 'sortBy', in: 'query', required: false, schema: { type: 'string', enum: ['sku', 'name', 'costPrice', 'stockQuantity', 'updatedAt'], default: 'sku' } },
+            { name: 'sortOrder', in: 'query', required: false, schema: { type: 'string', enum: ['asc', 'desc'], default: 'asc' } }
+          ],
+          responses: {
+            200: {
+              description: 'Rows hợp nhất, summary toàn bộ tập lọc và metadata phân trang',
+              content: {
+                'application/json': {
+                  example: {
+                    data: {
+                      rows: [{ sourceType: 'INGREDIENT', sourceId: 1, sku: 'ING-GA', name: 'Thịt gà', managementGroup: 'MATERIAL', costPrice: 85000, stockQuantity: 12.5, minStock: 5, stockStatus: 'NORMAL', trackStock: true, isActive: true, updatedAt: '2026-09-20T12:00:00.000Z' }],
+                      summary: { totalRows: 1, trackedRows: 1, lowStockRows: 0, negativeStockRows: 0, totalStockValue: 1062500 },
+                      pagination: { page: 1, pageSize: 50, totalRows: 1, totalPages: 1 }
+                    }
+                  }
+                }
+              }
+            },
+            400: { description: 'Query không hợp lệ' },
+            401: { description: 'Chưa xác thực' },
+            403: { description: 'Chỉ ADMIN mới có quyền truy cập' }
+          }
+        }
+      },
+      '/api/inventory/catalog/export': {
+        get: {
+          tags: ['Inventory & BOM'],
+          summary: 'Xuất snapshot danh sách kho hàng hợp nhất (Quyền ADMIN)',
+          description: 'Xuất toàn bộ tập dữ liệu sau filter hiện tại, không áp dụng phân trang. Export chỉ đọc và không tạo InventoryTransaction.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'format', in: 'query', required: false, schema: { type: 'string', enum: ['csv', 'xlsx'], default: 'xlsx' } },
+            { name: 'search', in: 'query', required: false, schema: { type: 'string' } },
+            { name: 'managementGroup', in: 'query', required: false, schema: { type: 'string', enum: ['MATERIAL', 'SELLABLE', 'TOOL'] } },
+            { name: 'categoryId', in: 'query', required: false, schema: { type: 'integer', minimum: 1 } },
+            { name: 'menuType', in: 'query', required: false, schema: { type: 'string', enum: ['FOOD', 'DRINK', 'SERVICE', 'OTHER'] } },
+            { name: 'stockStatus', in: 'query', required: false, schema: { type: 'string', enum: ['ALL', 'NORMAL', 'LOW', 'NEGATIVE', 'NOT_TRACKED'], default: 'ALL' } },
+            { name: 'position', in: 'query', required: false, schema: { type: 'string' } },
+            { name: 'isActive', in: 'query', required: false, schema: { type: 'string', enum: ['true', 'false', 'all'], default: 'true' } },
+            { name: 'sortBy', in: 'query', required: false, schema: { type: 'string', enum: ['sku', 'name', 'costPrice', 'stockQuantity', 'updatedAt'], default: 'sku' } },
+            { name: 'sortOrder', in: 'query', required: false, schema: { type: 'string', enum: ['asc', 'desc'], default: 'asc' } }
+          ],
+          responses: {
+            200: {
+              description: 'File CSV hoặc XLSX snapshot catalog',
+              content: {
+                'text/csv': {},
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {}
+              }
+            },
+            400: { description: 'Format hoặc query không hợp lệ' },
+            401: { description: 'Chưa xác thực' },
+            403: { description: 'Chỉ ADMIN mới có quyền truy cập' }
+          }
+        }
+      },
       '/api/inventory/ingredients': {
         get: {
           tags: ['Inventory & BOM'],

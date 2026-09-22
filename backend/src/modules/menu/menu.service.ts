@@ -3,7 +3,28 @@ import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { AuditService } from '../audit/audit.service';
-import { CreateMenuItemInput, UpdateMenuItemInput } from './menu.schemas';
+import { PriceListService } from '../price-lists/price-list.service';
+import { emitInventoryChanged } from '../inventory/inventory.events';
+import {
+  CreateCategoryInput,
+  CreateMenuItemInput,
+  DeleteCategoryInput,
+  MenuExportFormat,
+  MenuBulkActionInput,
+  MenuImportCommitInput,
+  MenuImportRowInput,
+  ReorderCategoriesInput,
+  UpdateCategoryInput,
+  UpdateMenuItemInput
+} from './menu.schemas';
+import {
+  MenuExportRow,
+  MenuImportErrorRow,
+  MenuImportRow,
+  parseMenuImportBuffer,
+  serializeMenuCsv,
+  serializeMenuWorkbook
+} from './menu.import';
 
 const MENU_SKU_PREFIX = 'SP';
 const MENU_SKU_MAX_RETRIES = 3;
@@ -33,6 +54,420 @@ function isSkuUniqueConstraintError(error: unknown) {
 }
 
 export class MenuService {
+  static async bulkUpdateMenuItems(input: MenuBulkActionInput, actorId?: number, actorName?: string) {
+    const items = await prisma.menuItem.findMany({
+      where: { id: { in: input.ids } },
+      select: { id: true, stockQuantity: true }
+    });
+
+    if (items.length !== input.ids.length) {
+      throw ApiError.badRequest('Một hoặc nhiều món ăn không tồn tại');
+    }
+
+    if (input.action === 'setCategory') {
+      const category = await prisma.category.findUnique({
+        where: { id: input.payload.categoryId },
+        select: { id: true }
+      });
+      if (!category) {
+        throw ApiError.badRequest(`Danh mục với ID ${input.payload.categoryId} không tồn tại`);
+      }
+    }
+
+    if (input.action === 'adjustStock') {
+      const hasNegativeStock = items.some(item => item.stockQuantity + input.payload.delta < 0);
+      if (hasNegativeStock) {
+        throw ApiError.badRequest('Tồn kho sau cập nhật không được âm');
+      }
+    }
+
+    const result = await prisma.$transaction(async tx => {
+      if (input.action === 'adjustStock') {
+        for (const item of items) {
+          await tx.menuItem.update({
+            where: { id: item.id },
+            data: { stockQuantity: item.stockQuantity + input.payload.delta }
+          });
+        }
+      } else {
+        const data = input.action === 'setAvailability'
+          ? { isAvailable: input.payload.isAvailable }
+          : input.action === 'setCategory'
+            ? { categoryId: input.payload.categoryId }
+            : input.action === 'setMenuType'
+              ? { menuType: input.payload.menuType }
+              : input.action === 'setItemType'
+                ? { itemType: input.payload.itemType }
+                : input.action === 'setTrackStock'
+                  ? { trackStock: input.payload.trackStock }
+                  : { isAvailable: false };
+
+        await tx.menuItem.updateMany({
+          where: { id: { in: input.ids } },
+          data
+        });
+      }
+
+      return { updatedCount: input.ids.length, action: input.action };
+    });
+
+    await AuditService.log({
+      action: 'MENU_ITEMS_BULK_UPDATED',
+      targetType: 'MenuItem',
+      targetId: null,
+      actorId,
+      actorName,
+      metadata: { action: input.action, ids: input.ids, updatedCount: result.updatedCount }
+    });
+    emitToAll('menu:bulkChanged', result);
+    emitInventoryChanged({
+      sourceType: 'MENU_ITEM',
+      sourceIds: input.ids,
+      reason: input.action === 'adjustStock' ? 'MANUAL_ADJUST' : 'MENU_ITEM_UPDATED',
+      updatedAt: new Date().toISOString()
+    });
+
+    return result;
+  }
+
+  static async exportMenu(format: MenuExportFormat): Promise<Buffer> {
+    const categories = await prisma.category.findMany({
+      orderBy: { displayOrder: 'asc' },
+      include: {
+        menuItems: {
+          orderBy: { displayOrder: 'asc' }
+        }
+      }
+    });
+
+    const rows: MenuExportRow[] = categories.flatMap(category =>
+      category.menuItems.map(item => ({
+        sku: item.sku,
+        name: item.name,
+        categoryName: category.name,
+        basePrice: item.basePrice,
+        menuType: item.menuType,
+        itemType: item.itemType,
+        isAvailable: item.isAvailable,
+        trackStock: item.trackStock,
+        stockQuantity: item.stockQuantity,
+        position: item.position,
+        description: item.description,
+        imageUrl: item.imageUrl
+      }))
+    );
+
+    return format === 'csv' ? serializeMenuCsv(rows) : serializeMenuWorkbook(rows);
+  }
+
+  static async previewMenuImport(buffer: Buffer, fileName: string, createMissingCategories: boolean) {
+    const parsed = parseMenuImportBuffer(buffer, fileName);
+    const categories = await prisma.category.findMany({ select: { name: true } });
+    const categoryNames = new Set(categories.map(category => category.name.trim().toLocaleLowerCase()));
+    const errorRows: MenuImportErrorRow[] = [...parsed.errors];
+    const validRows: MenuImportRow[] = [];
+
+    parsed.rows.forEach(row => {
+      const categoryKey = row.categoryName.trim().toLocaleLowerCase();
+      if (!createMissingCategories && !categoryNames.has(categoryKey)) {
+        errorRows.push({
+          rowNumber: row.rowNumber,
+          sku: row.sku,
+          name: row.name,
+          categoryName: row.categoryName,
+          error: `Danh mục "${row.categoryName}" không tồn tại`
+        });
+        return;
+      }
+      validRows.push(row);
+    });
+
+    errorRows.sort((a, b) => a.rowNumber - b.rowNumber);
+    return {
+      fileName,
+      totalRows: parsed.totalRows,
+      validRows,
+      errorRows,
+      canCommit: validRows.length > 0 && errorRows.length === 0
+    };
+  }
+
+  static async commitMenuImport(input: MenuImportCommitInput, actorId?: number, actorName?: string) {
+    const rows: MenuImportRowInput[] = input.rows.map(row => ({
+      ...row,
+      sku: row.sku?.trim() || undefined,
+      name: row.name.trim(),
+      categoryName: row.categoryName.trim(),
+      position: row.position?.trim() || null,
+      description: row.description?.trim() || null,
+      imageUrl: row.imageUrl?.trim() || null
+    }));
+    const details: Record<string, string> = {};
+    const skuRows = new Map<string, number[]>();
+
+    rows.forEach(row => {
+      if (!row.sku) return;
+      const rowNumbers = skuRows.get(row.sku) ?? [];
+      rowNumbers.push(row.rowNumber);
+      skuRows.set(row.sku, rowNumbers);
+    });
+
+    skuRows.forEach((rowNumbers, sku) => {
+      if (rowNumbers.length > 1) {
+        details[`sku_${sku}`] = `SKU ${sku} bị trùng ở dòng ${rowNumbers.join(', ')}`;
+      }
+    });
+
+    const categories = await prisma.category.findMany({ select: { id: true, name: true, displayOrder: true } });
+    const categoryByName = new Map(categories.map(category => [category.name.trim().toLocaleLowerCase(), category]));
+    const missingCategoryNames = new Map<string, string>();
+    rows.forEach(row => {
+      const categoryKey = row.categoryName.toLocaleLowerCase();
+      if (!categoryByName.has(categoryKey)) missingCategoryNames.set(categoryKey, row.categoryName);
+    });
+
+    if (missingCategoryNames.size > 0 && !input.createMissingCategories) {
+      missingCategoryNames.forEach((categoryName, categoryKey) => {
+        details[`category_${categoryKey}`] = `categoryName "${categoryName}" không tồn tại`;
+      });
+    }
+
+    if (Object.keys(details).length > 0) {
+      throw ApiError.badRequest('Dữ liệu import không hợp lệ', details);
+    }
+
+    const requestedSkus = rows.flatMap(row => row.sku ? [row.sku] : []);
+    const existingItems = requestedSkus.length > 0
+      ? await prisma.menuItem.findMany({ where: { sku: { in: requestedSkus } }, select: { id: true, sku: true } })
+      : [];
+    const existingBySku = new Map(existingItems.map(item => [item.sku, item]));
+    rows.forEach(row => {
+      if (row.sku && !existingBySku.has(row.sku)) {
+        details[`sku_${row.sku}`] = `SKU "${row.sku}" không tồn tại để cập nhật`;
+      }
+    });
+
+    if (Object.keys(details).length > 0) {
+      throw ApiError.badRequest('Dữ liệu import không hợp lệ', details);
+    }
+
+    const result = await prisma.$transaction(async tx => {
+      const txCategoryByName = new Map(categoryByName);
+      let categoryCreatedCount = 0;
+      let nextDisplayOrder = categories.reduce((max, category) => Math.max(max, category.displayOrder), -1) + 1;
+
+      if (input.createMissingCategories) {
+        for (const [categoryKey, categoryName] of missingCategoryNames) {
+          const createdCategory = await tx.category.create({
+            data: { name: categoryName, displayOrder: nextDisplayOrder++ }
+          });
+          txCategoryByName.set(categoryKey, createdCategory);
+          categoryCreatedCount += 1;
+        }
+      }
+
+      let createdCount = 0;
+      let updatedCount = 0;
+
+      for (const row of rows) {
+        const category = txCategoryByName.get(row.categoryName.toLocaleLowerCase());
+        if (!category) {
+          throw ApiError.badRequest(`categoryName "${row.categoryName}" không tồn tại`);
+        }
+
+        const data = {
+          categoryId: category.id,
+          name: row.name,
+          description: row.description,
+          basePrice: row.basePrice,
+          imageUrl: row.imageUrl,
+          isAvailable: row.isAvailable,
+          menuType: row.menuType,
+          itemType: row.itemType,
+          trackStock: row.trackStock,
+          stockQuantity: row.stockQuantity,
+          position: row.position
+        };
+
+        if (row.sku) {
+          const existing = existingBySku.get(row.sku);
+          if (!existing) throw ApiError.badRequest(`SKU "${row.sku}" không tồn tại để cập nhật`);
+          await tx.menuItem.update({ where: { id: existing.id }, data });
+          await PriceListService.syncMenuItemPrice(tx, existing.id, row.basePrice);
+          updatedCount += 1;
+        } else {
+          const sku = await generateNextMenuSku(tx);
+          const created = await tx.menuItem.create({ data: { ...data, sku } });
+          await PriceListService.syncMenuItemPrice(tx, created.id, row.basePrice);
+          createdCount += 1;
+        }
+      }
+
+      return { createdCount, updatedCount, categoryCreatedCount };
+    });
+
+    await AuditService.log({
+      action: 'MENU_ITEMS_IMPORTED',
+      targetType: 'MenuItem',
+      targetId: null,
+      actorId,
+      actorName,
+      metadata: { sourceFileName: input.sourceFileName, ...result }
+    });
+    emitToAll('menu:changed', { source: 'import', ...result });
+
+    return result;
+  }
+
+  static async createCategory(input: CreateCategoryInput, actorId?: number, actorName?: string) {
+    const name = input.name.trim();
+    const duplicate = await prisma.category.findFirst({ where: { name } });
+    if (duplicate) {
+      throw ApiError.conflict(`Danh mục "${name}" đã tồn tại`);
+    }
+
+    const category = await prisma.category.create({
+      data: {
+        name,
+        displayOrder: input.displayOrder ?? 0
+      }
+    });
+
+    await AuditService.log({
+      action: 'MENU_CATEGORY_CREATED',
+      targetType: 'Category',
+      targetId: category.id,
+      actorId,
+      actorName,
+      metadata: { name: category.name, displayOrder: category.displayOrder }
+    });
+
+    return { category };
+  }
+
+  static async updateCategory(id: number, input: UpdateCategoryInput, actorId?: number, actorName?: string) {
+    const existing = await prisma.category.findUnique({ where: { id } });
+    if (!existing) {
+      throw ApiError.notFound(`Danh mục với ID ${id} không tồn tại`);
+    }
+
+    const name = input.name?.trim();
+    if (name !== undefined) {
+      const duplicate = await prisma.category.findFirst({
+        where: { name, id: { not: id } }
+      });
+      if (duplicate) {
+        throw ApiError.conflict(`Danh mục "${name}" đã tồn tại`);
+      }
+    }
+
+    const category = await prisma.category.update({
+      where: { id },
+      data: {
+        ...(name !== undefined ? { name } : {}),
+        ...(input.displayOrder !== undefined ? { displayOrder: input.displayOrder } : {})
+      }
+    });
+
+    await AuditService.log({
+      action: 'MENU_CATEGORY_UPDATED',
+      targetType: 'Category',
+      targetId: category.id,
+      actorId,
+      actorName,
+      metadata: {
+        name: category.name,
+        previousName: existing.name,
+        displayOrder: category.displayOrder
+      }
+    });
+
+    return { category };
+  }
+
+  static async deleteCategory(id: number, input: DeleteCategoryInput, actorId?: number, actorName?: string) {
+    const result = await prisma.$transaction(async tx => {
+      const category = await tx.category.findUnique({
+        where: { id },
+        include: { menuItems: { select: { id: true } } }
+      });
+      if (!category) {
+        throw ApiError.notFound(`Danh mục với ID ${id} không tồn tại`);
+      }
+
+      if (category.menuItems.length > 0 && input.moveToCategoryId === undefined) {
+        throw ApiError.conflict('Không thể xóa danh mục đang có món. Hãy chọn danh mục đích để chuyển món trước.');
+      }
+
+      if (input.moveToCategoryId !== undefined) {
+        if (input.moveToCategoryId === id) {
+          throw ApiError.badRequest('Danh mục đích phải khác danh mục đang xóa');
+        }
+
+        const destination = await tx.category.findUnique({ where: { id: input.moveToCategoryId } });
+        if (!destination) {
+          throw ApiError.badRequest(`Danh mục đích với ID ${input.moveToCategoryId} không tồn tại`);
+        }
+
+        if (category.menuItems.length > 0) {
+          await tx.menuItem.updateMany({
+            where: { categoryId: id },
+            data: { categoryId: input.moveToCategoryId }
+          });
+        }
+      }
+
+      await tx.category.delete({ where: { id } });
+      return { deletedCategoryId: id, movedMenuItemCount: category.menuItems.length };
+    });
+
+    await AuditService.log({
+      action: 'MENU_CATEGORY_DELETED',
+      targetType: 'Category',
+      targetId: id,
+      actorId,
+      actorName,
+      metadata: { movedMenuItemCount: result.movedMenuItemCount, moveToCategoryId: input.moveToCategoryId }
+    });
+
+    return result;
+  }
+
+  static async reorderCategories(input: ReorderCategoriesInput, actorId?: number, actorName?: string) {
+    const ids = input.ids;
+    if (new Set(ids).size !== ids.length) {
+      throw ApiError.badRequest('Danh sách category không được chứa ID trùng lặp');
+    }
+
+    const existing = await prisma.category.findMany({ select: { id: true } });
+    const existingIds = new Set(existing.map(category => category.id));
+    if (existingIds.size !== ids.length || ids.some(id => !existingIds.has(id))) {
+      throw ApiError.badRequest('Danh sách category phải chứa đầy đủ và chỉ gồm các ID hợp lệ');
+    }
+
+    const categories = await prisma.$transaction(async tx => {
+      for (const [displayOrder, id] of ids.entries()) {
+        await tx.category.update({ where: { id }, data: { displayOrder } });
+      }
+
+      return tx.category.findMany({
+        orderBy: { displayOrder: 'asc' },
+        include: { menuItems: { orderBy: { displayOrder: 'asc' } } }
+      });
+    });
+
+    await AuditService.log({
+      action: 'MENU_CATEGORY_REORDERED',
+      targetType: 'Category',
+      targetId: null,
+      actorId,
+      actorName,
+      metadata: { ids }
+    });
+
+    return { categories };
+  }
+
   /**
    * Lay toan bo danh muc mon an kem cac nhom Modifier va lua chon Option
    */
@@ -53,7 +488,17 @@ export class MenuService {
       }
     });
 
-    return { categories };
+    const menuItemIds = categories.flatMap(category => category.menuItems.map(item => item.id));
+    const resolvedPrices = await PriceListService.resolveEffectivePrices(prisma, menuItemIds);
+    return {
+      categories: categories.map(category => ({
+        ...category,
+        menuItems: category.menuItems.map(item => ({
+          ...item,
+          basePrice: resolvedPrices.get(item.id)?.salePrice ?? item.basePrice
+        }))
+      }))
+    };
   }
 
   /**
@@ -110,6 +555,7 @@ export class MenuService {
               }
             }
           });
+          await PriceListService.syncMenuItemPrice(tx, created.id, created.basePrice);
           return created;
         });
 
@@ -212,6 +658,10 @@ export class MenuService {
         }
       });
 
+      if (input.basePrice !== undefined) {
+        await PriceListService.syncMenuItemPrice(tx, id, input.basePrice);
+      }
+
       return updated;
     });
 
@@ -235,6 +685,13 @@ export class MenuService {
         previousBasePrice: existing.basePrice,
         isAvailable: menuItem.isAvailable
       }
+    });
+
+    emitInventoryChanged({
+      sourceType: 'MENU_ITEM',
+      sourceIds: [menuItem.id],
+      reason: 'MENU_ITEM_UPDATED',
+      updatedAt: menuItem.updatedAt.toISOString()
     });
 
     return { menuItem };
@@ -281,6 +738,13 @@ export class MenuService {
         isAvailable,
         previousIsAvailable: existing.isAvailable
       }
+    });
+
+    emitInventoryChanged({
+      sourceType: 'MENU_ITEM',
+      sourceIds: [updated.id],
+      reason: 'MENU_ITEM_UPDATED',
+      updatedAt: updated.updatedAt.toISOString()
     });
 
     return { menuItem: updated };

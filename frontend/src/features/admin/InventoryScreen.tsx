@@ -34,7 +34,8 @@ import { useRestaurant } from '../../contexts/RestaurantContext';
 import {
   IngredientDto,
   MenuItemRecipeDto,
-  ExcelPreviewResultDto
+  ExcelPreviewResultDto,
+  InventoryCatalogRowDto
 } from '../../api/contracts';
 import {
   fetchIngredientsApi,
@@ -49,18 +50,29 @@ import {
 import { getApiBaseUrl } from '../../api/config';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
+import { InventoryCatalogScreen } from './InventoryCatalogScreen';
+import { PurchaseReceiptListScreen } from './PurchaseReceiptListScreen';
+import { PurchaseReceiptComposerScreen } from './PurchaseReceiptComposerScreen';
+import { InventoryCheckListScreen } from './InventoryCheckListScreen';
+import { InventoryCheckComposerScreen } from './InventoryCheckComposerScreen';
+import { InventoryWasteListScreen } from './InventoryWasteListScreen';
+import { InventoryWasteComposerScreen } from './InventoryWasteComposerScreen';
+import { SupplierListScreen } from './SupplierListScreen';
 
 type ActiveTab = 'inventory' | 'bom';
 type StockFilter = 'ALL' | 'LOW' | 'NEGATIVE';
 
-export const InventoryScreen: React.FC = () => {
+const LegacyInventoryOperations: React.FC<{ initialTab?: ActiveTab; initialMenuItemId?: number }> = ({
+  initialTab = 'inventory',
+  initialMenuItemId
+}) => {
   const { theme } = useTheme();
   const { token } = useAuth();
   const { allMenuItems } = useRestaurant();
   const { width } = useWindowDimensions();
   const isMobile = width < 768;
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('inventory');
+  const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
   const [ingredients, setIngredients] = useState<IngredientDto[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -95,7 +107,7 @@ export const InventoryScreen: React.FC = () => {
 
   // BOM Recipe State
 
-  const [selectedMenuItemId, setSelectedMenuItemId] = useState<number | null>(null);
+  const [selectedMenuItemId, setSelectedMenuItemId] = useState<number | null>(initialMenuItemId ?? null);
   const [currentRecipe, setCurrentRecipe] = useState<MenuItemRecipeDto | null>(null);
   const [isLoadingRecipe, setIsLoadingRecipe] = useState<boolean>(false);
   const [isSavingRecipe, setIsSavingRecipe] = useState<boolean>(false);
@@ -1171,6 +1183,140 @@ export const InventoryScreen: React.FC = () => {
     </SafeAreaView>
   );
 };
+
+export const InventoryScreen: React.FC = () => {
+  const { theme } = useTheme();
+  const [section, setSection] = useState<'catalog' | 'operations' | 'receipts' | 'receipt-composer' | 'checks' | 'check-composer' | 'wastes' | 'waste-composer' | 'suppliers'>('catalog');
+  const [legacyTab, setLegacyTab] = useState<ActiveTab>('inventory');
+  const [legacyMenuItemId, setLegacyMenuItemId] = useState<number | undefined>();
+  const [receiptComposer, setReceiptComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
+  const [checkComposer, setCheckComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
+  const [wasteComposer, setWasteComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
+
+  const openLegacyOperations = (row?: InventoryCatalogRowDto) => {
+    setLegacyTab(row?.sourceType === 'MENU_ITEM' ? 'bom' : 'inventory');
+    setLegacyMenuItemId(row?.sourceType === 'MENU_ITEM' ? row.sourceId : undefined);
+    setSection('operations');
+  };
+
+  const openPurchaseReceipts = () => {
+    setCheckComposer(null);
+    setReceiptComposer(null);
+    setSection('receipts');
+  };
+
+  const openInventoryChecks = () => {
+    setReceiptComposer(null);
+    setCheckComposer(null);
+    setSection('checks');
+  };
+
+  const createInventoryCheck = () => {
+    setCheckComposer({ mode: 'create', id: null });
+    setSection('check-composer');
+  };
+
+  const openInventoryCheck = (id: number) => {
+    setCheckComposer({ mode: 'edit', id });
+    setSection('check-composer');
+  };
+
+  const finishInventoryCheck = () => {
+    setCheckComposer(null);
+    setSection('checks');
+  };
+
+  const openInventoryWastes = () => {
+    setWasteComposer(null);
+    setSection('wastes');
+  };
+
+  const createInventoryWaste = () => {
+    setWasteComposer({ mode: 'create', id: null });
+    setSection('waste-composer');
+  };
+
+  const openInventoryWaste = (id: number) => {
+    setWasteComposer({ mode: 'edit', id });
+    setSection('waste-composer');
+  };
+
+  const finishInventoryWaste = () => {
+    setWasteComposer(null);
+    setSection('wastes');
+  };
+
+  const createPurchaseReceipt = () => {
+    setReceiptComposer({ mode: 'create', id: null });
+    setSection('receipt-composer');
+  };
+
+  const openPurchaseReceipt = (id: number) => {
+    setReceiptComposer({ mode: 'edit', id });
+    setSection('receipt-composer');
+  };
+
+  const finishPurchaseReceipt = () => {
+    setReceiptComposer(null);
+    setSection('receipts');
+  };
+
+  return (
+    <View style={[shellStyles.container, { backgroundColor: theme.surfaceCanvas }]}>
+      <View style={[shellStyles.sectionNav, { borderBottomColor: theme.borderSubtle, backgroundColor: theme.surfaceBase }]}>
+        <Pressable onPress={() => setSection('catalog')} style={[shellStyles.sectionButton, section === 'catalog' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: section === 'catalog' ? theme.primary : theme.textSecondary }]}>Danh sách kho hàng</Text>
+        </Pressable>
+        <Pressable onPress={() => setSection('operations')} style={[shellStyles.sectionButton, section === 'operations' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: section === 'operations' ? theme.primary : theme.textSecondary }]}>Quản lý nguyên liệu / BOM</Text>
+        </Pressable>
+        <Pressable onPress={openPurchaseReceipts} style={[shellStyles.sectionButton, (section === 'receipts' || section === 'receipt-composer') && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: (section === 'receipts' || section === 'receipt-composer') ? theme.primary : theme.textSecondary }]}>Phiếu nhập hàng</Text>
+        </Pressable>
+        <Pressable onPress={openInventoryChecks} style={[shellStyles.sectionButton, (section === 'checks' || section === 'check-composer') && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: (section === 'checks' || section === 'check-composer') ? theme.primary : theme.textSecondary }]}>Kiểm kho</Text>
+        </Pressable>
+        <Pressable onPress={openInventoryWastes} style={[shellStyles.sectionButton, (section === 'wastes' || section === 'waste-composer') && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: (section === 'wastes' || section === 'waste-composer') ? theme.primary : theme.textSecondary }]}>Xuất hủy</Text>
+        </Pressable>
+        <Pressable onPress={() => setSection('suppliers')} style={[shellStyles.sectionButton, section === 'suppliers' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: section === 'suppliers' ? theme.primary : theme.textSecondary }]}>Nhà cung cấp</Text>
+        </Pressable>
+      </View>
+      {section === 'catalog'
+        ? <InventoryCatalogScreen onOpenLegacyOperations={openLegacyOperations} onOpenPurchaseReceipts={openPurchaseReceipts} onOpenInventoryChecks={openInventoryChecks} onOpenInventoryWastes={openInventoryWastes} onOpenSuppliers={() => setSection('suppliers')} />
+        : section === 'suppliers'
+          ? <SupplierListScreen onOpenReceipt={openPurchaseReceipt} />
+        : section === 'operations'
+          ? <LegacyInventoryOperations initialTab={legacyTab} initialMenuItemId={legacyMenuItemId} />
+          : section === 'receipts'
+            ? <PurchaseReceiptListScreen onCreateReceipt={createPurchaseReceipt} onOpenReceipt={openPurchaseReceipt} />
+            : section === 'checks'
+              ? <InventoryCheckListScreen onCreateCheck={createInventoryCheck} onOpenCheck={openInventoryCheck} />
+              : section === 'check-composer' && checkComposer
+                ? <InventoryCheckComposerScreen mode={checkComposer.mode} checkId={checkComposer.id} onFinished={finishInventoryCheck} onCancel={openInventoryChecks} />
+                : section === 'wastes'
+                  ? <InventoryWasteListScreen onCreateWaste={createInventoryWaste} onOpenWaste={openInventoryWaste} />
+                  : section === 'waste-composer' && wasteComposer
+                    ? <InventoryWasteComposerScreen mode={wasteComposer.mode} wasteId={wasteComposer.id} onFinished={finishInventoryWaste} onCancel={openInventoryWastes} />
+                : receiptComposer
+                  ? <PurchaseReceiptComposerScreen
+                mode={receiptComposer.mode}
+                receiptId={receiptComposer.id}
+                onFinished={finishPurchaseReceipt}
+                onCancel={openPurchaseReceipts}
+              />
+                  : <PurchaseReceiptListScreen onCreateReceipt={createPurchaseReceipt} onOpenReceipt={openPurchaseReceipt} />}
+    </View>
+  );
+};
+
+const shellStyles = StyleSheet.create({
+  container: { flex: 1 },
+  sectionNav: { borderBottomWidth: 1, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  sectionButton: { borderColor: 'transparent', borderRadius: radii.md, borderWidth: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
+  sectionButtonText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm }
+});
 
 const styles = StyleSheet.create({
   container: {

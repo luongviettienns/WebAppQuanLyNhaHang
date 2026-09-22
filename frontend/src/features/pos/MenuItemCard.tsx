@@ -6,6 +6,7 @@ import { resolveImageUrl } from '../../api/config';
 import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon, StatusBadge } from '../../ui';
+import { isMenuItemOutOfStock, isMenuItemOrderable } from './menuStock';
 
 interface Props {
   item: MenuItemDto;
@@ -19,22 +20,24 @@ export const MenuItemCard: React.FC<Props> = ({ item, onPress }) => {
     currency: 'VND'
   }).format(item.basePrice);
   const hasModifiers = Boolean(item.modifierGroups?.length);
+  const isOutOfStock = isMenuItemOutOfStock(item);
+  const isOrderable = isMenuItemOrderable(item);
 
   return (
     <Pressable
       testID={`menu-item-${item.id}`}
       accessibilityRole="button"
-      accessibilityLabel={`${item.name}, ${formattedPrice}${item.isAvailable ? '' : ', hết hàng'}`}
-      accessibilityState={{ disabled: !item.isAvailable }}
-      disabled={!item.isAvailable}
+      accessibilityLabel={`${item.name}, ${formattedPrice}${!item.isAvailable ? ', hết hàng' : isOutOfStock ? ', hết tồn' : ''}`}
+      accessibilityState={{ disabled: !isOrderable }}
+      disabled={!isOrderable}
       onPress={() => onPress(item)}
       style={({ pressed }) => [
         styles.card,
         {
           backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase,
-          borderColor: item.isAvailable ? theme.borderSubtle : theme.borderStrong
+          borderColor: isOrderable ? theme.borderSubtle : theme.borderStrong
         },
-        !item.isAvailable && styles.disabled
+        !isOrderable && styles.disabled
       ]}
     >
       <View style={[styles.media, { backgroundColor: theme.surfaceSunken }]}>
@@ -55,6 +58,8 @@ export const MenuItemCard: React.FC<Props> = ({ item, onPress }) => {
           <Text style={[styles.price, { color: theme.primary }]}>{formattedPrice}</Text>
           {!item.isAvailable ? (
             <StatusBadge tone="danger" label="Hết hàng" />
+          ) : isOutOfStock ? (
+            <StatusBadge tone="danger" label="Hết tồn" />
           ) : hasModifiers ? (
             <StatusBadge tone="neutral" label="Tùy chọn" icon={SlidersHorizontal} />
           ) : null}

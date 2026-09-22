@@ -73,3 +73,17 @@ export function calculateRecipeCost(
 
   return Math.round(total);
 }
+
+/**
+ * Tinh gia von BOM nhung phan biet cong thuc rong voi cong thuc co gia von 0.
+ * Catalog va bang gia dung null de hien thi mon chua co du lieu BOM.
+ */
+export function calculateRecipeCostOrNull(
+  bom: Array<{ quantityRequired: number; costPerUnit: number }>
+): number | null {
+  if (!bom || bom.length === 0) {
+    return null;
+  }
+
+  return calculateRecipeCost(bom);
+}

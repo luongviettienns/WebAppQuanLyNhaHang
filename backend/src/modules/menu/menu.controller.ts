@@ -2,15 +2,115 @@ import fs from 'fs';
 import path from 'path';
 import { Request, Response, NextFunction } from 'express';
 import { MenuService } from './menu.service';
-import { updateSoldOutSchema, createMenuItemSchema, updateMenuItemSchema } from './menu.schemas';
+import {
+  createCategorySchema,
+  createMenuItemSchema,
+  deleteCategorySchema,
+  menuExportQuerySchema,
+  menuBulkActionSchema,
+  menuImportCommitSchema,
+  menuImportPreviewSchema,
+  reorderCategoriesSchema,
+  updateCategorySchema,
+  updateMenuItemSchema,
+  updateSoldOutSchema
+} from './menu.schemas';
 import { ApiError } from '../../lib/api-error';
 import { getUploadsDir } from '../../lib/uploads';
 import { AuditService } from '../audit/audit.service';
 
 export class MenuController {
+  static async createCategory(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validated = createCategorySchema.parse(req.body);
+      const data = await MenuService.createCategory(validated, req.user?.id, req.user?.name);
+      res.status(201).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async updateCategory(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const categoryId = parseInt(req.params.id, 10);
+      if (isNaN(categoryId)) {
+        throw ApiError.badRequest('ID danh mục không hợp lệ');
+      }
+      const validated = updateCategorySchema.parse(req.body);
+      const data = await MenuService.updateCategory(categoryId, validated, req.user?.id, req.user?.name);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async deleteCategory(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const categoryId = parseInt(req.params.id, 10);
+      if (isNaN(categoryId)) {
+        throw ApiError.badRequest('ID danh mục không hợp lệ');
+      }
+      const validated = deleteCategorySchema.parse(req.body ?? {});
+      const data = await MenuService.deleteCategory(categoryId, validated, req.user?.id, req.user?.name);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async reorderCategories(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validated = reorderCategoriesSchema.parse(req.body);
+      const data = await MenuService.reorderCategories(validated, req.user?.id, req.user?.name);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
   static async getMenu(_req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const data = await MenuService.getFullMenu();
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async exportMenu(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const { format } = menuExportQuerySchema.parse(req.query);
+      const buffer = await MenuService.exportMenu(format);
+      const extension = format === 'csv' ? 'csv' : 'xlsx';
+      res.setHeader(
+        'Content-Type',
+        format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      );
+      res.setHeader('Content-Disposition', `attachment; filename="menu_${Date.now()}.${extension}"`);
+      res.send(buffer);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async previewMenuImport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validated = menuImportPreviewSchema.parse(req.body);
+      const data = await MenuService.previewMenuImport(
+        Buffer.from(validated.fileBase64, 'base64'),
+        validated.fileName,
+        validated.createMissingCategories
+      );
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async commitMenuImport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validated = menuImportCommitSchema.parse(req.body);
+      const data = await MenuService.commitMenuImport(validated, req.user?.id, req.user?.name);
       res.status(200).json({ data });
     } catch (error) {
       next(error);
@@ -47,6 +147,16 @@ export class MenuController {
       const { isAvailable } = updateSoldOutSchema.parse(req.body);
 
       const data = await MenuService.updateSoldOut(menuItemId, isAvailable, req.user?.id, req.user?.name);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async bulkUpdateMenuItems(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const validated = menuBulkActionSchema.parse(req.body);
+      const data = await MenuService.bulkUpdateMenuItems(validated, req.user?.id, req.user?.name);
       res.status(200).json({ data });
     } catch (error) {
       next(error);

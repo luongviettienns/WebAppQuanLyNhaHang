@@ -21,7 +21,7 @@ const items: MenuItemDto[] = [
     itemType: 'COMBO',
     trackStock: false,
     stockQuantity: 0,
-    position: null,
+    position: 'Quầy nóng',
     modifierGroups: [
       {
         id: 10,
@@ -45,9 +45,9 @@ const items: MenuItemDto[] = [
     sku: 'SP000025',
     menuType: 'DRINK',
     itemType: 'REGULAR',
-    trackStock: false,
+    trackStock: true,
     stockQuantity: 0,
-    position: null,
+    position: 'Quầy nước',
     modifierGroups: []
   }
 ];
@@ -84,5 +84,31 @@ describe('menuManagementFilters', () => {
         optionPresence: 'withoutOptions'
       }).map((item) => item.id)
     ).toEqual([25]);
+  });
+
+  it('filters metadata, actual sku, position and stock status', () => {
+    expect(
+      filterMenuManagementItems(items, categories, {
+        searchQuery: 'sp000025',
+        categoryId: null,
+        availability: 'all',
+        optionPresence: 'all',
+        menuType: 'DRINK',
+        itemType: 'REGULAR',
+        stockStatus: 'outOfStock'
+      }).map((item) => item.id)
+    ).toEqual([25]);
+
+    expect(
+      filterMenuManagementItems(items, categories, {
+        searchQuery: 'quầy nóng',
+        categoryId: null,
+        availability: 'all',
+        optionPresence: 'all',
+        menuType: 'FOOD',
+        itemType: 'COMBO',
+        stockStatus: 'untracked'
+      }).map((item) => item.id)
+    ).toEqual([1]);
   });
 });

@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useRef } from 'react';
-import { Check, Eye, ImageIcon, Pencil, Plus, Search, Sparkles, Trash2, Upload, X, Zap } from 'lucide-react-native';
+import React, { useEffect, useState, useMemo } from 'react';
+import { ArrowDown, ArrowUp, Check, Download, Eye, FileSpreadsheet, ImageIcon, Pencil, Plus, Search, Sparkles, Trash2, Upload, X } from 'lucide-react-native';
 import {
   StyleSheet,
   Text,
@@ -19,16 +19,23 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useAuth } from '../../contexts/AuthContext';
 import { useToast } from '../../contexts/ToastContext';
-import { MenuItemDto, MenuItemUpsertDto } from '../../api/contracts';
+import { CategoryDto, MenuBulkAction, MenuBulkPayload, MenuItemDto, MenuItemType, MenuItemUpsertDto, MenuType } from '../../api/contracts';
 import { getApiBaseUrl, resolveImageUrl } from '../../api/config';
+import { downloadMenuExportApi } from '../../api/menuImport';
 import { elevation, radii, spacing, statusColors, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, Field, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import {
   filterMenuManagementItems,
   formatMenuItemCode,
   MenuAvailabilityFilter,
-  MenuOptionPresenceFilter
+  MenuItemTypeFilter,
+  MenuOptionPresenceFilter,
+  MenuStockFilter,
+  MenuTypeFilter
 } from './menuManagementFilters';
+import { moveCategory, normalizeCategoryDraft } from './categoryManagement';
+import { MenuImportModal } from './MenuImportModal';
+import { MenuBulkActions } from './MenuBulkActions';
 
 interface ModifierOptionForm {
   id?: number;
@@ -107,8 +114,30 @@ interface MenuItemForm {
   description: string;
   imageUrl: string;
   isAvailable: boolean;
+  menuType: MenuType;
+  itemType: MenuItemType;
+  trackStock: boolean;
+  stockQuantityStr: string;
+  position: string;
   modifierGroups: ModifierGroupForm[];
 }
+
+const MENU_TYPE_OPTIONS: Array<{ value: MenuType; label: string }> = [
+  { value: 'FOOD', label: 'Đồ ăn' },
+  { value: 'DRINK', label: 'Đồ uống' },
+  { value: 'SERVICE', label: 'Dịch vụ' },
+  { value: 'OTHER', label: 'Khác' }
+];
+
+const ITEM_TYPE_OPTIONS: Array<{ value: MenuItemType; label: string }> = [
+  { value: 'REGULAR', label: 'Món thường' },
+  { value: 'TOPPING', label: 'Món thêm' },
+  { value: 'COMBO', label: 'Combo' },
+  { value: 'SERVICE', label: 'Dịch vụ' }
+];
+
+const menuTypeLabel = (value: MenuType) => MENU_TYPE_OPTIONS.find((option) => option.value === value)?.label || value;
+const itemTypeLabel = (value: MenuItemType) => ITEM_TYPE_OPTIONS.find((option) => option.value === value)?.label || value;
 
 export const MenuManagementScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -121,6 +150,12 @@ export const MenuManagementScreen: React.FC = () => {
     toggleMenuItemSoldOut,
     createMenuItem,
     updateMenuItem,
+    createCategory,
+    updateCategory,
+    deleteCategory,
+    reorderCategories,
+    bulkUpdateMenuItems,
+    fetchMenu,
     isLoadingMenu
   } = useRestaurant();
 
@@ -128,6 +163,9 @@ export const MenuManagementScreen: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [availabilityFilter, setAvailabilityFilter] = useState<MenuAvailabilityFilter>('all');
   const [optionPresenceFilter, setOptionPresenceFilter] = useState<MenuOptionPresenceFilter>('all');
+  const [menuTypeFilter, setMenuTypeFilter] = useState<MenuTypeFilter>('all');
+  const [itemTypeFilter, setItemTypeFilter] = useState<MenuItemTypeFilter>('all');
+  const [stockStatusFilter, setStockStatusFilter] = useState<MenuStockFilter>('all');
   const [selectedItemIds, setSelectedItemIds] = useState<number[]>([]);
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<MenuItemDto | null>(null);
@@ -135,7 +173,15 @@ export const MenuManagementScreen: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [isUploadingImage, setIsUploadingImage] = useState<boolean>(false);
   const [togglingItemId, setTogglingItemId] = useState<number | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [orderedCategories, setOrderedCategories] = useState<CategoryDto[]>([]);
+  const [editingCategory, setEditingCategory] = useState<CategoryDto | null>(null);
+  const [categoryName, setCategoryName] = useState('');
+  const [categoryDisplayOrder, setCategoryDisplayOrder] = useState('0');
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [isCategorySaving, setIsCategorySaving] = useState(false);
+  const [isCategoryReordering, setIsCategoryReordering] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const isMobile = width < 768;
   const switchAppearance = {
     style: styles.switchTarget,
@@ -151,8 +197,17 @@ export const MenuManagementScreen: React.FC = () => {
     description: '',
     imageUrl: '',
     isAvailable: true,
+    menuType: 'FOOD',
+    itemType: 'REGULAR',
+    trackStock: false,
+    stockQuantityStr: '0',
+    position: '',
     modifierGroups: []
   });
+
+  useEffect(() => {
+    setOrderedCategories([...categories].sort((a, b) => a.displayOrder - b.displayOrder));
+  }, [categories]);
 
   // Filter items by category & search query
   const filteredItems = useMemo(() => {
@@ -160,9 +215,12 @@ export const MenuManagementScreen: React.FC = () => {
       searchQuery,
       categoryId: selectedCategoryId,
       availability: availabilityFilter,
-      optionPresence: optionPresenceFilter
+      optionPresence: optionPresenceFilter,
+      menuType: menuTypeFilter,
+      itemType: itemTypeFilter,
+      stockStatus: stockStatusFilter
     });
-  }, [allMenuItems, categories, selectedCategoryId, searchQuery, availabilityFilter, optionPresenceFilter]);
+  }, [allMenuItems, categories, selectedCategoryId, searchQuery, availabilityFilter, optionPresenceFilter, menuTypeFilter, itemTypeFilter, stockStatusFilter]);
 
   const categoryFilters = useMemo(
     () => [
@@ -200,6 +258,22 @@ export const MenuManagementScreen: React.FC = () => {
     setSearchQuery('');
     setAvailabilityFilter('all');
     setOptionPresenceFilter('all');
+    setMenuTypeFilter('all');
+    setItemTypeFilter('all');
+    setStockStatusFilter('all');
+  };
+
+  const handleBulkSubmit = async (action: MenuBulkAction, payload: MenuBulkPayload): Promise<boolean> => {
+    const result = await bulkUpdateMenuItems(selectedItemIds, action, payload);
+    if (!result.success) {
+      showToast({ type: 'error', title: 'Không thể cập nhật hàng loạt', message: result.error || 'Vui lòng thử lại.' });
+      return false;
+    }
+
+    await fetchMenu();
+    setSelectedItemIds([]);
+    showToast({ type: 'success', title: 'Đã cập nhật menu', message: `Đã áp dụng cho ${result.result?.updatedCount ?? selectedItemIds.length} món.` });
+    return true;
   };
 
   const openCreateModal = () => {
@@ -212,6 +286,11 @@ export const MenuManagementScreen: React.FC = () => {
       description: '',
       imageUrl: '',
       isAvailable: true,
+      menuType: 'FOOD',
+      itemType: 'REGULAR',
+      trackStock: false,
+      stockQuantityStr: '0',
+      position: '',
       modifierGroups: []
     });
     setIsModalOpen(true);
@@ -228,6 +307,11 @@ export const MenuManagementScreen: React.FC = () => {
       description: item.description || '',
       imageUrl: item.imageUrl || '',
       isAvailable: item.isAvailable,
+      menuType: item.menuType,
+      itemType: item.itemType,
+      trackStock: item.trackStock,
+      stockQuantityStr: String(item.stockQuantity ?? 0),
+      position: item.position || '',
       modifierGroups: (item.modifierGroups || []).map((group) => ({
         id: group.id,
         name: group.name,
@@ -430,6 +514,12 @@ export const MenuManagementScreen: React.FC = () => {
       return;
     }
 
+    const stockQuantity = parseInt(form.stockQuantityStr || '0', 10);
+    if (Number.isNaN(stockQuantity) || stockQuantity < 0) {
+      setFormError('Số lượng tồn phải là số nguyên lớn hơn hoặc bằng 0.');
+      return;
+    }
+
     // Validate modifier groups
     for (let i = 0; i < form.modifierGroups.length; i++) {
       const group = form.modifierGroups[i];
@@ -478,6 +568,11 @@ export const MenuManagementScreen: React.FC = () => {
       description: form.description.trim() || undefined,
       imageUrl: form.imageUrl.trim() || undefined,
       isAvailable: form.isAvailable,
+      menuType: form.menuType,
+      itemType: form.itemType,
+      trackStock: form.trackStock,
+      stockQuantity,
+      position: form.position.trim() || null,
       modifierGroups: form.modifierGroups.map((g) => ({
         name: g.name.trim(),
         isRequired: g.isRequired,
@@ -514,6 +609,127 @@ export const MenuManagementScreen: React.FC = () => {
         title: 'Chưa thể lưu món',
         message: res.error || 'Có lỗi xảy ra khi lưu món ăn.'
       });
+    }
+  };
+
+  const openCategoryManagement = () => {
+    setOrderedCategories([...categories].sort((a, b) => a.displayOrder - b.displayOrder));
+    setEditingCategory(null);
+    setCategoryName('');
+    setCategoryDisplayOrder(String(categories.length));
+    setCategoryError(null);
+    setIsCategoryModalOpen(true);
+  };
+
+  const editCategory = (category: CategoryDto) => {
+    setEditingCategory(category);
+    setCategoryName(category.name);
+    setCategoryDisplayOrder(String(category.displayOrder));
+    setCategoryError(null);
+  };
+
+  const resetCategoryDraft = () => {
+    setEditingCategory(null);
+    setCategoryName('');
+    setCategoryDisplayOrder(String(orderedCategories.length));
+    setCategoryError(null);
+  };
+
+  const saveCategory = async () => {
+    setCategoryError(null);
+    let payload: { name: string; displayOrder: number };
+    try {
+      payload = normalizeCategoryDraft(categoryName, categoryDisplayOrder);
+    } catch (error: any) {
+      setCategoryError(error.message);
+      return;
+    }
+
+    setIsCategorySaving(true);
+    const result = editingCategory
+      ? await updateCategory(editingCategory.id, payload)
+      : await createCategory(payload);
+    setIsCategorySaving(false);
+
+    if (!result.success) {
+      setCategoryError(result.error || 'Không thể lưu nhóm món');
+      return;
+    }
+
+    resetCategoryDraft();
+    showToast({
+      type: 'success',
+      title: editingCategory ? 'Đã cập nhật nhóm món' : 'Đã tạo nhóm món',
+      message: payload.name
+    });
+  };
+
+  const saveCategoryOrder = async () => {
+    setIsCategoryReordering(true);
+    const result = await reorderCategories(orderedCategories.map(category => category.id));
+    setIsCategoryReordering(false);
+    if (!result.success) {
+      setCategoryError(result.error || 'Không thể sắp xếp nhóm món');
+      return;
+    }
+    showToast({ type: 'success', title: 'Đã lưu thứ tự nhóm món', message: 'Bộ lọc thực đơn đã được cập nhật.' });
+  };
+
+  const moveCategoryInList = (index: number, direction: -1 | 1) => {
+    setOrderedCategories(previous => moveCategory(previous, index, direction));
+  };
+
+  const executeDeleteCategory = async (category: CategoryDto, moveToCategoryId?: number) => {
+    setCategoryError(null);
+    const result = await deleteCategory(category.id, moveToCategoryId);
+    if (!result.success) {
+      setCategoryError(result.error || 'Không thể xóa nhóm món');
+      return;
+    }
+    if (editingCategory?.id === category.id) resetCategoryDraft();
+    showToast({ type: 'success', title: 'Đã xóa nhóm món', message: category.name });
+  };
+
+  const confirmDeleteCategory = (category: CategoryDto) => {
+    const targets = orderedCategories.filter(candidate => candidate.id !== category.id);
+    const menuItemCount = category.menuItems?.length ?? 0;
+    const buttons = [
+      { text: 'Hủy', style: 'cancel' as const },
+      ...(menuItemCount > 0
+        ? targets.map(target => ({
+            text: `Chuyển món sang ${target.name}`,
+            onPress: () => void executeDeleteCategory(category, target.id)
+          }))
+        : [{ text: 'Xóa', style: 'destructive' as const, onPress: () => void executeDeleteCategory(category) }])
+    ];
+    Alert.alert(
+      menuItemCount > 0 ? 'Chọn danh mục đích' : 'Xóa nhóm món?',
+      menuItemCount > 0
+        ? `Nhóm "${category.name}" đang có ${menuItemCount} món. Chọn nơi chuyển món trước khi xóa.`
+        : `Xóa nhóm "${category.name}"?`,
+      buttons
+    );
+  };
+
+  const downloadMenu = async (format: 'csv' | 'xlsx') => {
+    if (Platform.OS !== 'web') {
+      showToast({ type: 'info', title: 'Export trên web', message: 'Hãy mở trang quản trị trên trình duyệt web để tải file menu.' });
+      return;
+    }
+
+    try {
+      const blob = await downloadMenuExportApi(token, format);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `menu_${new Date().toISOString().slice(0, 10)}.${format}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+      showToast({ type: 'success', title: 'Đã export menu', message: `File ${format.toUpperCase()} đã sẵn sàng.` });
+    } catch (error) {
+      showToast({ type: 'error', title: 'Không thể export menu', message: error instanceof Error ? error.message : 'Lỗi tải file menu.' });
     }
   };
 
@@ -555,7 +771,15 @@ export const MenuManagementScreen: React.FC = () => {
         <ScreenHeader
           title="Món"
           description={`${filteredItems.length} / ${allMenuItems.length} món đang hiển thị${selectedItemIds.length > 0 ? ` · đã chọn ${selectedItemIds.length}` : ''}`}
-          actions={<Button testID="admin-btn-add-item" variant="primary" label="Món mới" icon={Plus} onPress={openCreateModal} />}
+          actions={(
+            <View style={styles.headerActions}>
+              <Button testID="admin-btn-manage-categories" variant="secondary" label="Nhóm món" icon={Pencil} onPress={openCategoryManagement} />
+              <Button testID="admin-btn-import-menu" variant="secondary" label="Import menu" icon={Upload} onPress={() => setIsImportModalOpen(true)} />
+              <Button testID="admin-btn-export-csv" variant="secondary" label="Export CSV" icon={Download} onPress={() => void downloadMenu('csv')} />
+              <Button testID="admin-btn-export-xlsx" variant="secondary" label="Export Excel" icon={FileSpreadsheet} onPress={() => void downloadMenu('xlsx')} />
+              <Button testID="admin-btn-add-item" variant="primary" label="Món mới" icon={Plus} onPress={openCreateModal} />
+            </View>
+          )}
         />
         <View style={[styles.commandBar, isMobile && styles.commandBarMobile]}>
           <View style={[styles.searchBox, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
@@ -563,7 +787,7 @@ export const MenuManagementScreen: React.FC = () => {
             <TextInput
               accessibilityLabel="Tìm món"
               style={[styles.searchInput, { color: theme.textPrimary }]}
-              placeholder="Theo mã hoặc tên món"
+              placeholder="Theo mã, tên, nhóm hoặc vị trí"
               placeholderTextColor={theme.textSecondary}
               value={searchQuery}
               onChangeText={setSearchQuery}
@@ -578,6 +802,15 @@ export const MenuManagementScreen: React.FC = () => {
             <Button variant="secondary" label="Xóa lọc" onPress={clearFilters} />
           </View>
         </View>
+        {selectedItemIds.length > 0 && (
+          <MenuBulkActions
+            selectedIds={selectedItemIds}
+            categories={categories}
+            loading={isLoadingMenu}
+            onSubmit={handleBulkSubmit}
+            onClear={() => setSelectedItemIds([])}
+          />
+        )}
       </View>
 
       <View style={[styles.managementBody, isMobile && styles.managementBodyMobile]}>
@@ -585,7 +818,12 @@ export const MenuManagementScreen: React.FC = () => {
           <Surface level="raised" style={styles.filterSidebar}>
             <ScrollView contentContainerStyle={styles.filterContent} showsVerticalScrollIndicator={false}>
               <View style={styles.filterSection}>
-                <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Nhóm món</Text>
+                <View style={styles.filterSectionHeader}>
+                  <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Nhóm món</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel="Quản lý nhóm món" onPress={openCategoryManagement}>
+                    <Text style={[styles.filterManageLink, { color: theme.primary }]}>Quản lý</Text>
+                  </Pressable>
+                </View>
                 {categoryFilters.map((category) => {
                   const selected = selectedCategoryId === category.id;
                   return (
@@ -623,6 +861,75 @@ export const MenuManagementScreen: React.FC = () => {
                       accessibilityRole="radio"
                       accessibilityState={{ selected }}
                       onPress={() => setAvailabilityFilter(option.value as MenuAvailabilityFilter)}
+                      style={styles.radioRow}
+                    >
+                      <View style={[styles.radioDot, { borderColor: selected ? theme.interactivePrimary : theme.borderStrong }]}>
+                        {selected && <View style={[styles.radioDotInner, { backgroundColor: theme.interactivePrimary }]} />}
+                      </View>
+                      <Text style={[styles.filterOptionText, { color: theme.textPrimary }]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.filterSection}>
+                <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Loại thực đơn</Text>
+                {([{ value: 'all', label: 'Tất cả' }, ...MENU_TYPE_OPTIONS] as Array<{ value: MenuTypeFilter; label: string }>).map((option) => {
+                  const selected = menuTypeFilter === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      onPress={() => setMenuTypeFilter(option.value)}
+                      style={styles.radioRow}
+                    >
+                      <View style={[styles.radioDot, { borderColor: selected ? theme.interactivePrimary : theme.borderStrong }]}>
+                        {selected && <View style={[styles.radioDotInner, { backgroundColor: theme.interactivePrimary }]} />}
+                      </View>
+                      <Text style={[styles.filterOptionText, { color: theme.textPrimary }]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.filterSection}>
+                <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Loại món</Text>
+                {([{ value: 'all', label: 'Tất cả' }, ...ITEM_TYPE_OPTIONS] as Array<{ value: MenuItemTypeFilter; label: string }>).map((option) => {
+                  const selected = itemTypeFilter === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      onPress={() => setItemTypeFilter(option.value)}
+                      style={styles.radioRow}
+                    >
+                      <View style={[styles.radioDot, { borderColor: selected ? theme.interactivePrimary : theme.borderStrong }]}>
+                        {selected && <View style={[styles.radioDotInner, { backgroundColor: theme.interactivePrimary }]} />}
+                      </View>
+                      <Text style={[styles.filterOptionText, { color: theme.textPrimary }]}>{option.label}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <View style={styles.filterSection}>
+                <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Tồn kho</Text>
+                {[
+                  { value: 'all', label: 'Tất cả' },
+                  { value: 'tracked', label: 'Có theo dõi tồn' },
+                  { value: 'untracked', label: 'Không theo dõi tồn' },
+                  { value: 'inStock', label: 'Còn tồn' },
+                  { value: 'outOfStock', label: 'Hết tồn' }
+                ].map((option) => {
+                  const selected = stockStatusFilter === option.value;
+                  return (
+                    <Pressable
+                      key={option.value}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected }}
+                      onPress={() => setStockStatusFilter(option.value as MenuStockFilter)}
                       style={styles.radioRow}
                     >
                       <View style={[styles.radioDot, { borderColor: selected ? theme.interactivePrimary : theme.borderStrong }]}>
@@ -681,6 +988,53 @@ export const MenuManagementScreen: React.FC = () => {
                   );
                 })}
               </ScrollView>
+              <View style={styles.mobileFilterGroup}>
+                <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Loại thực đơn</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPills}>
+                  <Pressable accessibilityRole="button" accessibilityState={{ selected: menuTypeFilter === 'all' }} onPress={() => setMenuTypeFilter('all')} style={[styles.pill, { backgroundColor: menuTypeFilter === 'all' ? theme.interactivePrimary : theme.interactiveQuiet }]}>
+                    <Text style={[styles.pillText, { color: menuTypeFilter === 'all' ? theme.textInverse : theme.textPrimary }]}>Tất cả</Text>
+                  </Pressable>
+                  {MENU_TYPE_OPTIONS.map((option) => {
+                    const selected = menuTypeFilter === option.value;
+                    return (
+                      <Pressable key={option.value} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => setMenuTypeFilter(option.value)} style={[styles.pill, { backgroundColor: selected ? theme.interactivePrimary : theme.interactiveQuiet }]}>
+                        <Text style={[styles.pillText, { color: selected ? theme.textInverse : theme.textPrimary }]}>{option.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+              <View style={styles.mobileFilterGroup}>
+                <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Loại món</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPills}>
+                  {([{ value: 'all', label: 'Tất cả' }, ...ITEM_TYPE_OPTIONS] as Array<{ value: MenuItemTypeFilter; label: string }>).map((option) => {
+                    const selected = itemTypeFilter === option.value;
+                    return (
+                      <Pressable key={option.value} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => setItemTypeFilter(option.value)} style={[styles.pill, { backgroundColor: selected ? theme.interactivePrimary : theme.interactiveQuiet }]}>
+                        <Text style={[styles.pillText, { color: selected ? theme.textInverse : theme.textPrimary }]}>{option.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+              <View style={styles.mobileFilterGroup}>
+                <Text style={[styles.filterTitle, { color: theme.textPrimary }]}>Tồn kho</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPills}>
+                  {[
+                    { value: 'all', label: 'Tất cả' },
+                    { value: 'tracked', label: 'Theo dõi tồn' },
+                    { value: 'inStock', label: 'Còn tồn' },
+                    { value: 'outOfStock', label: 'Hết tồn' }
+                  ].map((option) => {
+                    const selected = stockStatusFilter === option.value;
+                    return (
+                      <Pressable key={option.value} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => setStockStatusFilter(option.value as MenuStockFilter)} style={[styles.pill, { backgroundColor: selected ? theme.interactivePrimary : theme.interactiveQuiet }]}>
+                        <Text style={[styles.pillText, { color: selected ? theme.textInverse : theme.textPrimary }]}>{option.label}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              </View>
             </Surface>
           )}
 
@@ -715,9 +1069,9 @@ export const MenuManagementScreen: React.FC = () => {
                         {item.imageUrl ? <Image source={{ uri: resolveImageUrl(item.imageUrl) || '' }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={22} />}
                       </View>
                       <View style={styles.itemInfo}>
-                        <Text style={[styles.itemCode, { color: theme.textSecondary }]}>{formatMenuItemCode(item.id)}</Text>
+                        <Text style={[styles.itemCode, { color: theme.textSecondary }]}>{item.sku || formatMenuItemCode(item.id)}</Text>
                         <Text style={[styles.itemName, { color: theme.textPrimary }]} numberOfLines={2}>{item.name}</Text>
-                        <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>{getCategoryName(item.categoryId)}</Text>
+                        <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>{getCategoryName(item.categoryId)} · {menuTypeLabel(item.menuType)} · {itemTypeLabel(item.itemType)}</Text>
                       </View>
                     </View>
                     {item.description ? <Text style={[styles.itemDescription, { color: theme.textSecondary }]} numberOfLines={2}>{item.description}</Text> : null}
@@ -727,6 +1081,10 @@ export const MenuManagementScreen: React.FC = () => {
                     </View>
                     <View style={styles.mobileItemFooter}>
                       <Text style={[styles.itemMeta, { color: theme.textSecondary }]}>{getModifierSummary(item)}</Text>
+                      <StatusBadge
+                        tone={!item.trackStock ? 'neutral' : item.stockQuantity > 0 ? 'success' : 'danger'}
+                        label={!item.trackStock ? 'Không theo dõi tồn' : item.stockQuantity > 0 ? `${item.stockQuantity} tồn` : 'Hết tồn'}
+                      />
                       {isToggling ? (
                         <ActivityIndicator size="small" color={theme.primary} />
                       ) : (
@@ -777,16 +1135,21 @@ export const MenuManagementScreen: React.FC = () => {
                         <View style={[styles.thumbnailContainer, { backgroundColor: theme.surfaceSunken }]}>
                           {item.imageUrl ? <Image source={{ uri: resolveImageUrl(item.imageUrl) || '' }} style={styles.thumbnail} resizeMode="cover" /> : <AppIcon icon={ImageIcon} color={theme.textSecondary} size={20} />}
                         </View>
-                        <Text style={[styles.itemCode, { color: theme.textPrimary }]}>{formatMenuItemCode(item.id)}</Text>
+                        <Text style={[styles.itemCode, { color: theme.textPrimary }]}>{item.sku || formatMenuItemCode(item.id)}</Text>
                       </View>
                       <View style={styles.nameColumn}>
                         <Text style={[styles.itemName, { color: theme.textPrimary }]} numberOfLines={1}>{item.name}</Text>
                         {item.description ? <Text style={[styles.itemDescription, { color: theme.textSecondary }]} numberOfLines={1}>{item.description}</Text> : null}
+                        <Text style={[styles.itemMeta, { color: theme.textSecondary }]} numberOfLines={1}>{menuTypeLabel(item.menuType)} · {itemTypeLabel(item.itemType)}{item.position ? ` · ${item.position}` : ''}</Text>
                       </View>
                       <Text style={[styles.groupColumn, styles.tableText, { color: theme.textPrimary }]} numberOfLines={1}>{getCategoryName(item.categoryId)}</Text>
                       <Text style={[styles.optionColumn, styles.tableText, { color: theme.textSecondary }]} numberOfLines={1}>{getModifierSummary(item)}</Text>
                       <View style={styles.statusColumn}>
                         <StatusBadge tone={item.isAvailable ? 'success' : 'danger'} label={item.isAvailable ? 'Đang bán' : 'Ngừng bán'} />
+                        <StatusBadge
+                          tone={!item.trackStock ? 'neutral' : item.stockQuantity > 0 ? 'success' : 'danger'}
+                          label={!item.trackStock ? 'Không theo dõi' : item.stockQuantity > 0 ? `${item.stockQuantity} tồn` : 'Hết tồn'}
+                        />
                       </View>
                       <Text style={[styles.itemPrice, styles.priceColumn, { color: theme.textPrimary }]}>{item.basePrice.toLocaleString('vi-VN')}</Text>
                       <View style={styles.actionColumn}>
@@ -820,6 +1183,76 @@ export const MenuManagementScreen: React.FC = () => {
           )}
         </View>
       </View>
+
+      <MenuImportModal
+        visible={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onCommitted={() => void fetchMenu()}
+      />
+
+      <Modal visible={isCategoryModalOpen} animationType="slide" transparent onRequestClose={() => setIsCategoryModalOpen(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
+          <View style={[styles.modalCard, styles.categoryModalCard, elevation.modal, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.borderSubtle }]}>
+              <View style={styles.modalHeadingCopy}>
+                <Text accessibilityRole="header" style={[styles.modalTitle, { color: theme.textPrimary }]}>Quản lý nhóm món</Text>
+                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>Tạo, đổi tên, xóa và sắp xếp nhóm hiển thị trên menu.</Text>
+              </View>
+              <Pressable accessibilityRole="button" accessibilityLabel="Đóng quản lý nhóm món" onPress={() => setIsCategoryModalOpen(false)} style={({ pressed }) => [styles.iconButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.interactiveQuiet }]}>
+                <AppIcon icon={X} color={theme.textPrimary} />
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.categoryModalBody}>
+              {categoryError && <InlineAlert title="Chưa thể cập nhật nhóm món" message={categoryError} />}
+              <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
+                <View style={styles.sectionHeading}>
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{editingCategory ? 'Sửa nhóm món' : 'Tạo nhóm món mới'}</Text>
+                  <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>Tên nhóm được chuẩn hóa trước khi gửi lên máy chủ.</Text>
+                </View>
+                <Field label="Tên nhóm *" placeholder="Ví dụ: Đồ uống" value={categoryName} onChangeText={setCategoryName} />
+                <Field label="Thứ tự hiển thị" placeholder="0" keyboardType="numeric" value={categoryDisplayOrder} onChangeText={value => setCategoryDisplayOrder(value.replace(/[^0-9]/g, ''))} />
+                <View style={styles.categoryFormActions}>
+                  {editingCategory && <Button variant="quiet" label="Tạo mới" onPress={resetCategoryDraft} />}
+                  <Button variant="primary" label={editingCategory ? 'Lưu nhóm' : 'Tạo nhóm'} loading={isCategorySaving} onPress={() => void saveCategory()} />
+                </View>
+              </View>
+
+              <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
+                <View style={styles.sectionHeading}>
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Danh sách nhóm món</Text>
+                  <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>Dùng mũi tên để đổi vị trí, sau đó lưu thứ tự.</Text>
+                </View>
+                <View style={styles.categoryList}>
+                  {orderedCategories.map((category, index) => (
+                    <View key={category.id} style={[styles.categoryRow, { borderColor: theme.borderSubtle, backgroundColor: theme.surfaceSunken }]}>
+                      <View style={styles.categoryRowCopy}>
+                        <Text style={[styles.categoryRowName, { color: theme.textPrimary }]}>{category.name}</Text>
+                        <Text style={[styles.categoryRowMeta, { color: theme.textSecondary }]}>{category.menuItems?.length ?? 0} món · thứ tự {index + 1}</Text>
+                      </View>
+                      <View style={styles.categoryRowActions}>
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Đưa ${category.name} lên`} disabled={index === 0} onPress={() => moveCategoryInList(index, -1)} style={[styles.iconButton, { opacity: index === 0 ? 0.35 : 1 }]}>
+                          <AppIcon icon={ArrowUp} color={theme.textPrimary} size={17} />
+                        </Pressable>
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Đưa ${category.name} xuống`} disabled={index === orderedCategories.length - 1} onPress={() => moveCategoryInList(index, 1)} style={[styles.iconButton, { opacity: index === orderedCategories.length - 1 ? 0.35 : 1 }]}>
+                          <AppIcon icon={ArrowDown} color={theme.textPrimary} size={17} />
+                        </Pressable>
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Sửa ${category.name}`} onPress={() => editCategory(category)} style={styles.iconButton}>
+                          <AppIcon icon={Pencil} color={theme.primary} size={17} />
+                        </Pressable>
+                        <Pressable accessibilityRole="button" accessibilityLabel={`Xóa ${category.name}`} onPress={() => confirmDeleteCategory(category)} style={styles.iconButton}>
+                          <AppIcon icon={Trash2} color={theme.danger} size={17} />
+                        </Pressable>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+                <Button variant="secondary" label="Lưu thứ tự" loading={isCategoryReordering} onPress={() => void saveCategoryOrder()} />
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       <Modal visible={isModalOpen} animationType="slide" transparent onRequestClose={() => setIsModalOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: theme.overlay }]}>
@@ -914,6 +1347,16 @@ export const MenuManagementScreen: React.FC = () => {
                     })}
                   </ScrollView>
                 </View>
+                {editingItem ? (
+                  <Field
+                    label="Mã món (SKU)"
+                    value={editingItem.sku || formatMenuItemCode(editingItem.id)}
+                    editable={false}
+                    description="Mã món do hệ thống tự sinh và không thể sửa thủ công."
+                  />
+                ) : (
+                  <Text style={[styles.fieldHint, { color: theme.textSecondary }]}>Mã món (SKU) sẽ được hệ thống tự sinh sau khi tạo, theo dạng SP000001.</Text>
+                )}
                 <Field label="Mô tả" placeholder="Thành phần hoặc đặc điểm của món" multiline numberOfLines={3} style={styles.textArea} value={form.description} onChangeText={(value) => setForm((previous) => ({ ...previous, description: value }))} />
                 {/* === Image Upload Section === */}
                 <View style={styles.imageSection}>
@@ -970,6 +1413,90 @@ export const MenuManagementScreen: React.FC = () => {
                     value={form.imageUrl}
                     onChangeText={(value) => setForm((previous) => ({ ...previous, imageUrl: value }))}
                   />
+                </View>
+              </View>
+
+              <View style={[styles.formSection, { borderColor: theme.borderSubtle }]}>
+                <View style={styles.sectionHeading}>
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Phân loại và tồn kho</Text>
+                  <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>Metadata dùng cho báo cáo, bộ lọc quản trị và vận hành kho.</Text>
+                </View>
+
+                <View style={styles.metadataField}>
+                  <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Loại thực đơn *</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPills}>
+                    {MENU_TYPE_OPTIONS.map((option) => {
+                      const selected = form.menuType === option.value;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          onPress={() => setForm((previous) => ({ ...previous, menuType: option.value }))}
+                          style={[styles.pill, { backgroundColor: selected ? theme.interactivePrimary : theme.interactiveQuiet }]}
+                        >
+                          <Text style={[styles.pillText, { color: selected ? theme.textInverse : theme.textPrimary }]}>{option.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.metadataField}>
+                  <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Loại món *</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryPills}>
+                    {ITEM_TYPE_OPTIONS.map((option) => {
+                      const selected = form.itemType === option.value;
+                      return (
+                        <Pressable
+                          key={option.value}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected }}
+                          onPress={() => setForm((previous) => ({ ...previous, itemType: option.value }))}
+                          style={[styles.pill, { backgroundColor: selected ? theme.interactivePrimary : theme.interactiveQuiet }]}
+                        >
+                          <Text style={[styles.pillText, { color: selected ? theme.textInverse : theme.textPrimary }]}>{option.label}</Text>
+                        </Pressable>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+
+                <View style={styles.formAvailability}>
+                  <View style={styles.sectionHeading}>
+                    <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Theo dõi tồn kho</Text>
+                    <Text style={[styles.sectionDescription, { color: theme.textSecondary }]}>Bật để cảnh báo hết tồn trong quản trị. Quy tắc trừ kho thuộc Phase 7.</Text>
+                  </View>
+                  <Switch
+                    {...switchAppearance}
+                    accessibilityLabel="Theo dõi tồn kho"
+                    value={form.trackStock}
+                    onValueChange={(value) => setForm((previous) => ({ ...previous, trackStock: value }))}
+                    trackColor={{ false: theme.borderStrong, true: theme.interactivePrimary }}
+                  />
+                </View>
+
+                <View style={[styles.formColumns, isMobile && styles.formColumnsMobile]}>
+                  <View style={styles.growField}>
+                    <Field
+                      label="Số lượng tồn"
+                      placeholder="0"
+                      keyboardType="numeric"
+                      editable={form.trackStock}
+                      value={form.stockQuantityStr}
+                      onChangeText={(value) => setForm((previous) => ({ ...previous, stockQuantityStr: value.replace(/[^0-9]/g, '') }))}
+                      description={form.trackStock ? 'Số lượng hiện có của món.' : 'Bật theo dõi tồn kho để nhập số lượng.'}
+                    />
+                  </View>
+                  <View style={styles.growField}>
+                    <Field
+                      label="Vị trí"
+                      placeholder="Ví dụ: Quầy nóng, kho A"
+                      value={form.position}
+                      onChangeText={(value) => setForm((previous) => ({ ...previous, position: value }))}
+                      description="Khu vực/quầy/kho phục vụ quản trị."
+                    />
+                  </View>
                 </View>
               </View>
 
@@ -1090,6 +1617,7 @@ const styles = StyleSheet.create({
   toolbarMobile: { padding: spacing.md },
   commandBar: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },
   commandBarMobile: { alignItems: 'stretch', flexDirection: 'column' },
+  headerActions: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   searchBox: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.sm, minHeight: spacing.touchTargetMobile, maxWidth: 560, paddingLeft: spacing.md, paddingRight: spacing.xs },
   searchInput: { flex: 1, fontFamily: typography.families.body, fontSize: typography.sizes.sm, minHeight: spacing.touchTargetMobile },
   iconButton: { alignItems: 'center', borderRadius: radii.md, height: spacing.touchTargetMobile, justifyContent: 'center', width: spacing.touchTargetMobile },
@@ -1099,7 +1627,9 @@ const styles = StyleSheet.create({
   filterSidebar: { flexShrink: 0, overflow: 'hidden', width: 252 },
   filterContent: { gap: spacing.lg, padding: spacing.md },
   filterSection: { gap: spacing.sm },
+  filterSectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
   filterTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  filterManageLink: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
   filterOption: { alignItems: 'center', borderRadius: radii.sm, flexDirection: 'row', gap: spacing.sm, justifyContent: 'space-between', minHeight: 36, paddingHorizontal: spacing.sm },
   filterOptionText: { flex: 1, fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
   filterCount: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, fontVariant: ['tabular-nums'] },
@@ -1118,6 +1648,7 @@ const styles = StyleSheet.create({
   loadingText: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, marginTop: spacing.md },
   menuTable: { flex: 1, overflow: 'hidden' },
   tableScroller: { flex: 1 },
+  mobileFilterGroup: { gap: spacing.xs, marginTop: spacing.sm },
   tableHeader: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', minHeight: 44, paddingHorizontal: spacing.sm },
   headerItem: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
   itemRow: { alignItems: 'center', flexDirection: 'row', minHeight: 72, paddingHorizontal: spacing.sm, paddingVertical: spacing.sm },
@@ -1155,11 +1686,22 @@ const styles = StyleSheet.create({
   modalTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, lineHeight: typography.lineHeights.xl },
   modalSubtitle: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
   modalBody: { gap: spacing.md, padding: spacing.lg },
+  categoryModalCard: { maxWidth: 720 },
+  categoryModalBody: { gap: spacing.md, padding: spacing.lg },
+  categoryFormActions: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
+  categoryList: { gap: spacing.sm },
+  categoryRow: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 64, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
+  categoryRowCopy: { flex: 1, gap: 2, minWidth: 0 },
+  categoryRowName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  categoryRowMeta: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  categoryRowActions: { alignItems: 'center', flexDirection: 'row', gap: 2 },
   formSection: { borderRadius: radii.md, borderWidth: 1, gap: spacing.md, padding: spacing.lg },
   sectionHeading: { flex: 1, gap: 2 },
   sectionTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md, lineHeight: typography.lineHeights.md },
   sectionDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
   fieldLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  fieldHint: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
+  metadataField: { gap: spacing.xs },
   categoryField: { gap: spacing.xs },
   textArea: { minHeight: 88, paddingTop: spacing.md, textAlignVertical: 'top' },
   formAvailability: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', minHeight: spacing.touchTargetMobile },
