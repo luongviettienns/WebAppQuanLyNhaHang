@@ -308,8 +308,8 @@ export class OrdersService {
 
     // Tinh toan thue VAT 8% tren so tien sau khi tru khuyen mai (800 BPS)
     const taxableAmount = Math.max(0, totalAmount - voucherDiscount);
-    const vatAmount = Math.round(taxableAmount * 0.08);
-    const finalAmount = taxableAmount + vatAmount;
+    let vatAmount = Math.round(taxableAmount * 0.08);
+    let finalAmount = taxableAmount + vatAmount;
 
     // 6. Tao ma don hang duy nhat CRISPY-YYYYMMDD-XXXX
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -353,8 +353,9 @@ export class OrdersService {
           orderItemsData[index].subtotal = unitPrice * itemInput.quantity;
         }
         totalAmount = orderItemsData.reduce((sum, item) => sum + item.subtotal, 0);
-        vatAmount = Math.round(totalAmount * 0.08);
-        finalAmount = totalAmount + vatAmount;
+        const effectiveTaxable = Math.max(0, totalAmount - voucherDiscount);
+        vatAmount = Math.round(effectiveTaxable * 0.08);
+        finalAmount = effectiveTaxable + vatAmount;
 
         const trackedMenuItemIds = new Set(
           dbMenuItems.filter((menuItem) => menuItem.trackStock).map((menuItem) => menuItem.id)
