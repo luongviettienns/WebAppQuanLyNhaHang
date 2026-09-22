@@ -105,7 +105,7 @@ describe('inventory waste command API', () => {
     expect(preview.status).toBe(200);
     expect(preview.body.data).toMatchObject({
       totalRows: 2,
-      validRows: [expect.objectContaining({ ingredientId, quantity: 2, note: 'Bao bì rách' })]
+      validRows: [expect.objectContaining({ ingredientId, quantity: 2, costPerUnit: 10000, note: 'Bao bì rách' })]
     });
     expect(preview.body.data.errorRows[0].error).toContain('không tồn tại');
 

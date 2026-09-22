@@ -67,7 +67,7 @@ function importRowToLine(row: InventoryWasteImportPreviewDto['validRows'][number
     unit: row.unit,
     systemQuantity: row.systemQuantity,
     quantity: row.quantity,
-    costPerUnit: 0,
+    costPerUnit: row.costPerUnit,
     lineValue: 0
   });
 }
@@ -216,13 +216,8 @@ export const InventoryWasteComposerScreen: React.FC<InventoryWasteComposerScreen
 
   const applyImport = () => {
     if (!importPreview) return;
-    const byId = new Map(lookup.map(item => [item.id, item]));
     setLines(current => importPreview.validRows.reduce((merged, row) => {
-      const currentIngredient = byId.get(row.ingredientId);
-      return upsertWasteRow(merged, calculateWasteRow({
-        ...importRowToLine(row),
-        costPerUnit: currentIngredient?.costPerUnit ?? 0
-      }));
+      return upsertWasteRow(merged, importRowToLine(row));
     }, current));
     const importedNote = importPreview.validRows.find(row => row.note?.trim())?.note;
     if (!note.trim() && importedNote) setNote(importedNote);

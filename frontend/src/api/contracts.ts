@@ -816,6 +816,7 @@ export interface InventoryWasteImportValidRowDto {
   unit: string;
   quantity: number;
   systemQuantity: number;
+  costPerUnit: number;
   note?: string;
 }
 

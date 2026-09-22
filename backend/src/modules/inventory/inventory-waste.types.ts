@@ -84,6 +84,7 @@ export type InventoryWasteImportPreviewDto = {
     unit: string;
     quantity: number;
     systemQuantity: number;
+    costPerUnit: number;
     note?: string;
   }>;
   errorRows: Array<InventoryWasteImportPreviewRow>;

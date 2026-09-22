@@ -374,7 +374,7 @@ export class InventoryWasteService {
 
     const ingredients = await prisma.ingredient.findMany({
       where: { isActive: true },
-      select: { id: true, sku: true, name: true, unit: true, currentStock: true }
+      select: { id: true, sku: true, name: true, unit: true, currentStock: true, costPerUnit: true }
     });
     const bySku = new Map(ingredients.map(ingredient => [ingredient.sku.toUpperCase(), ingredient]));
     const validRows: InventoryWasteImportPreviewDto['validRows'] = [];
@@ -414,6 +414,7 @@ export class InventoryWasteService {
         unit: ingredient.unit,
         quantity: row.quantity,
         systemQuantity: ingredient.currentStock,
+        costPerUnit: ingredient.costPerUnit,
         note: row.note
       });
     }
