@@ -149,9 +149,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const demoLogin = async (role: Role): Promise<{ success: boolean; error?: string }> => {
     const creds: Record<Role, { u: string; p: string }> = {
-      CASHIER: { u: 'cashier', p: 'change-me-cashier' },
-      KITCHEN: { u: 'kitchen', p: 'change-me-kitchen' },
-      ADMIN: { u: 'admin', p: 'change-me-admin' }
+      CASHIER: { u: 'cashier', p: 'cashier123' },
+      KITCHEN: { u: 'kitchen', p: 'kitchen123' },
+      ADMIN: { u: 'admin', p: 'admin123' }
     };
     const { u, p } = creds[role];
     return await login(u, p);
