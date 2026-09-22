@@ -8,15 +8,22 @@ import {
   PriceListItemDto
 } from './contracts';
 
-function jsonHeaders(token?: string | null) {
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {})
+function jsonHeaders(token?: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json'
   };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
 }
 
-function authHeaders(token?: string | null) {
-  return token ? { Authorization: `Bearer ${token}` } : {};
+function authHeaders(token?: string | null): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
 }
 
 async function throwApiError(response: Response, fallback: string): Promise<never> {

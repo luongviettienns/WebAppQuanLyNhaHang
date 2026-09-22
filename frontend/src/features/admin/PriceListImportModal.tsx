@@ -58,16 +58,16 @@ export const PriceListImportModal: React.FC<{ visible: boolean; onClose: () => v
     onClose();
   };
 
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.backdrop}><Surface style={styles.card}>
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><View style={styles.backdrop}><Surface level="raised" style={styles.card}>
     <View style={[styles.header, { borderBottomColor: theme.borderSubtle }]}><View style={{ flex: 1 }}><Text style={[styles.title, { color: theme.textPrimary }]}>Import bảng giá</Text><Text style={[styles.subtitle, { color: theme.textSecondary }]}>Đối soát trước, ghi dữ liệu sau.</Text></View><Pressable onPress={onClose}><AppIcon icon={X} color={theme.textSecondary} size={20} /></Pressable></View>
     <ScrollView contentContainerStyle={styles.body}>
       {Platform.OS !== 'web' && <InlineAlert tone="info" message="Chọn file import trên phiên bản web của trang quản trị." />}
       {error && <InlineAlert tone="danger" message={error} />}
       <View style={styles.fileRow}><Button variant="secondary" label="Chọn file CSV/XLSX" icon={Upload} onPress={pickFile} disabled={busy || Platform.OS !== 'web'} />{busy && <ActivityIndicator color={theme.primary} />}</View>
       <Field label="File đã chọn" value={fileName} placeholder="Chưa chọn file" editable={false} />
-      {preview && <Surface style={[styles.preview, { backgroundColor: theme.surfaceSunken }]}><Text style={[styles.summary, { color: theme.textPrimary }]}>Tổng {preview.totalRows} dòng · Hợp lệ {preview.validRows.length} · Lỗi {preview.errorRows.length}</Text>{preview.errorRows.map(row => <Text key={`${row.rowNumber}-${row.sku}`} style={[styles.error, { color: theme.danger }]}>Dòng {row.rowNumber} · {row.sku}: {row.message}</Text>)}{preview.validRows.slice(0, 15).map(row => <View key={`${row.rowNumber}-${row.sku}`} style={styles.valid}><AppIcon icon={FileSpreadsheet} color={theme.success} size={15} /><Text style={[styles.validText, { color: theme.textSecondary }]}>Dòng {row.rowNumber} · {row.sku} · {row.salePrice.toLocaleString('vi-VN')} đ</Text></View>)}</Surface>}
+      {preview && <Surface level="sunken" style={styles.preview}><Text style={[styles.summary, { color: theme.textPrimary }]}>Tổng {preview.totalRows} dòng · Hợp lệ {preview.validRows.length} · Lỗi {preview.errorRows.length}</Text>{preview.errorRows.map(row => <Text key={`${row.rowNumber}-${row.sku}`} style={[styles.error, { color: theme.danger }]}>Dòng {row.rowNumber} · {row.sku}: {row.message}</Text>)}{preview.validRows.slice(0, 15).map(row => <View key={`${row.rowNumber}-${row.sku}`} style={styles.valid}><AppIcon icon={FileSpreadsheet} color={theme.success} size={15} /><Text style={[styles.validText, { color: theme.textSecondary }]}>Dòng {row.rowNumber} · {row.sku} · {row.salePrice.toLocaleString('vi-VN')} đ</Text></View>)}</Surface>}
     </ScrollView>
-    <View style={[styles.footer, { borderTopColor: theme.borderSubtle }]}><Button variant="quiet" label="Hủy" onPress={onClose} /><Button label="Commit import" onPress={() => void commit()} loading={busy} disabled={!preview?.canCommit} /></View>
+    <View style={[styles.footer, { borderTopColor: theme.borderSubtle }]}><Button variant="quiet" label="Hủy" onPress={onClose} /><Button variant="primary" label="Commit import" onPress={() => void commit()} loading={busy} disabled={!preview?.canCommit} /></View>
   </Surface></View></Modal>;
 };
 
@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
   backdrop: { alignItems: 'center', backgroundColor: 'rgba(15, 23, 42, 0.58)', flex: 1, justifyContent: 'center', padding: spacing.lg },
   card: { maxHeight: '92%', maxWidth: 700, overflow: 'hidden', width: '100%' },
   header: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', padding: spacing.lg },
-  title: { fontFamily: typography.families.displayBold, fontSize: typography.sizes.xl },
+  title: { fontFamily: typography.families.bodyBold, fontSize: typography.sizes.xl },
   subtitle: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, marginTop: 3 },
   body: { gap: spacing.md, padding: spacing.lg },
   fileRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md },

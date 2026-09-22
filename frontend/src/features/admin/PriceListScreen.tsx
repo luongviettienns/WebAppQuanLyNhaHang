@@ -151,30 +151,30 @@ export const PriceListScreen: React.FC = () => {
           <View style={styles.headerActions}>
             <Button label="Import" variant="secondary" icon={FileUp} onPress={() => setImportOpen(true)} />
             <Button label="Xuất file" variant="secondary" icon={Download} onPress={handleExport} />
-            <Button label="Công thức" icon={Calculator} disabled={selectedIds.length === 0} onPress={() => setBulkOpen(true)} />
+            <Button label="Công thức" variant="secondary" icon={Calculator} disabled={selectedIds.length === 0} onPress={() => setBulkOpen(true)} />
           </View>
         )}
       />
 
-      {priceListError && <InlineAlert tone="danger" message={priceListError} actionLabel="Tải lại" onAction={fetchPriceList} />}
+      {priceListError && <InlineAlert tone="danger" message={priceListError} />}
 
       <View style={styles.statsRow}>
-        <Surface style={styles.statCard}><Text style={[styles.statLabel, { color: theme.textSecondary }]}>Số món áp dụng</Text><Text style={[styles.statValue, { color: theme.textPrimary }]}>{items.length}</Text><Text style={[styles.statHint, { color: theme.textSecondary }]}>đang dùng Bảng giá chung</Text></Surface>
-        <Surface style={styles.statCard}><Text style={[styles.statLabel, { color: theme.textSecondary }]}>Biên lợi nhuận TB</Text><Text style={[styles.statValue, { color: averageMargin >= 0 ? theme.success : theme.danger }]}>{averageMargin.toFixed(1)}%</Text><Text style={[styles.statHint, { color: theme.textSecondary }]}>tính theo giá vốn BOM</Text></Surface>
-        <Surface style={styles.statCard}><Text style={[styles.statLabel, { color: theme.textSecondary }]}>Phiên bản dữ liệu</Text><Text style={[styles.statValue, { color: theme.primary }]}>v{Math.max(0, ...items.map(item => item.version))}</Text><Text style={[styles.statHint, { color: theme.textSecondary }]}>cập nhật realtime</Text></Surface>
+        <Surface level="raised" style={styles.statCard}><Text style={[styles.statLabel, { color: theme.textSecondary }]}>Số món áp dụng</Text><Text style={[styles.statValue, { color: theme.textPrimary }]}>{items.length}</Text><Text style={[styles.statHint, { color: theme.textSecondary }]}>đang dùng Bảng giá chung</Text></Surface>
+        <Surface level="raised" style={styles.statCard}><Text style={[styles.statLabel, { color: theme.textSecondary }]}>Biên lợi nhuận TB</Text><Text style={[styles.statValue, { color: averageMargin >= 0 ? theme.success : theme.danger }]}>{averageMargin.toFixed(1)}%</Text><Text style={[styles.statHint, { color: theme.textSecondary }]}>tính theo giá vốn BOM</Text></Surface>
+        <Surface level="raised" style={styles.statCard}><Text style={[styles.statLabel, { color: theme.textSecondary }]}>Phiên bản dữ liệu</Text><Text style={[styles.statValue, { color: theme.primary }]}>v{Math.max(0, ...items.map(item => item.version))}</Text><Text style={[styles.statHint, { color: theme.textSecondary }]}>cập nhật realtime</Text></Surface>
       </View>
 
       <View style={styles.contentRow}>
-        <Surface style={[styles.filterPanel, { width: isCompact ? '100%' : 220 }]}>
+        <Surface level="base" style={[styles.filterPanel, { width: isCompact ? '100%' : 220 }]}>
           <Text style={[styles.panelTitle, { color: theme.textPrimary }]}>Bộ lọc</Text>
           <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Nhóm món</Text>
-          <Pressable onPress={() => setCategoryId(null)} style={[styles.filterOption, { backgroundColor: categoryId === null ? theme.interactiveSecondary : 'transparent' }]}><Text style={[styles.filterText, { color: categoryId === null ? theme.primary : theme.textSecondary }]}>Tất cả nhóm</Text><Text style={[styles.count, { color: theme.textTertiary }]}>{items.length}</Text></Pressable>
-          {categories.map(category => <Pressable key={category.id} onPress={() => setCategoryId(category.id)} style={[styles.filterOption, { backgroundColor: categoryId === category.id ? theme.interactiveSecondary : 'transparent' }]}><Text numberOfLines={1} style={[styles.filterText, { color: categoryId === category.id ? theme.primary : theme.textSecondary }]}>{category.name}</Text><Text style={[styles.count, { color: theme.textTertiary }]}>{items.filter(item => item.categoryId === category.id).length}</Text></Pressable>)}
+          <Pressable onPress={() => setCategoryId(null)} style={[styles.filterOption, { backgroundColor: categoryId === null ? theme.interactiveSecondary : 'transparent' }]}><Text style={[styles.filterText, { color: categoryId === null ? theme.primary : theme.textSecondary }]}>Tất cả nhóm</Text><Text style={[styles.count, { color: theme.textMuted }]}>{items.length}</Text></Pressable>
+          {categories.map(category => <Pressable key={category.id} onPress={() => setCategoryId(category.id)} style={[styles.filterOption, { backgroundColor: categoryId === category.id ? theme.interactiveSecondary : 'transparent' }]}><Text numberOfLines={1} style={[styles.filterText, { color: categoryId === category.id ? theme.primary : theme.textSecondary }]}>{category.name}</Text><Text style={[styles.count, { color: theme.textMuted }]}>{items.filter(item => item.categoryId === category.id).length}</Text></Pressable>)}
         </Surface>
 
-        <Surface style={styles.tableSurface}>
+        <Surface level="base" style={styles.tableSurface}>
           <View style={styles.tableToolbar}>
-            <View style={[styles.searchBox, { borderColor: theme.borderSubtle, backgroundColor: theme.surfaceBase }]}><AppIcon icon={Search} color={theme.textTertiary} size={17} /><TextInput value={query} onChangeText={setQuery} placeholder="Tìm mã hoặc tên món" placeholderTextColor={theme.textTertiary} style={[styles.searchInput, { color: theme.textPrimary }]} /></View>
+            <View style={[styles.searchBox, { borderColor: theme.borderSubtle, backgroundColor: theme.surfaceBase }]}><AppIcon icon={Search} color={theme.textMuted} size={17} /><TextInput value={query} onChangeText={setQuery} placeholder="Tìm mã hoặc tên món" placeholderTextColor={theme.textMuted} style={[styles.searchInput, { color: theme.textPrimary }]} /></View>
             <Pressable onPress={toggleAll} style={styles.selectAll}><View style={[styles.checkbox, { borderColor: allFilteredSelected ? theme.primary : theme.borderStrong, backgroundColor: allFilteredSelected ? theme.primary : 'transparent' }]}>{allFilteredSelected && <AppIcon icon={Check} color="#fff" size={13} />}</View><Text style={[styles.selectLabel, { color: theme.textSecondary }]}>Chọn tất cả</Text></Pressable>
             {selectedIds.length > 0 && <Text style={[styles.selectedText, { color: theme.primary }]}>{selectedIds.length} đã chọn</Text>}
           </View>
@@ -203,12 +203,12 @@ export const PriceListScreen: React.FC = () => {
       </View>
 
       <Modal visible={bulkOpen} transparent animationType="fade" onRequestClose={() => setBulkOpen(false)}>
-        <View style={styles.modalBackdrop}><Surface style={styles.modalCard}>
+        <View style={styles.modalBackdrop}><Surface level="raised" style={styles.modalCard}>
           <View style={styles.modalHeader}><View><Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Áp dụng công thức giá</Text><Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>{selectedIds.length} món được chọn</Text></View><Pressable onPress={() => setBulkOpen(false)}><AppIcon icon={X} color={theme.textSecondary} size={22} /></Pressable></View>
           <View style={styles.modeRow}>{(['percent', 'amount', 'fixed'] as BulkMode[]).map(mode => <Pressable key={mode} onPress={() => setBulkMode(mode)} style={[styles.modeButton, { borderColor: bulkMode === mode ? theme.primary : theme.borderSubtle, backgroundColor: bulkMode === mode ? theme.interactiveSecondary : theme.surfaceBase }]}><AppIcon icon={mode === 'percent' ? Percent : mode === 'amount' ? Plus : Tag} color={bulkMode === mode ? theme.primary : theme.textSecondary} size={16} /><Text style={[styles.modeText, { color: bulkMode === mode ? theme.primary : theme.textSecondary }]}>{mode === 'percent' ? 'Theo %' : mode === 'amount' ? 'Cộng/trừ tiền' : 'Giá cố định'}</Text></Pressable>)}</View>
-          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Giá trị</Text><TextInput keyboardType="numeric" value={bulkValue} onChangeText={setBulkValue} placeholder={bulkMode === 'percent' ? 'Ví dụ: 10' : 'Ví dụ: 30000'} placeholderTextColor={theme.textTertiary} style={[styles.bulkInput, { color: theme.textPrimary, borderColor: theme.borderSubtle, backgroundColor: theme.surfaceBase }]} />
+          <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Giá trị</Text><TextInput keyboardType="numeric" value={bulkValue} onChangeText={setBulkValue} placeholder={bulkMode === 'percent' ? 'Ví dụ: 10' : 'Ví dụ: 30000'} placeholderTextColor={theme.textMuted} style={[styles.bulkInput, { color: theme.textPrimary, borderColor: theme.borderSubtle, backgroundColor: theme.surfaceBase }]} />
           <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Làm tròn đến</Text><View style={styles.roundingRow}>{([100, 1000, 10000] as const).map(value => <Pressable key={value} onPress={() => setRounding(value)} style={[styles.roundButton, { borderColor: rounding === value ? theme.primary : theme.borderSubtle, backgroundColor: rounding === value ? theme.interactiveSecondary : theme.surfaceBase }]}><Text style={[styles.roundText, { color: rounding === value ? theme.primary : theme.textSecondary }]}>{money.format(value)} đ</Text></Pressable>)}</View>
-          <View style={styles.modalActions}><Button label="Hủy" variant="secondary" onPress={() => setBulkOpen(false)} /><Button label="Áp dụng" icon={Check} onPress={submitBulk} /></View>
+          <View style={styles.modalActions}><Button label="Hủy" variant="secondary" onPress={() => setBulkOpen(false)} /><Button label="Áp dụng" variant="primary" icon={Check} onPress={submitBulk} /></View>
         </Surface></View>
       </Modal>
       <PriceListImportModal visible={importOpen} onClose={() => setImportOpen(false)} />
@@ -223,11 +223,11 @@ const styles = StyleSheet.create({
   statsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md, paddingHorizontal: spacing.lg, paddingBottom: spacing.md },
   statCard: { flex: 1, minWidth: 180, padding: spacing.md },
   statLabel: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
-  statValue: { fontFamily: typography.families.displayBold, fontSize: 25, marginTop: 4 },
+  statValue: { fontFamily: typography.families.bodyBold, fontSize: 25, marginTop: 4 },
   statHint: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, marginTop: 2 },
   contentRow: { flex: 1, flexDirection: 'row', gap: spacing.md, padding: spacing.lg, paddingTop: 0 },
   filterPanel: { minHeight: 300, padding: spacing.md },
-  panelTitle: { fontFamily: typography.families.displayBold, fontSize: typography.sizes.lg, marginBottom: spacing.lg },
+  panelTitle: { fontFamily: typography.families.bodyBold, fontSize: typography.sizes.lg, marginBottom: spacing.lg },
   fieldLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs, marginBottom: spacing.xs, marginTop: spacing.sm },
   filterOption: { alignItems: 'center', borderRadius: radii.sm, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3, minHeight: 38, paddingHorizontal: spacing.sm },
   filterText: { flex: 1, fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
@@ -257,7 +257,7 @@ const styles = StyleSheet.create({
   modalBackdrop: { alignItems: 'center', backgroundColor: 'rgba(15, 23, 42, 0.42)', flex: 1, justifyContent: 'center', padding: spacing.lg },
   modalCard: { maxWidth: 520, padding: spacing.lg, width: '100%' },
   modalHeader: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between', marginBottom: spacing.md },
-  modalTitle: { fontFamily: typography.families.displayBold, fontSize: typography.sizes.xl },
+  modalTitle: { fontFamily: typography.families.bodyBold, fontSize: typography.sizes.xl },
   modalSubtitle: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, marginTop: 2 },
   modeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   modeButton: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', gap: spacing.xs, minHeight: 42, paddingHorizontal: spacing.sm },
