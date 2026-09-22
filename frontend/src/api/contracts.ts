@@ -748,6 +748,96 @@ export interface InventoryCheckImportPreviewDto {
 
 export type InventoryCheckExportFormat = 'csv' | 'xlsx';
 
+export type InventoryWasteStatus = 'DRAFT' | 'COMPLETED' | 'CANCELLED';
+
+export interface InventoryWasteLineDto {
+  id: number;
+  ingredientId: number;
+  ingredientSku: string;
+  ingredientName: string;
+  unit: string;
+  systemQuantity: number;
+  quantity: number;
+  costPerUnit: number;
+  lineValue: number;
+}
+
+export interface InventoryWasteDto {
+  id: number;
+  wasteCode: string;
+  status: InventoryWasteStatus;
+  wastedAt: string;
+  completedAt: string | null;
+  note: string | null;
+  totalValue: number;
+  totalQuantity: number;
+  createdByUserId: number | null;
+  completedByUserId: number | null;
+  cancelledByUserId: number | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: InventoryWasteLineDto[];
+  recentWastes?: InventoryWasteDto[];
+}
+
+export type InventoryWasteDetailDto = InventoryWasteDto;
+
+export interface InventoryWasteListDataDto {
+  items: InventoryWasteDto[];
+  pagination: InventoryCatalogPaginationDto;
+  totalValue: number;
+}
+
+export interface InventoryWasteListFilter {
+  statuses?: InventoryWasteStatus[];
+  from?: string;
+  to?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface InventoryWasteLineInput {
+  ingredientId: number;
+  quantity: number;
+}
+
+export interface InventoryWasteDraftInput {
+  note?: string | null;
+  lines: InventoryWasteLineInput[];
+}
+
+export interface InventoryWasteImportValidRowDto {
+  rowNumber: number;
+  ingredientId: number;
+  ingredientSku: string;
+  ingredientName: string;
+  unit: string;
+  quantity: number;
+  systemQuantity: number;
+  note?: string;
+}
+
+export interface InventoryWasteImportErrorRowDto {
+  rowNumber: number;
+  sku: string;
+  name?: string;
+  unit?: string;
+  quantity: number;
+  note?: string;
+  error: string;
+}
+
+export interface InventoryWasteImportPreviewDto {
+  fileName: string;
+  totalRows: number;
+  validRows: InventoryWasteImportValidRowDto[];
+  errorRows: InventoryWasteImportErrorRowDto[];
+}
+
+export type InventoryWasteExportFormat = 'csv' | 'xlsx';
+
 export interface RecipeIngredientDto {
   id: number;
   ingredientId: number;
@@ -870,6 +960,7 @@ export interface SocketInventoryChangedPayload {
     | 'ORDER_PAID'
     | 'ORDER_VOIDED'
     | 'MANUAL_ADJUST'
+    | 'KITCHEN_WASTE'
     | 'RECIPE_UPDATED'
     | 'INGREDIENT_UPDATED'
     | 'MENU_ITEM_UPDATED';
