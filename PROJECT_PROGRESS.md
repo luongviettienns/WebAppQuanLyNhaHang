@@ -2,28 +2,23 @@
 
 > **Hệ Thống Đa Nền Tảng Đặt Món & Quản Lý Nhà Hàng Fast Food "CRISPY BITE"**  
 > **Kiến trúc**: Full-Stack Monorepo (React Native / Expo SDK 54 + Node.js / Express / Prisma / MySQL + Real-time Socket.io)  
-> **Trạng thái**: Đã hoàn thiện 100% các Module nghiệp vụ từ M1 đến M10 (Bao gồm Chuyển bàn, Báo hủy bếp, Cảnh báo NVL KDS & Hệ thống Voucher giảm giá); Full Quality Gate PASS.  
-> **Cập nhật lần cuối**: 2026-09-20 00:30:00
+> **Trạng thái**: Đã hợp nhất thành công toàn bộ 53 commits từ nhánh `pKhanh` vào `main`. Tích hợp hoàn hảo Hệ thống Vận hành Kho khép kín (Nhà cung cấp, Phiếu nhập, Kiểm kho, Xuất hủy), Quản lý Bảng giá chung (Price List), Thực đơn nâng cao (Bulk actions, Excel Import/Export) cùng Hệ thống Voucher & Chuyển bàn realtime; Full Quality Gate PASS 100%.  
+> **Cập nhật lần cuối**: 2026-09-22 16:35:00
 
 ---
 
 ## 📈 1. TỔNG QUAN TIẾN ĐỘ (OVERALL PROGRESS)
 
 ```
-[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 10; Chuẩn hóa nghiệp vụ vận hành chuỗi QSR thực tế)
+[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 11; Hệ sinh thái Vận hành & Quản trị QSR Toàn diện)
 ```
 
 ### 🧪 Bằng chứng kiểm chứng chất lượng (Verification Metrics)
-- **Backend Test Suite (Vitest)**: 25/25 test files passed (191/191 tests pass 100% - bao gồm Table Transfer FSM & Socket, Kitchen Waste & Low Stock Alerts, Voucher Engine CRUD & Validation, Order Discount & VAT 8% recalculation, Used Count increment & Restore on Void, Swagger Docs, Inventory Math, Excel Parsing/Export, Inventory Service, Inventory API, BOM Deduct on Paid, Shared Ingredient Atomic Decrement, Seed BOM Verification & Async Audit Logging).
-- **Frontend Test Suite (Vitest)**: 9/9 test files passed (39/39 tests pass 100% - bao gồm Login 401 Credential State Preservation, Web Warning Guards, menu management filters, notification helper & theme coordinator).
-- **Playwright E2E Suite**: 3/3 spec files (`cashier-kitchen-flow`, `admin-operations-flow`, `ui-consistency`).
-- **Tổng Unit / Integration Tests**: 230/230 tests passed 100% (191 backend + 39 frontend).
+- **Backend Test Suite (Vitest)**: 52/52 test files passed (360/360 tests pass 100% — bao gồm Toàn bộ cụm Supplier Management, Purchase Receipts, Stocktake Checks, Inventory Waste, Price Lists, Menu Bulk/Import/Export, Voucher Engine, Table Transfer, KDS Kitchen Waste, Order Idempotency, FSM, Auth RBAC, Reports & Real-time Socket).
+- **Frontend Test Suite (Vitest)**: 31/31 test files passed (98/98 tests pass 100% — bao gồm ViewModels cho NCC, Phiếu nhập, Phiếu hủy, Phiếu kiểm kho, Bảng giá, Menu bulk, Notification helper, UI Tokens & Guards).
+- **Tổng Unit / Integration Tests**: 458/458 tests passed 100% (360 backend + 98 frontend).
 - **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ workspaces (`backend` + `frontend`).
-- **ESLint**: `npm run lint` $\rightarrow$ 0 errors trên toàn bộ workspaces.
-- **Expo Framework Doctor**: `expo-doctor` $\rightarrow$ 18/18 checks passed 100%.
-- **Release Gate (`npm run check`)**: PASS 100% (Typecheck + Doctor + Backend Tests).
-- **Production Web & Node Build**: `npm run build` $\rightarrow$ Biên dịch thành công web bundles (`frontend/dist`) & backend dist.
-- **Database Migrations**: 7 migrations đồng bộ nhất quán trên cả `crispy_bite_dev` và `crispy_bite_test` (bao gồm `20260919230000_add_voucher_engine`).
+- **Database Migrations & Push**: Đồng bộ nhất quán 12 migrations trên cả `crispy_bite_dev` và `crispy_bite_test`.
 
 ### 🗂️ Tiến độ theo Giai đoạn (Phase Summary)
 | Giai đoạn | Mục tiêu cốt lõi | Trạng thái |
@@ -219,6 +214,32 @@
 33. **Tính Toán Thuế GTGT (VAT) Hợp Pháp Khi Áp Dụng Khuyến Mãi/Voucher (VAT Calculation on Discounted Taxable Base)**:
     - *Nguyên nhân gốc rễ & Quy định Pháp lý*: Theo quy định thuế GTGT hiện hành (Thông tư 219/2013/TT-BTC & Nghị định giảm thuế VAT 8%), thuế GTGT được tính trên giá bán thực tế sau khi đã trừ các khoản giảm giá, chiết khấu thương mại hợp lệ (`taxableAmount = Math.max(0, subtotal - discountAmount)`). Nếu tính VAT trên tổng phụ trước chiết khấu (`subtotal * 0.08`), khách hàng sẽ phải chịu thuế trên khoản tiền họ không thanh toán, gây sai lệch sổ sách kế toán.
     - *Giải pháp triệt để*: Tại `orders.service.ts`, `subtotal` được tính từ tổng món ăn; sau đó áp dụng voucher để ra `discountAmount`; tiền chịu thuế `taxableAmount = Math.max(0, subtotal - discountAmount)`; tiền thuế `tax = Math.round(taxableAmount * 0.08)`; và tổng thanh toán `total = taxableAmount + tax`. Công thức này được đồng bộ 100% trên cả Backend, Frontend Customer Cart, POS Screen và Snapshot Hóa đơn PDF.
+
+34. **Hợp nhất Toàn diện Nhánh `pKhanh` (53 commits) vào `main` — Hệ sinh thái Vận hành & Chuỗi cung ứng QSR Hoàn chỉnh**:
+    - *Bối cảnh*: Nhánh `pKhanh` phát triển 53 commit với khối lượng nghiệp vụ chuỗi cung ứng rất lớn (Nhà cung cấp, Phiếu nhập kho, Phiếu kiểm kê kho, Phiếu xuất hủy kho có snapshot giá vốn, Quản lý Bảng giá chung PriceList, Bulk Actions và Import/Export Excel thực đơn). Trong khi đó, nhánh `main` sở hữu Hệ thống Voucher đa kênh, Chuyển bàn realtime và Báo hao hụt bếp KDS.
+    - *Giải pháp hợp nhất & Gỡ xung đột*:
+      1. Khởi tạo nhánh tích hợp thử nghiệm `feat/integrate-pkhanh-full`, thực hiện `git merge pKhanh` và xử lý triệt để 9 tệp xung đột nội dung.
+      2. Mở rộng Prisma Schema đồng bộ 12 migration tuần tự (thêm các model `Supplier`, `SupplierGroup`, `PurchaseReceipt`, `InventoryCheck`, `InventoryWaste`, `PriceList`, `PriceListItem` song song với `Voucher`).
+      3. Hợp nhất `RoleTabs.tsx` hiển thị đầy đủ cả tab **Bảng giá** lẫn tab **Ưu đãi** cho vai trò Quản trị (Admin).
+      4. Ghép nối `orders.service.ts`: đơn hàng vừa phân giải giá hiệu lực theo PriceList vừa áp dụng mã giảm giá Voucher và tính thuế VAT 8% chính xác.
+    - *Kết quả nghiệm thu*:
+      - Backend: 52 test files, 360/360 tests PASS (100%), typecheck 0 lỗi.
+      - Frontend: 31 test files, 98/98 tests PASS (100%), typecheck 0 lỗi.
+      - Tổng cộng: 458/458 tests PASS 100%. Fast-forward merge vào `main`.
+
+35. **Bài học Kinh nghiệm & Quy tắc Phòng ngừa Lỗi (Post-Fix Retrospective & Prevention)**:
+    - *RCA 1: Lỗi Unit Test Mock Transaction thiếu Sub-client (`priceList` is undefined)*:
+      - *Hiện tượng*: Một số unit test mock `$transaction` cũ chỉ cung cấp `{ order, diningTable }`, khiến lời gọi `PriceListService.getGeneralPriceList(tx)` và `resolveEffectivePrices(tx)` bị `TypeError: Cannot read properties of undefined (reading 'findFirst')`.
+      - *Giải pháp*: Bổ sung kiểm tra an toàn `if (!client?.priceList) return null;` và fallback tự động về `item.basePrice` khi client không hỗ trợ `priceList`. Điều này giúp code vừa tương thích với môi trường chạy thật có DB, vừa tương thích với các unit test mock tối giản.
+    - *RCA 2: Lỗi Gán lại Biến `const` khi Tính Toán Lại Tiền trong Transaction*:
+      - *Hiện tượng*: `vatAmount` và `finalAmount` khai báo `const` ở scope ngoài, sau khi resolve lại giá theo Price List trong transaction thì bị gán lại gây lỗi TS2588.
+      - *Giải pháp*: Chuyển thành `let` và chuẩn hóa công thức: tính lại `totalAmount` $\rightarrow$ trừ `voucherDiscount` $\rightarrow$ tính `vatAmount = Math.round(effectiveTaxable * 0.08)` $\rightarrow$ `finalAmount = effectiveTaxable + vatAmount`.
+    - *RCA 3: Lệch Mật khẩu Demo giữa `AuthContext` và Cấu hình Seed*:
+      - *Hiện tượng*: Commit cũ trên `pKhanh` đổi demo password thành `change-me-*`, làm fail test `webWarningGuards.test.ts`.
+      - *Giải pháp*: Đồng bộ tuyệt đối với `SEED_CASHIER_PASSWORD`, `SEED_KITCHEN_PASSWORD`, `SEED_ADMIN_PASSWORD` trong `.env`.
+    - *RCA 4: Xung đột Foreign Key khi Chạy Test Database Song song*:
+      - *Hiện tượng*: Khi chạy `vitest` không có cờ `--fileParallelism=false`, nhiều test file cùng gọi `seedDatabase()` và `cleanDatabase()` đồng thời vào database test, dẫn đến lỗi Foreign key constraint violated.
+      - *Giải pháp*: Luôn tuân thủ chạy với `--fileParallelism=false` cho test database integration.
 
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
