@@ -292,6 +292,12 @@ enum InventoryCheckStatus {
   CANCELLED
 }
 
+enum InventoryWasteStatus {
+  DRAFT
+  COMPLETED
+  CANCELLED
+}
+
 model Ingredient {
   id           Int      @id @default(autoincrement())
   sku          String   @unique // Ma nguyen lieu (VD: ING-CHICKEN-01)
@@ -307,6 +313,7 @@ model Ingredient {
   menuItemIngredients   MenuItemIngredient[]
   inventoryTransactions InventoryTransaction[]
   inventoryCheckLines   InventoryCheckLine[]
+  inventoryWasteLines   InventoryWasteLine[]
   purchaseReceiptLines  PurchaseReceiptLine[]
 
   @@index([sku])
@@ -336,6 +343,7 @@ model InventoryTransaction {
   orderId         Int?                     // Don hang lien quan (khi auto-deduct)
   purchaseReceiptId Int?                   // Chung tu nhap; null cho ledger cu
   inventoryCheckId Int?                    // Chung tu kiem kho; null cho ledger khac
+  inventoryWasteId Int?                    // Chung tu xuat huy; null cho ledger khac
   note            String?                  // Ghi chu
   createdByUserId Int?
   createdAt       DateTime                 @default(now())
@@ -344,12 +352,14 @@ model InventoryTransaction {
   order      Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
   purchaseReceipt PurchaseReceipt? @relation(fields: [purchaseReceiptId], references: [id], onDelete: Restrict)
   inventoryCheck InventoryCheck? @relation(fields: [inventoryCheckId], references: [id], onDelete: Restrict)
+  inventoryWaste InventoryWaste? @relation(fields: [inventoryWasteId], references: [id], onDelete: Restrict)
 
   @@index([ingredientId])
   @@index([type])
   @@index([createdAt])
   @@index([purchaseReceiptId])
   @@index([inventoryCheckId])
+  @@index([inventoryWasteId])
 }
 
 model InventoryCheck {
@@ -392,6 +402,49 @@ model InventoryCheckLine {
   ingredient     Ingredient     @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
 
   @@unique([inventoryCheckId, ingredientId])
+  @@index([ingredientId])
+}
+
+model InventoryWaste {
+  id                    Int                  @id @default(autoincrement())
+  wasteCode             String               @unique
+  status                InventoryWasteStatus @default(DRAFT)
+  wastedAt              DateTime             @default(now())
+  completedAt           DateTime?
+  note                  String?              @db.VarChar(1000)
+  totalValue            Int                  @default(0)
+  createdByUserId       Int?
+  completedByUserId     Int?
+  cancelledByUserId     Int?
+  cancelledAt           DateTime?
+  createdAt             DateTime             @default(now())
+  updatedAt             DateTime             @updatedAt
+
+  lines                 InventoryWasteLine[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([status, wastedAt])
+  @@index([wastedAt])
+}
+
+model InventoryWasteLine {
+  id               Int      @id @default(autoincrement())
+  inventoryWasteId Int
+  ingredientId     Int
+  ingredientSku    String
+  ingredientName   String
+  unit             String
+  systemQuantity   Float
+  quantity         Float
+  costPerUnit      Int
+  lineValue        Int
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  inventoryWaste InventoryWaste @relation(fields: [inventoryWasteId], references: [id], onDelete: Cascade)
+  ingredient     Ingredient     @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@unique([inventoryWasteId, ingredientId])
   @@index([ingredientId])
 }
 
