@@ -286,6 +286,12 @@ enum InventoryTransactionType {
   VOID_RESTORE
 }
 
+enum InventoryCheckStatus {
+  DRAFT
+  BALANCED
+  CANCELLED
+}
+
 model Ingredient {
   id           Int      @id @default(autoincrement())
   sku          String   @unique // Ma nguyen lieu (VD: ING-CHICKEN-01)
@@ -300,6 +306,7 @@ model Ingredient {
 
   menuItemIngredients   MenuItemIngredient[]
   inventoryTransactions InventoryTransaction[]
+  inventoryCheckLines   InventoryCheckLine[]
   purchaseReceiptLines  PurchaseReceiptLine[]
 
   @@index([sku])
@@ -328,6 +335,7 @@ model InventoryTransaction {
   costAmount      Int                      @default(0) // Gia tri VND giao dich
   orderId         Int?                     // Don hang lien quan (khi auto-deduct)
   purchaseReceiptId Int?                   // Chung tu nhap; null cho ledger cu
+  inventoryCheckId Int?                    // Chung tu kiem kho; null cho ledger khac
   note            String?                  // Ghi chu
   createdByUserId Int?
   createdAt       DateTime                 @default(now())
@@ -335,11 +343,56 @@ model InventoryTransaction {
   ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
   order      Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
   purchaseReceipt PurchaseReceipt? @relation(fields: [purchaseReceiptId], references: [id], onDelete: Restrict)
+  inventoryCheck InventoryCheck? @relation(fields: [inventoryCheckId], references: [id], onDelete: Restrict)
 
   @@index([ingredientId])
   @@index([type])
   @@index([createdAt])
   @@index([purchaseReceiptId])
+  @@index([inventoryCheckId])
+}
+
+model InventoryCheck {
+  id                  Int                  @id @default(autoincrement())
+  checkCode           String               @unique
+  status              InventoryCheckStatus @default(DRAFT)
+  countedAt           DateTime             @default(now())
+  balancedAt          DateTime?
+  note                String?              @db.VarChar(1000)
+  createdByUserId     Int?
+  balancedByUserId    Int?
+  cancelledByUserId   Int?
+  cancelledAt         DateTime?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+
+  lines                 InventoryCheckLine[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([status, countedAt])
+  @@index([countedAt])
+}
+
+model InventoryCheckLine {
+  id               Int      @id @default(autoincrement())
+  inventoryCheckId Int
+  ingredientId     Int
+  ingredientSku    String
+  ingredientName   String
+  unit             String
+  systemQuantity   Float
+  actualQuantity   Float?
+  varianceQuantity Float?
+  costPerUnit      Int
+  varianceValue    Int?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  inventoryCheck InventoryCheck @relation(fields: [inventoryCheckId], references: [id], onDelete: Cascade)
+  ingredient     Ingredient     @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+
+  @@unique([inventoryCheckId, ingredientId])
+  @@index([ingredientId])
 }
 
 enum PurchaseReceiptStatus {
