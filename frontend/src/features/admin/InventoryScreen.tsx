@@ -55,6 +55,8 @@ import { PurchaseReceiptListScreen } from './PurchaseReceiptListScreen';
 import { PurchaseReceiptComposerScreen } from './PurchaseReceiptComposerScreen';
 import { InventoryCheckListScreen } from './InventoryCheckListScreen';
 import { InventoryCheckComposerScreen } from './InventoryCheckComposerScreen';
+import { InventoryWasteListScreen } from './InventoryWasteListScreen';
+import { InventoryWasteComposerScreen } from './InventoryWasteComposerScreen';
 
 type ActiveTab = 'inventory' | 'bom';
 type StockFilter = 'ALL' | 'LOW' | 'NEGATIVE';
@@ -1183,11 +1185,12 @@ const LegacyInventoryOperations: React.FC<{ initialTab?: ActiveTab; initialMenuI
 
 export const InventoryScreen: React.FC = () => {
   const { theme } = useTheme();
-  const [section, setSection] = useState<'catalog' | 'operations' | 'receipts' | 'receipt-composer' | 'checks' | 'check-composer'>('catalog');
+  const [section, setSection] = useState<'catalog' | 'operations' | 'receipts' | 'receipt-composer' | 'checks' | 'check-composer' | 'wastes' | 'waste-composer'>('catalog');
   const [legacyTab, setLegacyTab] = useState<ActiveTab>('inventory');
   const [legacyMenuItemId, setLegacyMenuItemId] = useState<number | undefined>();
   const [receiptComposer, setReceiptComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
   const [checkComposer, setCheckComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
+  const [wasteComposer, setWasteComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
 
   const openLegacyOperations = (row?: InventoryCatalogRowDto) => {
     setLegacyTab(row?.sourceType === 'MENU_ITEM' ? 'bom' : 'inventory');
@@ -1222,6 +1225,26 @@ export const InventoryScreen: React.FC = () => {
     setSection('checks');
   };
 
+  const openInventoryWastes = () => {
+    setWasteComposer(null);
+    setSection('wastes');
+  };
+
+  const createInventoryWaste = () => {
+    setWasteComposer({ mode: 'create', id: null });
+    setSection('waste-composer');
+  };
+
+  const openInventoryWaste = (id: number) => {
+    setWasteComposer({ mode: 'edit', id });
+    setSection('waste-composer');
+  };
+
+  const finishInventoryWaste = () => {
+    setWasteComposer(null);
+    setSection('wastes');
+  };
+
   const createPurchaseReceipt = () => {
     setReceiptComposer({ mode: 'create', id: null });
     setSection('receipt-composer');
@@ -1252,9 +1275,12 @@ export const InventoryScreen: React.FC = () => {
         <Pressable onPress={openInventoryChecks} style={[shellStyles.sectionButton, (section === 'checks' || section === 'check-composer') && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
           <Text style={[shellStyles.sectionButtonText, { color: (section === 'checks' || section === 'check-composer') ? theme.primary : theme.textSecondary }]}>Kiểm kho</Text>
         </Pressable>
+        <Pressable onPress={openInventoryWastes} style={[shellStyles.sectionButton, (section === 'wastes' || section === 'waste-composer') && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: (section === 'wastes' || section === 'waste-composer') ? theme.primary : theme.textSecondary }]}>Xuất hủy</Text>
+        </Pressable>
       </View>
       {section === 'catalog'
-        ? <InventoryCatalogScreen onOpenLegacyOperations={openLegacyOperations} onOpenPurchaseReceipts={openPurchaseReceipts} onOpenInventoryChecks={openInventoryChecks} />
+        ? <InventoryCatalogScreen onOpenLegacyOperations={openLegacyOperations} onOpenPurchaseReceipts={openPurchaseReceipts} onOpenInventoryChecks={openInventoryChecks} onOpenInventoryWastes={openInventoryWastes} />
         : section === 'operations'
           ? <LegacyInventoryOperations initialTab={legacyTab} initialMenuItemId={legacyMenuItemId} />
           : section === 'receipts'
@@ -1263,6 +1289,10 @@ export const InventoryScreen: React.FC = () => {
               ? <InventoryCheckListScreen onCreateCheck={createInventoryCheck} onOpenCheck={openInventoryCheck} />
               : section === 'check-composer' && checkComposer
                 ? <InventoryCheckComposerScreen mode={checkComposer.mode} checkId={checkComposer.id} onFinished={finishInventoryCheck} onCancel={openInventoryChecks} />
+                : section === 'wastes'
+                  ? <InventoryWasteListScreen onCreateWaste={createInventoryWaste} onOpenWaste={openInventoryWaste} />
+                  : section === 'waste-composer' && wasteComposer
+                    ? <InventoryWasteComposerScreen mode={wasteComposer.mode} wasteId={wasteComposer.id} onFinished={finishInventoryWaste} onCancel={openInventoryWastes} />
                 : receiptComposer
                   ? <PurchaseReceiptComposerScreen
                 mode={receiptComposer.mode}
