@@ -2,8 +2,14 @@ import { Router } from 'express';
 import { OrdersController } from './orders.controller';
 import { authenticate, optionalAuthenticate } from '../../middlewares/authenticate';
 import { authorize } from '../../middlewares/authorize';
+import { OrderInvoiceController } from './order-invoice.controller';
 
 export const ordersRouter = Router();
+
+// GET /api/orders/invoices (Danh sach hoa don quan tri: CASHIER va ADMIN)
+ordersRouter.get('/invoices', authenticate, authorize('CASHIER', 'ADMIN'), OrderInvoiceController.list);
+ordersRouter.get('/invoices/export', authenticate, authorize('CASHIER', 'ADMIN'), OrderInvoiceController.export);
+ordersRouter.get('/invoices/:id', authenticate, authorize('CASHIER', 'ADMIN'), OrderInvoiceController.detail);
 
 // GET /api/orders (Lay danh sach don KDS: Chi KITCHEN va ADMIN)
 ordersRouter.get('/', authenticate, authorize('KITCHEN', 'ADMIN'), OrdersController.getOrders);

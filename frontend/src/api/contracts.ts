@@ -354,6 +354,59 @@ export interface OrderDto {
   items: OrderItemDto[];
 }
 
+export type OrderInvoiceFilter = {
+  search?: string;
+  from?: string;
+  to?: string;
+  statuses?: OrderStatus[];
+  paymentStatuses?: PaymentStatus[];
+  orderTypes?: OrderType[];
+  page?: number;
+  pageSize?: number;
+};
+
+export interface OrderInvoiceListItemDto {
+  id: number;
+  code: string;
+  createdAt: string;
+  orderType: OrderType;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  paymentMethod: PaymentMethod | null;
+  customerName: string | null;
+  tableNumber: number | null;
+  totalGoods: number;
+  discountAmount: number;
+  totalAfterDiscount: number;
+  vatAmount: number;
+  finalAmount: number;
+  paidAmount: number;
+  itemCount: number;
+}
+
+export interface OrderInvoiceDetailDto extends OrderInvoiceListItemDto {
+  paidAt: string | null;
+  notes: string | null;
+  createdByUser: { id: number; name: string } | null;
+  items: Array<{
+    id: number;
+    menuItemId: number;
+    sku: string;
+    menuItemName: string;
+    quantity: number;
+    unitPrice: number;
+    subtotal: number;
+    notes: string | null;
+    selectedModifiers: unknown;
+  }>;
+}
+
+export interface OrderInvoiceListDataDto {
+  items: OrderInvoiceListItemDto[];
+  pagination: { page: number; pageSize: number; totalRows: number; totalPages: number };
+  summary: { totalGoods: number; totalDiscount: number; totalAfterDiscount: number; totalVat: number; totalFinal: number; totalPaid: number };
+}
+
 // ==========================================
 // 7. REPORT DTOs
 // ==========================================
