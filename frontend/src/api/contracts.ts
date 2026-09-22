@@ -407,6 +407,80 @@ export interface OrderInvoiceListDataDto {
   summary: { totalGoods: number; totalDiscount: number; totalAfterDiscount: number; totalVat: number; totalFinal: number; totalPaid: number };
 }
 
+export type SalesReturnStatus = 'COMPLETED' | 'CANCELLED';
+export type SalesReturnFilter = {
+  search?: string;
+  from?: string;
+  to?: string;
+  statuses?: SalesReturnStatus[];
+  tableId?: number;
+  page?: number;
+  pageSize?: number;
+};
+
+export interface SalesReturnCandidateLineDto {
+  orderItemId: number;
+  menuItemId: number;
+  sku: string;
+  menuItemName: string;
+  soldQuantity: number;
+  returnedQuantity: number;
+  remainingQuantity: number;
+  unitPrice: number;
+  subtotal: number;
+}
+
+export interface SalesReturnCandidateDto {
+  orderId: number;
+  code: string;
+  createdAt: string;
+  orderType: OrderType;
+  tableNumber: number | null;
+  customerName: string | null;
+  finalAmount: number;
+  remainingItems: SalesReturnCandidateLineDto[];
+}
+
+export interface SalesReturnDto {
+  id: number;
+  returnCode: string;
+  orderId: number;
+  sourceOrderCode: string;
+  returnedAt: string;
+  tableNumber: number | null;
+  customerName: string | null;
+  status: SalesReturnStatus;
+  totalRefundDue: number;
+  refundedAmount: number;
+  refundMethod: PaymentMethod;
+  note: string | null;
+  createdByUserId: number | null;
+  createdByName: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: Array<{ id: number; orderItemId: number; menuItemId: number; menuItemSku: string; menuItemName: string; quantity: number; unitPrice: number; lineAmount: number }>;
+}
+
+export interface SalesReturnListDataDto {
+  items: SalesReturnDto[];
+  pagination: { page: number; pageSize: number; totalRows: number; totalPages: number };
+  summary: { totalRefundDue: number; totalRefunded: number };
+}
+
+export interface SalesReturnCandidateDataDto {
+  items: SalesReturnCandidateDto[];
+  pagination: { page: number; pageSize: number; totalRows: number; totalPages: number };
+}
+
+export interface SalesReturnCreateInput {
+  orderId: number;
+  lines: Array<{ orderItemId: number; quantity: number }>;
+  refundMethod?: PaymentMethod;
+  refundedAmount?: number;
+  note?: string;
+}
+
 // ==========================================
 // 7. REPORT DTOs
 // ==========================================

@@ -9,6 +9,7 @@ import { downloadOrderInvoiceExportApi, fetchOrderInvoiceDetailApi, fetchOrderIn
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import { formatInvoiceDate, formatInvoiceMoney, getInvoiceCustomerLabel, getOrderStatusPresentation } from './invoiceViewModel';
+import { SalesReturnListScreen } from './SalesReturnListScreen';
 
 const orderStatuses: Array<{ value: OrderStatus; label: string }> = [
   { value: 'PENDING', label: 'Chờ xử lý' }, { value: 'PREPARING', label: 'Đang chuẩn bị' },
@@ -50,6 +51,7 @@ function InvoiceRow({ item, onPress }: { item: OrderInvoiceListItemDto; onPress:
 export const OrdersScreen: React.FC = () => {
   const { theme } = useTheme(); const { token } = useAuth(); const { latestOrderStatusChanged } = useRestaurant(); const { width } = useWindowDimensions();
   const compact = width < 980;
+  const [activeSection, setActiveSection] = useState<'invoices' | 'returns'>('invoices');
   const [filter, setFilter] = useState<OrderInvoiceFilter>(initialFilter); const [search, setSearch] = useState(''); const [from, setFrom] = useState(''); const [to, setTo] = useState('');
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchOrderInvoicesApi>> | null>(null); const [detail, setDetail] = useState<OrderInvoiceDetailDto | null>(null);
   const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [exporting, setExporting] = useState<'csv' | 'xlsx' | null>(null);
@@ -64,8 +66,9 @@ export const OrdersScreen: React.FC = () => {
   const exportFile = async (format: 'csv' | 'xlsx') => { setExporting(format); try { const blob = await downloadOrderInvoiceExportApi(token, query, format); if (!triggerDownload(blob, `Hoa_don_${new Date().toISOString().slice(0, 10)}.${format}`)) setError('File đã được tạo. Tải file hiện hỗ trợ trên giao diện Web.'); } catch (e: any) { setError(e.message || 'Không thể xuất hóa đơn'); } finally { setExporting(null); } };
   const items = data?.items || [];
   return <ScrollView style={[styles.screen, { backgroundColor: theme.surfaceCanvas }]} contentContainerStyle={styles.content}>
-    <ScreenHeader title="Hóa đơn" description="Tra cứu đơn hàng, thanh toán và tổng tiền theo bộ lọc" leading={<View style={[styles.headerMark, { backgroundColor: theme.interactiveSecondary }]}><AppIcon icon={ReceiptText} color={theme.primary} /></View>} actions={<View style={styles.headerActions}><Button variant="secondary" label="CSV" icon={Download} loading={exporting === 'csv'} onPress={() => void exportFile('csv')} /><Button variant="secondary" label="XLSX" icon={FileSpreadsheet} loading={exporting === 'xlsx'} onPress={() => void exportFile('xlsx')} /></View>} />
-    <View style={[styles.subNav, { borderBottomColor: theme.borderSubtle }]}><View style={[styles.subNavItem, styles.subNavItemActive, { borderBottomColor: theme.primary }]}><Text style={[styles.subNavText, { color: theme.primary }]}>Hóa đơn</Text></View><View style={styles.subNavItem}><Text style={[styles.subNavText, { color: theme.textSecondary }]}>Trả hàng</Text><Text style={[styles.comingSoon, { color: theme.textSecondary }]}>Sắp có</Text></View></View>
+    {activeSection === 'invoices' && <ScreenHeader title="Hóa đơn" description="Tra cứu đơn hàng, thanh toán và tổng tiền theo bộ lọc" leading={<View style={[styles.headerMark, { backgroundColor: theme.interactiveSecondary }]}><AppIcon icon={ReceiptText} color={theme.primary} /></View>} actions={<View style={styles.headerActions}><Button variant="secondary" label="CSV" icon={Download} loading={exporting === 'csv'} onPress={() => void exportFile('csv')} /><Button variant="secondary" label="XLSX" icon={FileSpreadsheet} loading={exporting === 'xlsx'} onPress={() => void exportFile('xlsx')} /></View>} />}
+    <View style={[styles.subNav, { borderBottomColor: theme.borderSubtle }]}><Pressable accessibilityRole="tab" accessibilityState={{ selected: activeSection === 'invoices' }} onPress={() => setActiveSection('invoices')} style={[styles.subNavItem, activeSection === 'invoices' && styles.subNavItemActive, activeSection === 'invoices' && { borderBottomColor: theme.primary }]}><Text style={[styles.subNavText, { color: activeSection === 'invoices' ? theme.primary : theme.textSecondary }]}>Hóa đơn</Text></Pressable><Pressable accessibilityRole="tab" accessibilityState={{ selected: activeSection === 'returns' }} onPress={() => setActiveSection('returns')} style={[styles.subNavItem, activeSection === 'returns' && styles.subNavItemActive, activeSection === 'returns' && { borderBottomColor: theme.primary }]}><Text style={[styles.subNavText, { color: activeSection === 'returns' ? theme.primary : theme.textSecondary }]}>Trả hàng</Text></Pressable></View>
+    {activeSection === 'returns' ? <SalesReturnListScreen /> : <>
     {error && <InlineAlert title="Không thể tải dữ liệu" message={error} />}
     <View style={[styles.layout, compact && styles.layoutCompact]}>
       <Surface level="base" style={[styles.filters, compact && styles.filtersCompact, { borderColor: theme.borderSubtle }]}>
@@ -89,6 +92,7 @@ export const OrdersScreen: React.FC = () => {
       </Surface>
     </View>
     <Modal visible={Boolean(detail)} transparent animationType="slide" onRequestClose={() => setDetail(null)}><View style={styles.modalBackdrop}><Surface level="raised" style={styles.detailCard}><View style={styles.detailHeader}><View><Text style={[styles.detailTitle, { color: theme.textPrimary }]}>{detail?.code}</Text><Text style={[styles.muted, { color: theme.textSecondary }]}>{detail ? formatInvoiceDate(detail.createdAt) : ''}</Text></View><Pressable accessibilityLabel="Đóng chi tiết hóa đơn" onPress={() => setDetail(null)}><AppIcon icon={X} color={theme.textPrimary} /></Pressable></View>{detail && <ScrollView contentContainerStyle={styles.detailContent}><View style={styles.detailMeta}><Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Trạng thái</Text><StatusBadge tone={getOrderStatusPresentation(detail.status).tone} label={getOrderStatusPresentation(detail.status).label} /><Text style={[styles.detailLabel, { color: theme.textSecondary }]}>Khách hàng</Text><Text style={[styles.detailValue, { color: theme.textPrimary }]}>{getInvoiceCustomerLabel(detail)}</Text></View>{detail.items.map(item => <View key={item.id} style={[styles.detailRow, { borderBottomColor: theme.borderSubtle }]}><View style={styles.detailItem}><Text style={[styles.detailValue, { color: theme.textPrimary }]}>{item.menuItemName}</Text><Text style={[styles.muted, { color: theme.textSecondary }]}>{item.sku} · {item.quantity} × {formatInvoiceMoney(item.unitPrice)}</Text></View><Text style={[styles.detailValue, { color: theme.textPrimary }]}>{formatInvoiceMoney(item.subtotal)}</Text></View>)}<View style={styles.detailTotal}><Text style={[styles.detailValue, { color: theme.textPrimary }]}>Tổng thanh toán</Text><Text style={[styles.summaryValue, { color: theme.primary }]}>{formatInvoiceMoney(detail.finalAmount)}</Text></View></ScrollView>}</Surface></View></Modal>
+    </>}
   </ScrollView>;
 };
 

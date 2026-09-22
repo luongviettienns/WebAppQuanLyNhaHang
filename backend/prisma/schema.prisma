@@ -60,6 +60,11 @@ enum MenuItemType {
   SERVICE
 }
 
+enum OrderReturnStatus {
+  COMPLETED
+  CANCELLED
+}
+
 enum PriceListType {
   GENERAL
   CUSTOM
@@ -240,6 +245,7 @@ model Order {
   voidedByUser  User?        @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
   items         OrderItem[]
   inventoryTransactions InventoryTransaction[]
+  returns       OrderReturn[]
 
   @@unique([idempotencyScope, idempotencyKey])
 }
@@ -258,6 +264,53 @@ model OrderItem {
 
   order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  returnLines OrderReturnLine[]
+}
+
+model OrderReturn {
+  id                Int              @id @default(autoincrement())
+  returnCode        String           @unique
+  orderId           Int
+  status            OrderReturnStatus @default(COMPLETED)
+  returnedAt        DateTime         @default(now())
+  totalRefundDue    Int              @default(0)
+  refundedAmount    Int              @default(0)
+  refundMethod      PaymentMethod    @default(CASH)
+  note              String?          @db.VarChar(1000)
+  createdByUserId   Int?
+  createdByName     String?          @db.VarChar(120)
+  completedAt       DateTime?
+  cancelledByUserId Int?
+  cancelledAt       DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  lines OrderReturnLine[]
+  inventoryTransactions InventoryTransaction[]
+
+  @@index([status, returnedAt])
+  @@index([orderId, returnedAt])
+}
+
+model OrderReturnLine {
+  id            Int @id @default(autoincrement())
+  orderReturnId Int
+  orderItemId   Int
+  menuItemId    Int
+  menuItemSku   String
+  menuItemName  String
+  quantity      Int
+  unitPrice     Int
+  lineAmount    Int
+  createdAt     DateTime @default(now())
+
+  orderReturn OrderReturn @relation(fields: [orderReturnId], references: [id], onDelete: Cascade)
+  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+
+  @@unique([orderReturnId, orderItemId])
+  @@index([orderItemId])
+  @@index([menuItemId])
 }
 
 model AuditLog {
@@ -285,6 +338,7 @@ enum InventoryTransactionType {
   KITCHEN_WASTE
   MANUAL_ADJUST
   VOID_RESTORE
+  SALES_RETURN
 }
 
 enum InventoryCheckStatus {
@@ -347,6 +401,7 @@ model InventoryTransaction {
   inventoryCheckId Int?                    // Chung tu kiem kho; null cho ledger khac
   inventoryWasteId Int?                    // Chung tu xuat huy; null cho ledger khac
   purchaseReturnId Int?
+  orderReturnId Int?
   note            String?                  // Ghi chu
   createdByUserId Int?
   createdAt       DateTime                 @default(now())
@@ -357,6 +412,7 @@ model InventoryTransaction {
   inventoryCheck InventoryCheck? @relation(fields: [inventoryCheckId], references: [id], onDelete: Restrict)
   inventoryWaste InventoryWaste? @relation(fields: [inventoryWasteId], references: [id], onDelete: Restrict)
   purchaseReturn PurchaseReturn? @relation(fields: [purchaseReturnId], references: [id], onDelete: Restrict)
+  orderReturn OrderReturn? @relation(fields: [orderReturnId], references: [id], onDelete: Restrict)
 
   @@index([ingredientId])
   @@index([type])
@@ -365,6 +421,8 @@ model InventoryTransaction {
   @@index([inventoryCheckId])
   @@index([inventoryWasteId])
   @@unique([purchaseReturnId, ingredientId])
+  @@unique([orderReturnId, ingredientId])
+  @@index([orderReturnId])
 }
 
 model InventoryCheck {

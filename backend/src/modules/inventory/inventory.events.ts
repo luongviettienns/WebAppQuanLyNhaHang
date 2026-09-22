@@ -12,7 +12,8 @@ export type InventoryChangedReason =
   | 'KITCHEN_WASTE'
   | 'RECIPE_UPDATED'
   | 'INGREDIENT_UPDATED'
-  | 'MENU_ITEM_UPDATED';
+  | 'MENU_ITEM_UPDATED'
+  | 'SALES_RETURN';
 
 export type InventoryChangedPayload = {
   sourceType: InventoryChangedSourceType;
