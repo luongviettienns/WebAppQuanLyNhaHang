@@ -27,8 +27,8 @@
 - Create backend/src/modules/inventory/inventory-waste.math.ts
 - Create backend/src/modules/inventory/inventory-waste.schemas.ts
 - Create backend/src/modules/inventory/inventory-waste.types.ts
-- Create backend/src/modules/inventory/__tests__/inventory-waste.math.spec.ts
-- Create backend/src/modules/inventory/__tests__/inventory-waste.schemas.spec.ts
+- Create backend/test/inventory/inventory-waste.math.spec.ts
+- Create backend/test/inventory/inventory-waste.schema.spec.ts
 
 - [ ] Write failing math tests for decimal quantity, empty/multi-line summary, and rounding: quantity 1.5 × cost 12000 equals positive value 18000.
 - [ ] Run backend focused math test and observe RED because the module does not exist.
@@ -45,7 +45,7 @@
 - Modify backend/prisma/schema.prisma
 - Create backend/prisma/migrations/20260922120000_add_inventory_wastes/migration.sql
 - Modify backend/test/helpers/database.ts
-- Create backend/src/modules/inventory/__tests__/inventory-waste.persistence.spec.ts
+- Create backend/test/inventory/inventory-waste.persistence.spec.ts
 
 - [ ] Write failing persistence test that creates an ingredient then a waste with a snapshot line, loads it through prismaTest.inventoryWaste with lines, and checks InventoryTransaction.inventoryWasteId exists.
 - [ ] Run the persistence test RED; Prisma client must report that inventoryWaste is unavailable.
@@ -64,8 +64,8 @@
 - Create backend/src/modules/inventory/inventory-waste.export.ts
 - Modify backend/src/modules/inventory/inventory.routes.ts
 - Modify backend/src/modules/inventory/inventory.events.ts
-- Create backend/src/modules/inventory/__tests__/inventory-waste.service.spec.ts
-- Create backend/src/modules/inventory/__tests__/inventory-waste.api.spec.ts
+- Create backend/test/inventory/inventory-waste.service.spec.ts
+- Create backend/test/inventory/inventory-waste.api.spec.ts
 
 - [ ] Write failing complete-draft service test: stock 10/cost 12000; 2-unit noted draft becomes COMPLETED with stock 8, totalValue 24000, KITCHEN_WASTE ledger quantity -2/costAmount -24000 and its waste id.
 - [ ] Run service RED because no service exists.
