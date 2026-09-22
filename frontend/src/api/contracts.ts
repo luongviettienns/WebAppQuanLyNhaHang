@@ -849,6 +849,87 @@ export interface InventoryWasteImportPreviewDto {
 
 export type InventoryWasteExportFormat = 'csv' | 'xlsx';
 
+export type PurchaseReturnStatus = 'DRAFT' | 'COMPLETED' | 'CANCELLED';
+export type PurchaseReturnRefundMethod = 'CASH' | 'BANK_TRANSFER';
+
+export interface PurchaseReturnLineDto {
+  id: number;
+  ingredientId: number;
+  ingredientSku: string;
+  ingredientName: string;
+  unit: string;
+  quantity: number;
+  purchaseUnitCost: number;
+  returnUnitPrice: number;
+  lineAmount: number;
+  stockCostPerUnit: number | null;
+  stockCostAmount: number | null;
+  sourceReceiptLineId: number | null;
+}
+
+export interface PurchaseReturnDto {
+  id: number;
+  returnCode: string;
+  supplierId: number | null;
+  supplier: { id: number; code: string; name: string; isActive: boolean } | null;
+  sourceReceiptId: number | null;
+  sourceReceipt: { id: number; receiptCode: string } | null;
+  returnedAt: string;
+  status: PurchaseReturnStatus;
+  version: number;
+  subtotalAmount: number;
+  discountAmount: number;
+  vatAmount: number;
+  refundAmount: number;
+  refundMethod: PurchaseReturnRefundMethod;
+  payableAmount: number;
+  debtReductionAmount: number;
+  note: string | null;
+  createdByUserId: number | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: PurchaseReturnLineDto[];
+}
+export type PurchaseReturnDetailDto = PurchaseReturnDto;
+
+export interface PurchaseReturnListDataDto {
+  items: PurchaseReturnDto[];
+  pagination: InventoryCatalogPaginationDto;
+  summary: { totalSubtotal: number; totalDiscount: number; totalVat: number; totalRefund: number; totalDue: number };
+}
+
+export interface PurchaseReturnListFilter {
+  statuses?: PurchaseReturnStatus[];
+  from?: string;
+  to?: string;
+  search?: string;
+  supplierId?: number;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PurchaseReturnLineInput { ingredientId: number; quantity: number; returnUnitPrice: number }
+export interface PurchaseReturnDraftInput {
+  supplierId?: number | null;
+  sourceReceiptId?: number | null;
+  returnedAt?: string;
+  lines: PurchaseReturnLineInput[];
+  discountAmount?: number;
+  vatAmount?: number;
+  refundAmount?: number;
+  refundMethod?: PurchaseReturnRefundMethod;
+  note?: string | null;
+  expectedVersion?: number;
+}
+export interface PurchaseReturnImportPreviewDto {
+  fileName: string;
+  totalRows: number;
+  validRows: Array<{ rowNumber: number; ingredientId: number; ingredientSku: string; ingredientName: string; unit: string; quantity: number; currentStock: number; costPerUnit: number; returnUnitPrice: number }>;
+  errorRows: Array<{ rowNumber: number; sku: string; name?: string; unit?: string; quantity: number; returnUnitPrice: number; error: string }>;
+}
+
 export interface RecipeIngredientDto {
   id: number;
   ingredientId: number;

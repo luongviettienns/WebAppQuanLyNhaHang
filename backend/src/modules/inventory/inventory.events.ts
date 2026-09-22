@@ -5,6 +5,7 @@ export type InventoryChangedReason =
   | 'STOCK_IN'
   | 'SUPPLIER_UPDATED'
   | 'PURCHASE_RECEIPT_POSTED'
+  | 'PURCHASE_RETURN_CHANGED'
   | 'ORDER_PAID'
   | 'ORDER_VOIDED'
   | 'MANUAL_ADJUST'

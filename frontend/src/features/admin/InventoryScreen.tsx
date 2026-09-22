@@ -57,6 +57,8 @@ import { InventoryCheckListScreen } from './InventoryCheckListScreen';
 import { InventoryCheckComposerScreen } from './InventoryCheckComposerScreen';
 import { InventoryWasteListScreen } from './InventoryWasteListScreen';
 import { InventoryWasteComposerScreen } from './InventoryWasteComposerScreen';
+import { PurchaseReturnListScreen } from './PurchaseReturnListScreen';
+import { PurchaseReturnComposerScreen } from './PurchaseReturnComposerScreen';
 import { SupplierListScreen } from './SupplierListScreen';
 
 type ActiveTab = 'inventory' | 'bom';
@@ -1186,12 +1188,13 @@ const LegacyInventoryOperations: React.FC<{ initialTab?: ActiveTab; initialMenuI
 
 export const InventoryScreen: React.FC = () => {
   const { theme } = useTheme();
-  const [section, setSection] = useState<'catalog' | 'operations' | 'receipts' | 'receipt-composer' | 'checks' | 'check-composer' | 'wastes' | 'waste-composer' | 'suppliers'>('catalog');
+  const [section, setSection] = useState<'catalog' | 'operations' | 'receipts' | 'receipt-composer' | 'checks' | 'check-composer' | 'wastes' | 'waste-composer' | 'returns' | 'return-composer' | 'suppliers'>('catalog');
   const [legacyTab, setLegacyTab] = useState<ActiveTab>('inventory');
   const [legacyMenuItemId, setLegacyMenuItemId] = useState<number | undefined>();
   const [receiptComposer, setReceiptComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
   const [checkComposer, setCheckComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
   const [wasteComposer, setWasteComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
+  const [returnComposer, setReturnComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
 
   const openLegacyOperations = (row?: InventoryCatalogRowDto) => {
     setLegacyTab(row?.sourceType === 'MENU_ITEM' ? 'bom' : 'inventory');
@@ -1246,6 +1249,23 @@ export const InventoryScreen: React.FC = () => {
     setSection('wastes');
   };
 
+  const openPurchaseReturns = () => {
+    setReturnComposer(null);
+    setSection('returns');
+  };
+  const createPurchaseReturn = () => {
+    setReturnComposer({ mode: 'create', id: null });
+    setSection('return-composer');
+  };
+  const openPurchaseReturn = (id: number) => {
+    setReturnComposer({ mode: 'edit', id });
+    setSection('return-composer');
+  };
+  const finishPurchaseReturn = () => {
+    setReturnComposer(null);
+    setSection('returns');
+  };
+
   const createPurchaseReceipt = () => {
     setReceiptComposer({ mode: 'create', id: null });
     setSection('receipt-composer');
@@ -1279,12 +1299,15 @@ export const InventoryScreen: React.FC = () => {
         <Pressable onPress={openInventoryWastes} style={[shellStyles.sectionButton, (section === 'wastes' || section === 'waste-composer') && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
           <Text style={[shellStyles.sectionButtonText, { color: (section === 'wastes' || section === 'waste-composer') ? theme.primary : theme.textSecondary }]}>Xuất hủy</Text>
         </Pressable>
+        <Pressable onPress={openPurchaseReturns} style={[shellStyles.sectionButton, (section === 'returns' || section === 'return-composer') && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: (section === 'returns' || section === 'return-composer') ? theme.primary : theme.textSecondary }]}>Trả hàng nhập</Text>
+        </Pressable>
         <Pressable onPress={() => setSection('suppliers')} style={[shellStyles.sectionButton, section === 'suppliers' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
           <Text style={[shellStyles.sectionButtonText, { color: section === 'suppliers' ? theme.primary : theme.textSecondary }]}>Nhà cung cấp</Text>
         </Pressable>
       </View>
       {section === 'catalog'
-        ? <InventoryCatalogScreen onOpenLegacyOperations={openLegacyOperations} onOpenPurchaseReceipts={openPurchaseReceipts} onOpenInventoryChecks={openInventoryChecks} onOpenInventoryWastes={openInventoryWastes} onOpenSuppliers={() => setSection('suppliers')} />
+        ? <InventoryCatalogScreen onOpenLegacyOperations={openLegacyOperations} onOpenPurchaseReceipts={openPurchaseReceipts} onOpenInventoryChecks={openInventoryChecks} onOpenInventoryWastes={openInventoryWastes} onOpenPurchaseReturns={openPurchaseReturns} onOpenSuppliers={() => setSection('suppliers')} />
         : section === 'suppliers'
           ? <SupplierListScreen onOpenReceipt={openPurchaseReceipt} />
         : section === 'operations'
@@ -1299,6 +1322,10 @@ export const InventoryScreen: React.FC = () => {
                   ? <InventoryWasteListScreen onCreateWaste={createInventoryWaste} onOpenWaste={openInventoryWaste} />
                   : section === 'waste-composer' && wasteComposer
                     ? <InventoryWasteComposerScreen mode={wasteComposer.mode} wasteId={wasteComposer.id} onFinished={finishInventoryWaste} onCancel={openInventoryWastes} />
+                    : section === 'returns'
+                      ? <PurchaseReturnListScreen onCreateReturn={createPurchaseReturn} onOpenReturn={openPurchaseReturn} />
+                      : section === 'return-composer' && returnComposer
+                        ? <PurchaseReturnComposerScreen mode={returnComposer.mode} returnId={returnComposer.id} onFinished={finishPurchaseReturn} onCancel={openPurchaseReturns} />
                 : receiptComposer
                   ? <PurchaseReceiptComposerScreen
                 mode={receiptComposer.mode}

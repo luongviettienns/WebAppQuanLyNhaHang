@@ -9,6 +9,9 @@ function reportSource(query: SupplierListQuery) {
   const dateConditions: Prisma.Sql[] = [Prisma.sql`1 = 1`];
   if (query.from) dateConditions.push(Prisma.sql`r.receivedAt >= ${new Date(query.from + 'T00:00:00+07:00')}`);
   if (query.to) dateConditions.push(Prisma.sql`r.receivedAt < ${new Date(new Date(query.to + 'T00:00:00+07:00').getTime() + 86400000)}`);
+  const returnDateConditions: Prisma.Sql[] = [Prisma.sql`1 = 1`];
+  if (query.from) returnDateConditions.push(Prisma.sql`pr.returnedAt >= ${new Date(query.from + 'T00:00:00+07:00')}`);
+  if (query.to) returnDateConditions.push(Prisma.sql`pr.returnedAt < ${new Date(new Date(query.to + 'T00:00:00+07:00').getTime() + 86400000)}`);
   const conditions: Prisma.Sql[] = [Prisma.sql`1 = 1`];
   if (query.isActive !== 'all') conditions.push(Prisma.sql`s.isActive = ${query.isActive === 'true'}`);
   if (query.groupId !== undefined) conditions.push(query.groupId === 0 ? Prisma.sql`s.groupId IS NULL` : Prisma.sql`s.groupId = ${query.groupId}`);
@@ -24,14 +27,20 @@ function reportSource(query: SupplierListQuery) {
   if (query.maxDebt !== undefined) moneyConditions.push(Prisma.sql`report.outstandingAmount <= ${query.maxDebt}`);
   return Prisma.sql`FROM (
     SELECT s.id, s.code, s.isActive,
-      COALESCE(p.totalPurchase, 0) AS totalPurchase,
-      COALESCE(p.outstandingAmount, 0) AS outstandingAmount
+      COALESCE(p.totalPurchase, 0) - COALESCE(ret.totalReturn, 0) AS totalPurchase,
+      GREATEST(0, COALESCE(p.outstandingAmount, 0) - COALESCE(ret.returnDebtReduction, 0)) AS outstandingAmount
     FROM Supplier s LEFT JOIN (
       SELECT r.supplierId,
         SUM(CASE WHEN ${Prisma.join(dateConditions, ' AND ')} THEN r.subtotalAmount - r.discountAmount ELSE 0 END) AS totalPurchase,
         SUM(GREATEST(0, r.subtotalAmount - r.discountAmount - r.paidAmount)) AS outstandingAmount
       FROM PurchaseReceipt r WHERE r.status = 'POSTED' GROUP BY r.supplierId
     ) p ON p.supplierId = s.id
+    LEFT JOIN (
+      SELECT pr.supplierId,
+        SUM(CASE WHEN ${Prisma.join(returnDateConditions, ' AND ')} THEN pr.subtotalAmount - pr.discountAmount ELSE 0 END) AS totalReturn,
+        SUM(CASE WHEN ${Prisma.join(returnDateConditions, ' AND ')} THEN GREATEST(0, pr.subtotalAmount - pr.discountAmount + pr.vatAmount - pr.refundAmount) ELSE 0 END) AS returnDebtReduction
+      FROM PurchaseReturn pr WHERE pr.status = 'COMPLETED' GROUP BY pr.supplierId
+    ) ret ON ret.supplierId = s.id
     WHERE ${Prisma.join(conditions, ' AND ')}
   ) report WHERE ${Prisma.join(moneyConditions, ' AND ')}`;
 }

@@ -4,6 +4,7 @@ import { SupplierController } from './supplier.controller';
 import { PurchaseReceiptController } from './purchase-receipt.controller';
 import { InventoryCheckController } from './inventory-check.controller';
 import { InventoryWasteController } from './inventory-waste.controller';
+import { PurchaseReturnController } from './purchase-return.controller';
 import { authenticate } from '../../middlewares/authenticate';
 import { authorize } from '../../middlewares/authorize';
 
@@ -42,6 +43,16 @@ inventoryRouter.get('/purchase-receipts/:id', PurchaseReceiptController.detail);
 inventoryRouter.patch('/purchase-receipts/:id', PurchaseReceiptController.update);
 inventoryRouter.post('/purchase-receipts/:id/post', PurchaseReceiptController.post);
 inventoryRouter.post('/purchase-receipts/:id/cancel', PurchaseReceiptController.cancel);
+
+// Phieu kiem kho theo vong doi draft -> balanced/cancelled
+inventoryRouter.get('/purchase-returns', PurchaseReturnController.list);
+inventoryRouter.post('/purchase-returns', PurchaseReturnController.create);
+inventoryRouter.get('/purchase-returns/export', PurchaseReturnController.export);
+inventoryRouter.post('/purchase-returns/import/preview', PurchaseReturnController.previewImport);
+inventoryRouter.get('/purchase-returns/:id', PurchaseReturnController.detail);
+inventoryRouter.patch('/purchase-returns/:id', PurchaseReturnController.update);
+inventoryRouter.post('/purchase-returns/:id/complete', PurchaseReturnController.complete);
+inventoryRouter.post('/purchase-returns/:id/cancel', PurchaseReturnController.cancel);
 
 // Phieu kiem kho theo vong doi draft -> balanced/cancelled
 inventoryRouter.get('/checks', InventoryCheckController.list);

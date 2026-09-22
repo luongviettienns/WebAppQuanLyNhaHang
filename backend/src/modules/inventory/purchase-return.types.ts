@@ -1,0 +1,2 @@
+export type PurchaseReturnImportPreviewRow = { rowNumber: number; sku: string; name?: string; unit?: string; quantity: number; returnUnitPrice: number; ingredientId: number; ingredientSku: string; ingredientName: string; currentStock: number; costPerUnit: number };
+export type PurchaseReturnImportPreviewDto = { fileName: string; totalRows: number; validRows: PurchaseReturnImportPreviewRow[]; errorRows: Array<{ rowNumber: number; sku: string; name?: string; unit?: string; quantity: number; returnUnitPrice: number; error: string }> };

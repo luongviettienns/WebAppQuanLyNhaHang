@@ -53,6 +53,7 @@ interface InventoryCatalogScreenProps {
   onOpenPurchaseReceipts: () => void;
   onOpenInventoryChecks: () => void;
   onOpenInventoryWastes: () => void;
+  onOpenPurchaseReturns: () => void;
   onOpenSuppliers: () => void;
 }
 
@@ -65,7 +66,7 @@ const initialFilter: InventoryCatalogFilter = {
   isActive: 'true'
 };
 
-const reservedInventoryMenus = ['Hóa đơn đầu vào', 'Trả hàng nhập'];
+const reservedInventoryMenus = ['Hóa đơn đầu vào'];
 
 function formatStock(row: InventoryCatalogRowDto): string {
   if (row.stockQuantity === null) return '—';
@@ -76,7 +77,7 @@ function formatCost(row: InventoryCatalogRowDto): string {
   return row.costPrice === null ? '—' : `${row.costPrice.toLocaleString('vi-VN')} đ`;
 }
 
-export const InventoryCatalogScreen: React.FC<InventoryCatalogScreenProps> = ({ onOpenLegacyOperations, onOpenPurchaseReceipts, onOpenInventoryChecks, onOpenInventoryWastes, onOpenSuppliers }) => {
+export const InventoryCatalogScreen: React.FC<InventoryCatalogScreenProps> = ({ onOpenLegacyOperations, onOpenPurchaseReceipts, onOpenInventoryChecks, onOpenInventoryWastes, onOpenPurchaseReturns, onOpenSuppliers }) => {
   const { theme } = useTheme();
   const { token } = useAuth();
   const { categories, inventoryRevision } = useRestaurant();
@@ -171,6 +172,9 @@ export const InventoryCatalogScreen: React.FC<InventoryCatalogScreenProps> = ({ 
           </Pressable>
           <Pressable onPress={onOpenInventoryWastes} style={[styles.reservedItem, { borderColor: theme.primary, backgroundColor: theme.interactiveSecondary }]}>
             <Text style={[styles.reservedLabel, { color: theme.primary }]}>Xuất hủy</Text>
+          </Pressable>
+          <Pressable onPress={onOpenPurchaseReturns} style={[styles.reservedItem, { borderColor: theme.primary, backgroundColor: theme.interactiveSecondary }]}>
+            <Text style={[styles.reservedLabel, { color: theme.primary }]}>Trả hàng nhập</Text>
           </Pressable>
           <Pressable onPress={onOpenSuppliers} style={[styles.reservedItem, { borderColor: theme.primary, backgroundColor: theme.interactiveSecondary }]}>
             <Text style={[styles.reservedLabel, { color: theme.primary }]}>Nhà cung cấp</Text>
