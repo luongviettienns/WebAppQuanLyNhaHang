@@ -522,6 +522,15 @@ export interface SupplierDto {
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
+  identityNumber?: string | null;
+  province?: string | null;
+  district?: string | null;
+  ward?: string | null;
+  companyName?: string | null;
+  groupId?: number | null;
+  group?: { id: number; name: string } | null;
+  totalPurchase?: number;
+  outstandingAmount?: number;
 }
 
 export interface SupplierPaginationDto {
@@ -534,6 +543,7 @@ export interface SupplierPaginationDto {
 export interface SupplierListDataDto {
   items: SupplierDto[];
   pagination: SupplierPaginationDto;
+  summary?: { totalPurchase: number; outstandingAmount: number };
 }
 
 export interface PurchaseReceiptSupplierDto {
@@ -953,9 +963,10 @@ export interface InventoryCatalogFilter {
 }
 
 export interface SocketInventoryChangedPayload {
-  sourceType: 'INGREDIENT' | 'MENU_ITEM';
+  sourceType: 'INGREDIENT' | 'MENU_ITEM' | 'SUPPLIER' | 'SUPPLIER_GROUP';
   sourceIds: number[];
   reason:
+    | 'SUPPLIER_UPDATED'
     | 'STOCK_IN'
     | 'PURCHASE_RECEIPT_POSTED'
     | 'ORDER_PAID'

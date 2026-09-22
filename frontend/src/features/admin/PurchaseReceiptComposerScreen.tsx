@@ -13,6 +13,8 @@ import {
 import { ArrowLeft, Check, FileSpreadsheet, Plus, Trash2 } from 'lucide-react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useRestaurant } from '../../contexts/RestaurantContext';
+import { SupplierFormModal } from './SupplierFormModal';
 import { fetchIngredientsApi } from '../../api/inventory';
 import {
   fetchPurchaseReceiptDetailApi,
@@ -87,12 +89,15 @@ export const PurchaseReceiptComposerScreen: React.FC<PurchaseReceiptComposerScre
 }) => {
   const { theme } = useTheme();
   const { token } = useAuth();
+  const { inventoryRevision } = useRestaurant();
   const { width } = useWindowDimensions();
   const isNarrow = width < 900;
   const [receiptId, setReceiptId] = useState<number | null>(initialReceiptId);
   const [status, setStatus] = useState<PurchaseReceiptStatus>('DRAFT');
   const [supplierId, setSupplierId] = useState<number | null>(null);
   const [supplierSearch, setSupplierSearch] = useState('');
+  const [selectedSupplierName, setSelectedSupplierName] = useState('');
+  const [showSupplierForm, setShowSupplierForm] = useState(false);
   const [suppliers, setSuppliers] = useState<SupplierDto[]>([]);
   const [receivedAt, setReceivedAt] = useState(nowInput);
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -120,11 +125,7 @@ export const PurchaseReceiptComposerScreen: React.FC<PurchaseReceiptComposerScre
 
   const loadLookups = useCallback(async () => {
     try {
-      const [supplierData, ingredientData] = await Promise.all([
-        fetchSuppliersApi(token, { isActive: 'true', page: 1, pageSize: 100 }),
-        fetchIngredientsApi(token, { search: ingredientSearch || undefined })
-      ]);
-      setSuppliers(supplierData.items);
+      const ingredientData = await fetchIngredientsApi(token, { search: ingredientSearch || undefined });
       setIngredientSuggestions(ingredientData.slice(0, 12));
     } catch (error: any) {
       setErrorMessage(error.message || 'Không thể tải dữ liệu nhà cung cấp và nguyên liệu');
@@ -132,6 +133,16 @@ export const PurchaseReceiptComposerScreen: React.FC<PurchaseReceiptComposerScre
   }, [ingredientSearch, token]);
 
   useEffect(() => { void loadLookups(); }, [loadLookups]);
+
+  useEffect(() => {
+    let active = true;
+    const timeout = setTimeout(() => {
+      fetchSuppliersApi(token, { isActive: 'true', search: supplierSearch.trim() || undefined, page: 1, pageSize: 20 })
+        .then(result => { if (active) setSuppliers(result.items); })
+        .catch((failure: Error) => { if (active) setErrorMessage(failure.message); });
+    }, 200);
+    return () => { active = false; clearTimeout(timeout); };
+  }, [supplierSearch, token, inventoryRevision]);
 
   useEffect(() => {
     if (mode !== 'edit' || !initialReceiptId) return;
@@ -142,6 +153,7 @@ export const PurchaseReceiptComposerScreen: React.FC<PurchaseReceiptComposerScre
       setReceiptId(receipt.id);
       setStatus(receipt.status);
       setSupplierId(receipt.supplierId);
+      setSelectedSupplierName(receipt.supplier?.name || '');
       setReceivedAt(receipt.receivedAt.slice(0, 16));
       setInvoiceNumber(receipt.invoiceNumber || '');
       setInvoiceDate(receipt.invoiceDate?.slice(0, 10) || '');
@@ -343,11 +355,12 @@ export const PurchaseReceiptComposerScreen: React.FC<PurchaseReceiptComposerScre
           <Text style={[styles.panelTitle, { color: theme.textPrimary }]}>Thông tin phiếu</Text>
           <TextInput value={supplierSearch} onChangeText={setSupplierSearch} placeholder="Tìm nhà cung cấp (F4)" placeholderTextColor={theme.textSecondary} editable={!isReadOnly} style={[styles.input, { borderColor: theme.borderSubtle, color: theme.textPrimary }]} />
           <View style={styles.chips}>
-            {suppliers.filter((supplier) => !supplierSearch.trim() || `${supplier.code} ${supplier.name}`.toLowerCase().includes(supplierSearch.trim().toLowerCase())).slice(0, 5).map((supplier) => (
-              <Pressable key={supplier.id} onPress={() => { setSupplierId(supplier.id); setSupplierSearch(supplier.name); }} disabled={isReadOnly} style={[styles.supplierChip, supplier.id === supplierId && { borderColor: theme.primary, backgroundColor: theme.interactiveSecondary }]}><Text style={{ color: theme.textPrimary }}>{supplier.name}</Text></Pressable>
+            {suppliers.slice(0, 8).map((supplier) => (
+              <Pressable key={supplier.id} onPress={() => { setSupplierId(supplier.id); setSelectedSupplierName(supplier.name); setSupplierSearch(''); }} disabled={isReadOnly} style={[styles.supplierChip, supplier.id === supplierId && { borderColor: theme.primary, backgroundColor: theme.interactiveSecondary }]}><Text style={{ color: theme.textPrimary }}>{supplier.name}</Text></Pressable>
             ))}
           </View>
-          <Text style={[styles.selectedSupplier, { color: theme.textSecondary }]}>{supplierId ? `Nhà cung cấp đã chọn: ${supplierSearch}` : 'Chưa chọn nhà cung cấp'}</Text>
+          <Text style={[styles.selectedSupplier, { color: theme.textSecondary }]}>{supplierId ? `Nhà cung cấp đã chọn: ${selectedSupplierName}` : 'Chưa chọn nhà cung cấp'}</Text>
+          <Button testID="purchase-receipt-add-supplier" variant="quiet" label="Thêm nhà cung cấp" icon={Plus} disabled={isReadOnly || isSaving} onPress={() => setShowSupplierForm(true)} />
           <Text style={[styles.label, { color: theme.textPrimary }]}>Mã phiếu nhập</Text>
           <TextInput value={receiptId ? `PN${String(receiptId).padStart(6, '0')}` : 'Mã phiếu tự động'} editable={false} style={[styles.input, styles.disabledInput, { borderColor: theme.borderSubtle, color: theme.textSecondary }]} />
           <Text style={[styles.label, { color: theme.textPrimary }]}>Ngày nhập</Text>
@@ -375,6 +388,10 @@ export const PurchaseReceiptComposerScreen: React.FC<PurchaseReceiptComposerScre
       {showPostConfirm && <Surface level="raised" style={[styles.confirmation, { borderColor: theme.primary }]}><Text style={[styles.panelTitle, { color: theme.textPrimary }]}>Xác nhận hoàn thành phiếu?</Text><Text style={[styles.muted, { color: theme.textSecondary }]}>Sau khi hoàn thành, phiếu sẽ cập nhật tồn kho và không còn chỉnh sửa.</Text><View style={styles.actions}><Button variant="quiet" label="Hủy" onPress={() => setShowPostConfirm(false)} /><Button variant="primary" label="Xác nhận hoàn thành" onPress={() => { void confirmPost(); }} loading={isPosting} /></View></Surface>}
 
       {importPreview && <Surface level="raised" style={styles.importPanel}><Text style={[styles.panelTitle, { color: theme.textPrimary }]}>Đối soát Excel: {importPreview.fileName}</Text><Text style={[styles.muted, { color: theme.textSecondary }]}>Hợp lệ {importPreview.validRows.length}/{importPreview.totalRows} dòng; lỗi {importPreview.errorRows.length} dòng.</Text>{importPreview.errorRows.slice(0, 4).map((row) => <Text key={row.rowNumber} style={{ color: theme.textSecondary }}>Dòng {row.rowNumber}: {row.error}</Text>)}<View style={styles.actions}><Button variant="quiet" label="Bỏ qua" onPress={() => setImportPreview(null)} /><Button variant="primary" label="Thêm dòng hợp lệ" onPress={applyImportPreview} disabled={!importPreview.validRows.length} /></View></Surface>}
+      {showSupplierForm && <SupplierFormModal visible onClose={() => setShowSupplierForm(false)} onSaved={supplier => {
+        setSupplierId(supplier.id); setSelectedSupplierName(supplier.name); setSupplierSearch('');
+        setSuppliers(current => [supplier, ...current.filter(item => item.id !== supplier.id)]); setShowSupplierForm(false);
+      }} />}
     </ScrollView>
   );
 };

@@ -27,6 +27,8 @@ vi.mock('lucide-react-native', () => {
 });
 
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ token: 'token' }) }));
+vi.mock('../../contexts/RestaurantContext', () => ({ useRestaurant: () => ({ inventoryRevision: 0 }) }));
+vi.mock('./SupplierFormModal', () => ({ SupplierFormModal: ({ onSaved, visible }: any) => visible ? React.createElement('Pressable', { testID: 'quick-supplier-result', onPress: () => onSaved({ id: 77, code: 'NCC77', name: 'Đại lý mới', isActive: true }) }) : null }));
 vi.mock('../../contexts/ThemeContext', () => ({
   useTheme: () => ({ theme: {
     surfaceCanvas: '#fff', surfaceBase: '#fff', surfaceRaised: '#fff', surfaceSunken: '#f7f7f7',
@@ -82,6 +84,7 @@ vi.mock('../../api/purchaseReceipts', () => ({
 
 import { savePurchaseReceiptDraftApi, postPurchaseReceiptApi } from '../../api/purchaseReceipts';
 import { PurchaseReceiptComposerScreen } from './PurchaseReceiptComposerScreen';
+import { fetchIngredientsApi } from '../../api/inventory';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -103,5 +106,20 @@ describe('purchase receipt composer', () => {
 
     expect(savePurchaseReceiptDraftApi).toHaveBeenCalledTimes(1);
     expect(postPurchaseReceiptApi).not.toHaveBeenCalled();
+  });
+
+  it('selects a quick-created supplier without losing receipt lines', async () => {
+    vi.mocked(fetchIngredientsApi).mockResolvedValueOnce([{
+      id: 8, sku: 'NL8', name: 'Bột mì', unit: 'kg', currentStock: 10, costPerUnit: 20000,
+      minThreshold: 0, isActive: true, isLowStock: false, isNegative: false, totalValue: 200000, createdAt: '', updatedAt: ''
+    }]);
+    let screen: any;
+    await act(async () => { screen = create(<PurchaseReceiptComposerScreen mode="create" onFinished={vi.fn()} />); });
+    await act(async () => { screen.root.findAllByType('Pressable').find((node: any) => node.findAllByType('Text').some((text: any) => text.props.children === 'NL8')).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'purchase-receipt-add-supplier' }).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'quick-supplier-result' }).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'purchase-receipt-save-draft' }).props.onPress(); });
+    expect(savePurchaseReceiptDraftApi).toHaveBeenLastCalledWith('token', null, expect.objectContaining({ supplierId: 77, lines: [expect.objectContaining({ ingredientId: 8, quantity: 1, unitCost: 20000 })] }));
+    await act(async () => screen.unmount());
   });
 });

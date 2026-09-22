@@ -20,8 +20,17 @@ inventoryRouter.get('/catalog', InventoryController.getCatalog);
 inventoryRouter.get('/catalog/export', InventoryController.exportCatalog);
 
 // Nha cung cap toi thieu cho phieu nhap hang
+inventoryRouter.get('/supplier-groups', SupplierController.groups);
+inventoryRouter.post('/supplier-groups', SupplierController.saveGroup);
+inventoryRouter.patch('/supplier-groups/:id', SupplierController.saveGroup);
 inventoryRouter.get('/suppliers', SupplierController.list);
 inventoryRouter.post('/suppliers', SupplierController.create);
+inventoryRouter.get('/suppliers/export', SupplierController.export);
+inventoryRouter.get('/suppliers/import/template', SupplierController.template);
+inventoryRouter.post('/suppliers/import/preview', SupplierController.preview);
+inventoryRouter.post('/suppliers/import/commit', SupplierController.commit);
+inventoryRouter.get('/suppliers/:id/receipts', SupplierController.receipts);
+inventoryRouter.get('/suppliers/:id', SupplierController.detail);
 inventoryRouter.patch('/suppliers/:id', SupplierController.update);
 
 // Phieu nhap hang theo vong doi draft -> posted/cancelled

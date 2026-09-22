@@ -3,6 +3,8 @@ import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { AuditService } from '../audit/audit.service';
 import { CreateSupplierDto, SupplierListQuery, UpdateSupplierDto } from './supplier.schemas';
+import { SupplierReportService } from './supplier-report.service';
+import { emitInventoryChanged } from './inventory.events';
 
 const SUPPLIER_CODE_PREFIX = 'NCC';
 const SUPPLIER_CODE_RETRY_LIMIT = 2;
@@ -19,10 +21,19 @@ export type SupplierDto = {
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
+  identityNumber: string | null;
+  province: string | null;
+  district: string | null;
+  ward: string | null;
+  companyName: string | null;
+  groupId: number | null;
+  group: { id: number; name: string } | null;
 };
 
-function toSupplierDto(supplier: Supplier): SupplierDto {
+function toSupplierDto(supplier: Supplier & { group?: { id: number; name: string } | null }): SupplierDto {
   return {
+    ...supplier,
+    group: supplier.group ?? null,
     id: supplier.id,
     code: supplier.code,
     name: supplier.name,
@@ -64,31 +75,7 @@ function isMissingSupplier(error: unknown): boolean {
 
 export class SupplierService {
   static async list(query: SupplierListQuery) {
-    const where: Prisma.SupplierWhereInput = {
-      ...(query.isActive === 'all' ? {} : { isActive: query.isActive === 'true' }),
-      ...(query.search ? {
-        OR: [
-          { code: { contains: query.search } },
-          { name: { contains: query.search } },
-          { phone: { contains: query.search } },
-          { taxCode: { contains: query.search } }
-        ]
-      } : {})
-    };
-    const skip = (query.page - 1) * query.pageSize;
-    const [totalRows, suppliers] = await Promise.all([
-      prisma.supplier.count({ where }),
-      prisma.supplier.findMany({ where, skip, take: query.pageSize, orderBy: [{ isActive: 'desc' }, { code: 'asc' }] })
-    ]);
-    return {
-      items: suppliers.map(toSupplierDto),
-      pagination: {
-        page: query.page,
-        pageSize: query.pageSize,
-        totalRows,
-        totalPages: Math.max(1, Math.ceil(totalRows / query.pageSize))
-      }
-    };
+    return SupplierReportService.list(query);
   }
 
   static async findSelectable(search?: string): Promise<SupplierDto[]> {
@@ -111,10 +98,11 @@ export class SupplierService {
   }
 
   static async create(input: CreateSupplierDto, actorId?: number, actorName?: string): Promise<SupplierDto> {
+    await this.requireGroup(prisma, input.groupId);
     let created: Supplier;
     if (input.code) {
       try {
-        created = await prisma.supplier.create({ data: { ...input, code: input.code } });
+        created = await prisma.supplier.create({ data: { ...input, code: input.code }, include: { group: true } });
       } catch (error) {
         if (isDuplicateSupplierCode(error)) throw ApiError.conflict('Mã nhà cung cấp đã tồn tại');
         throw error;
@@ -125,12 +113,13 @@ export class SupplierService {
         try {
           created = await prisma.$transaction(async tx => {
             const code = await generateNextSupplierCode(tx);
-            return tx.supplier.create({ data: { ...input, code } });
+            return tx.supplier.create({ data: { ...input, code }, include: { group: true } });
           });
           await AuditService.log({
             action: 'SUPPLIER_CREATED', targetType: 'Supplier', targetId: created.id, actorId, actorName,
             metadata: { code: created.code, name: created.name, isActive: created.isActive }
           });
+          this.notify([created.id]);
           return toSupplierDto(created);
         } catch (error) {
           if (!isDuplicateSupplierCode(error)) throw error;
@@ -145,19 +134,50 @@ export class SupplierService {
       action: 'SUPPLIER_CREATED', targetType: 'Supplier', targetId: created.id, actorId, actorName,
       metadata: { code: created.code, name: created.name, isActive: created.isActive }
     });
+    this.notify([created.id]);
     return toSupplierDto(created);
   }
 
   static async update(id: number, input: UpdateSupplierDto, actorId?: number, actorName?: string): Promise<SupplierDto> {
+    await this.requireGroup(prisma, input.groupId);
     try {
-      const updated = await prisma.supplier.update({ where: { id }, data: input });
+      const updated = await prisma.supplier.update({ where: { id }, data: input, include: { group: true } });
       await AuditService.log({
         action: 'SUPPLIER_UPDATED', targetType: 'Supplier', targetId: updated.id, actorId, actorName,
         metadata: { name: updated.name, isActive: updated.isActive, updatedFields: Object.keys(input) }
       });
+      this.notify([updated.id]);
       return toSupplierDto(updated);
     } catch (error) {
       if (isMissingSupplier(error)) throw ApiError.notFound('Nhà cung cấp không tồn tại');
+      throw error;
+    }
+  }
+
+  static notify(ids: number[]) {
+    emitInventoryChanged({ sourceType: 'SUPPLIER', sourceIds: ids, reason: 'SUPPLIER_UPDATED', updatedAt: new Date().toISOString() });
+  }
+
+  static async requireGroup(tx: Prisma.TransactionClient, groupId?: number | null) {
+    if (groupId && !await tx.supplierGroup.findUnique({ where: { id: groupId } })) throw ApiError.badRequest('Nhóm nhà cung cấp không tồn tại');
+  }
+
+  static async createInTransaction(tx: Prisma.TransactionClient, input: CreateSupplierDto) {
+    await this.requireGroup(tx, input.groupId);
+    return tx.supplier.create({ data: { ...input, code: input.code || await generateNextSupplierCode(tx) } });
+  }
+
+  static async groups() { return prisma.supplierGroup.findMany({ orderBy: { name: 'asc' } }); }
+
+  static async saveGroup(id: number | null, name: string, actorId?: number, actorName?: string) {
+    try {
+      const group = id === null ? await prisma.supplierGroup.create({ data: { name } }) : await prisma.supplierGroup.update({ where: { id }, data: { name } });
+      await AuditService.log({ action: id === null ? 'SUPPLIER_GROUP_CREATED' : 'SUPPLIER_GROUP_UPDATED', targetType: 'SupplierGroup', targetId: group.id, actorId, actorName });
+      emitInventoryChanged({ sourceType: 'SUPPLIER_GROUP', sourceIds: [group.id], reason: 'SUPPLIER_UPDATED', updatedAt: group.updatedAt.toISOString() });
+      return group;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw ApiError.conflict('Tên nhóm đã tồn tại');
+      if (isMissingSupplier(error)) throw ApiError.notFound('Nhóm nhà cung cấp không tồn tại');
       throw error;
     }
   }

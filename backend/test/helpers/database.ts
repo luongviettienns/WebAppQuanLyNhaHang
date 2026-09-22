@@ -38,6 +38,7 @@ export async function truncateAllTables() {
     'PurchaseReceiptLine',
     'PurchaseReceipt',
     'Supplier',
+    'SupplierGroup',
     'MenuItemIngredient',
     'Ingredient',
     'AuditLog',

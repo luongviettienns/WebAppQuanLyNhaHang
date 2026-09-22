@@ -53,6 +53,7 @@ interface InventoryCatalogScreenProps {
   onOpenPurchaseReceipts: () => void;
   onOpenInventoryChecks: () => void;
   onOpenInventoryWastes: () => void;
+  onOpenSuppliers: () => void;
 }
 
 const initialFilter: InventoryCatalogFilter = {
@@ -64,7 +65,7 @@ const initialFilter: InventoryCatalogFilter = {
   isActive: 'true'
 };
 
-const reservedInventoryMenus = ['Hóa đơn đầu vào', 'Trả hàng nhập', 'Nhà cung cấp'];
+const reservedInventoryMenus = ['Hóa đơn đầu vào', 'Trả hàng nhập'];
 
 function formatStock(row: InventoryCatalogRowDto): string {
   if (row.stockQuantity === null) return '—';
@@ -75,7 +76,7 @@ function formatCost(row: InventoryCatalogRowDto): string {
   return row.costPrice === null ? '—' : `${row.costPrice.toLocaleString('vi-VN')} đ`;
 }
 
-export const InventoryCatalogScreen: React.FC<InventoryCatalogScreenProps> = ({ onOpenLegacyOperations, onOpenPurchaseReceipts, onOpenInventoryChecks, onOpenInventoryWastes }) => {
+export const InventoryCatalogScreen: React.FC<InventoryCatalogScreenProps> = ({ onOpenLegacyOperations, onOpenPurchaseReceipts, onOpenInventoryChecks, onOpenInventoryWastes, onOpenSuppliers }) => {
   const { theme } = useTheme();
   const { token } = useAuth();
   const { categories, inventoryRevision } = useRestaurant();
@@ -170,6 +171,9 @@ export const InventoryCatalogScreen: React.FC<InventoryCatalogScreenProps> = ({ 
           </Pressable>
           <Pressable onPress={onOpenInventoryWastes} style={[styles.reservedItem, { borderColor: theme.primary, backgroundColor: theme.interactiveSecondary }]}>
             <Text style={[styles.reservedLabel, { color: theme.primary }]}>Xuất hủy</Text>
+          </Pressable>
+          <Pressable onPress={onOpenSuppliers} style={[styles.reservedItem, { borderColor: theme.primary, backgroundColor: theme.interactiveSecondary }]}>
+            <Text style={[styles.reservedLabel, { color: theme.primary }]}>Nhà cung cấp</Text>
           </Pressable>
           {reservedInventoryMenus.map(menu => (
             <View key={menu} style={[styles.reservedItem, { borderColor: theme.borderSubtle, backgroundColor: theme.surfaceSunken, opacity: 0.65 }]}>

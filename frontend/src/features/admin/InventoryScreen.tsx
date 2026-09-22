@@ -57,6 +57,7 @@ import { InventoryCheckListScreen } from './InventoryCheckListScreen';
 import { InventoryCheckComposerScreen } from './InventoryCheckComposerScreen';
 import { InventoryWasteListScreen } from './InventoryWasteListScreen';
 import { InventoryWasteComposerScreen } from './InventoryWasteComposerScreen';
+import { SupplierListScreen } from './SupplierListScreen';
 
 type ActiveTab = 'inventory' | 'bom';
 type StockFilter = 'ALL' | 'LOW' | 'NEGATIVE';
@@ -1185,7 +1186,7 @@ const LegacyInventoryOperations: React.FC<{ initialTab?: ActiveTab; initialMenuI
 
 export const InventoryScreen: React.FC = () => {
   const { theme } = useTheme();
-  const [section, setSection] = useState<'catalog' | 'operations' | 'receipts' | 'receipt-composer' | 'checks' | 'check-composer' | 'wastes' | 'waste-composer'>('catalog');
+  const [section, setSection] = useState<'catalog' | 'operations' | 'receipts' | 'receipt-composer' | 'checks' | 'check-composer' | 'wastes' | 'waste-composer' | 'suppliers'>('catalog');
   const [legacyTab, setLegacyTab] = useState<ActiveTab>('inventory');
   const [legacyMenuItemId, setLegacyMenuItemId] = useState<number | undefined>();
   const [receiptComposer, setReceiptComposer] = useState<{ mode: 'create' | 'edit'; id: number | null } | null>(null);
@@ -1278,9 +1279,14 @@ export const InventoryScreen: React.FC = () => {
         <Pressable onPress={openInventoryWastes} style={[shellStyles.sectionButton, (section === 'wastes' || section === 'waste-composer') && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
           <Text style={[shellStyles.sectionButtonText, { color: (section === 'wastes' || section === 'waste-composer') ? theme.primary : theme.textSecondary }]}>Xuất hủy</Text>
         </Pressable>
+        <Pressable onPress={() => setSection('suppliers')} style={[shellStyles.sectionButton, section === 'suppliers' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+          <Text style={[shellStyles.sectionButtonText, { color: section === 'suppliers' ? theme.primary : theme.textSecondary }]}>Nhà cung cấp</Text>
+        </Pressable>
       </View>
       {section === 'catalog'
-        ? <InventoryCatalogScreen onOpenLegacyOperations={openLegacyOperations} onOpenPurchaseReceipts={openPurchaseReceipts} onOpenInventoryChecks={openInventoryChecks} onOpenInventoryWastes={openInventoryWastes} />
+        ? <InventoryCatalogScreen onOpenLegacyOperations={openLegacyOperations} onOpenPurchaseReceipts={openPurchaseReceipts} onOpenInventoryChecks={openInventoryChecks} onOpenInventoryWastes={openInventoryWastes} onOpenSuppliers={() => setSection('suppliers')} />
+        : section === 'suppliers'
+          ? <SupplierListScreen onOpenReceipt={openPurchaseReceipt} />
         : section === 'operations'
           ? <LegacyInventoryOperations initialTab={legacyTab} initialMenuItemId={legacyMenuItemId} />
           : section === 'receipts'
@@ -1307,7 +1313,7 @@ export const InventoryScreen: React.FC = () => {
 
 const shellStyles = StyleSheet.create({
   container: { flex: 1 },
-  sectionNav: { borderBottomWidth: 1, flexDirection: 'row', gap: spacing.xs, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
+  sectionNav: { borderBottomWidth: 1, flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   sectionButton: { borderColor: 'transparent', borderRadius: radii.md, borderWidth: 1, minHeight: 44, justifyContent: 'center', paddingHorizontal: spacing.md },
   sectionButtonText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm }
 });
