@@ -651,6 +651,103 @@ export interface PurchaseReceiptImportPreviewDto {
   errorRows: PurchaseReceiptImportErrorRowDto[];
 }
 
+export type InventoryCheckStatus = 'DRAFT' | 'BALANCED' | 'CANCELLED';
+
+export interface InventoryCheckLineDto {
+  id: number;
+  ingredientId: number;
+  ingredientSku: string;
+  ingredientName: string;
+  unit: string;
+  systemQuantity: number;
+  actualQuantity: number | null;
+  varianceQuantity: number | null;
+  costPerUnit: number;
+  varianceValue: number | null;
+}
+
+export interface InventoryCheckSummaryDto {
+  totalActualQuantity: number;
+  totalVarianceQuantity: number;
+  increasedQuantity: number;
+  decreasedQuantity: number;
+  totalVarianceValue: number;
+  uncheckedCount: number;
+}
+
+export interface InventoryCheckDto extends InventoryCheckSummaryDto {
+  id: number;
+  checkCode: string;
+  status: InventoryCheckStatus;
+  countedAt: string;
+  balancedAt: string | null;
+  note: string | null;
+  createdByUserId: number | null;
+  balancedByUserId: number | null;
+  cancelledByUserId: number | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: InventoryCheckLineDto[];
+  recentChecks?: InventoryCheckDto[];
+}
+
+export type InventoryCheckDetailDto = InventoryCheckDto;
+
+export interface InventoryCheckListDataDto {
+  items: InventoryCheckDto[];
+  pagination: InventoryCatalogPaginationDto;
+  totalVarianceValue: number;
+  increasedQuantity: number;
+  decreasedQuantity: number;
+}
+
+export interface InventoryCheckListFilter {
+  statuses?: InventoryCheckStatus[];
+  from?: string;
+  to?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface InventoryCheckLineInput {
+  ingredientId: number;
+  actualQuantity: number | null;
+}
+
+export interface InventoryCheckDraftInput {
+  note?: string | null;
+  lines: InventoryCheckLineInput[];
+}
+
+export interface InventoryCheckImportValidRowDto {
+  rowNumber: number;
+  ingredientId: number;
+  ingredientSku: string;
+  ingredientName: string;
+  unit: string;
+  actualQuantity: number;
+}
+
+export interface InventoryCheckImportErrorRowDto {
+  rowNumber: number;
+  sku: string;
+  name?: string;
+  unit?: string;
+  actualQuantity: number;
+  error: string;
+}
+
+export interface InventoryCheckImportPreviewDto {
+  fileName: string;
+  totalRows: number;
+  validRows: InventoryCheckImportValidRowDto[];
+  errorRows: InventoryCheckImportErrorRowDto[];
+}
+
+export type InventoryCheckExportFormat = 'csv' | 'xlsx';
+
 export interface RecipeIngredientDto {
   id: number;
   ingredientId: number;
