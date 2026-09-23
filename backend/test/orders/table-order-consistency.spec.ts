@@ -116,7 +116,7 @@ describe('multiple unpaid orders on one table', () => {
 
   it('locks a dine-in table before creating another order on it', async () => {
     const transactionEvents: string[] = [];
-    vi.mocked(prisma.diningTable.findUnique).mockResolvedValue({ id: 1, tableNumber: 1 } as never);
+    vi.mocked(prisma.diningTable.findUnique).mockResolvedValue({ id: 1, tableNumber: 1, isActive: true } as never);
     vi.mocked(prisma.menuItem.findMany).mockResolvedValue([{
       id: 10,
       name: 'Ga ran',
@@ -127,6 +127,9 @@ describe('multiple unpaid orders on one table', () => {
     (prisma.$transaction as any).mockImplementation(async (callback: (client: any) => Promise<unknown>) => {
       const tx = {
         $queryRaw: vi.fn(() => transactionEvents.push('lock-table')),
+        priceList: { findFirst: vi.fn().mockResolvedValue(null) },
+        priceListItem: { findMany: vi.fn().mockResolvedValue([]) },
+        menuItem: { findMany: vi.fn().mockResolvedValue([{ id: 10, basePrice: 50_000 }]) },
         order: {
           create: vi.fn(async ({ data }) => {
             transactionEvents.push('create-order');
@@ -134,6 +137,7 @@ describe('multiple unpaid orders on one table', () => {
           })
         },
         diningTable: {
+          findUnique: vi.fn().mockResolvedValue({ id: 1, isActive: true }),
           update: vi.fn(async () => transactionEvents.push('update-table'))
         }
       };

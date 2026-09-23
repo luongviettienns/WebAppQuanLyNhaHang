@@ -193,14 +193,35 @@ model ModifierOption {
 model DiningTable {
   id             Int         @id @default(autoincrement())
   tableNumber    Int         @unique
+  displayName    String?     @db.VarChar(100)
+  areaId         Int?
   qrCodeToken    String      @unique
   status         TableStatus @default(AVAILABLE)
   capacity       Int         @default(4)
+  displayOrder   Int         @default(0)
+  note           String?     @db.VarChar(500)
+  isActive       Boolean     @default(true)
   currentOrderId Int?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
   orders Order[]
+  area   TableArea? @relation(fields: [areaId], references: [id], onDelete: Restrict)
+
+  @@index([areaId])
+  @@index([isActive])
+}
+
+model TableArea {
+  id           Int      @id @default(autoincrement())
+  name         String   @unique @db.VarChar(100)
+  displayOrder Int      @default(0)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  tables       DiningTable[]
+
+  @@index([isActive, displayOrder])
 }
 
 model Order {

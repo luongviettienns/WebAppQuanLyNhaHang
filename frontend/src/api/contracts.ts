@@ -275,6 +275,13 @@ export interface PriceListImportCommitDto {
 export interface DiningTableDto {
   id: number;
   tableNumber: number;
+  displayName?: string | null;
+  areaId?: number | null;
+  area?: { id: number; name: string } | null;
+  displayOrder?: number;
+  note?: string | null;
+  isActive?: boolean;
+  seatCount?: number;
   qrCodeToken?: string;
   status: TableStatus;
   capacity: number;

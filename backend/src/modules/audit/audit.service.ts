@@ -1,5 +1,6 @@
 import { prisma } from '../../config/prisma';
 import { GetAuditLogsQuery } from './audit.schemas';
+import { Prisma } from '@prisma/client';
 
 export interface LogAuditInput {
   action: string;
@@ -11,6 +12,15 @@ export interface LogAuditInput {
 }
 
 export class AuditService {
+  static async logInTransaction(tx: Prisma.TransactionClient, input: LogAuditInput) {
+    let finalActorName = input.actorName;
+    if (!finalActorName && input.actorId) {
+      const user = await tx.user.findUnique({ where: { id: input.actorId }, select: { name: true, username: true } });
+      finalActorName = user?.name || user?.username || null;
+    }
+    return tx.auditLog.create({ data: { action: input.action, targetType: input.targetType, targetId: input.targetId ?? null, actorId: input.actorId ?? null, actorName: finalActorName ?? null, metadata: input.metadata ?? undefined } });
+  }
+
   /**
    * Ghi log he thong cho cac hanh dong quan tri (Menu, Image, Order Void)
    */

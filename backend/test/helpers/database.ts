@@ -55,6 +55,7 @@ export async function truncateAllTables() {
     'MenuItem',
     'Category',
     'DiningTable',
+    'TableArea',
     'User'
   ];
   for (const table of tables) {
