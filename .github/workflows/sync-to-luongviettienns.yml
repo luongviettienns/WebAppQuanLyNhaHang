@@ -1,0 +1,28 @@
+name: Sync to luongviettienns/WebAppQuanLyNhaHang
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - '**'
+
+jobs:
+  sync-to-upstream:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Push to luongviettienns repo
+        env:
+          PAT_TOKEN: ${{ secrets.SYNC_PAT }}
+        run: |
+          if [ -n "$PAT_TOKEN" ]; then
+            git remote add target https://x-access-token:${PAT_TOKEN}@github.com/luongviettienns/WebAppQuanLyNhaHang.git
+          else
+            git remote add target https://github.com/luongviettienns/WebAppQuanLyNhaHang.git
+          fi
+          git push target ${{ github.ref_name }} --force || echo "Push failed, please check SYNC_PAT secret permissions if required."
