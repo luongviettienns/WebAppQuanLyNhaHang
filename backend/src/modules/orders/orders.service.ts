@@ -177,6 +177,7 @@ export class OrdersService {
         if (!table) {
           throw ApiError.notFound('Mã QR bàn không hợp lệ hoặc đã hết hạn');
         }
+        // Kiem tra phong/ban dang hoat dong
         if (!table.isActive) {
           throw ApiError.notFound('Mã QR bàn không hợp lệ hoặc đã hết hạn');
         }
