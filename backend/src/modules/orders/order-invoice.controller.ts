@@ -1,5 +1,4 @@
 import { NextFunction, Request, Response } from 'express';
-import { ApiError } from '../../lib/api-error';
 import { serializeOrderInvoicesCsv, serializeOrderInvoicesWorkbook } from './order-invoice.export';
 import { OrderInvoiceService } from './order-invoice.service';
 import { orderInvoiceExportSchema, orderInvoiceIdSchema, orderInvoiceQuerySchema } from './order-invoice.schemas';

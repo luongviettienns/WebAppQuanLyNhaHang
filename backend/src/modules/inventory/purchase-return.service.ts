@@ -110,6 +110,7 @@ export class PurchaseReturnService {
     const row = await prisma.$transaction(async tx => {
       const lines = await snapshot(tx, input);
       const { lines: _lines, ...header } = input;
+      void _lines;
       const created = await tx.purchaseReturn.create({ data: { ...header, subtotalAmount: totals.subtotalAmount, returnCode: 'PENDING-' + randomUUID(), createdByUserId: actor.id, createdByName: actor.name, lines: { create: lines } } });
       const saved = await tx.purchaseReturn.update({ where: { id: created.id }, data: { returnCode: 'THN' + String(created.id).padStart(6, '0') }, include: returnInclude });
       await audit(tx, saved, actor, 'CREATED');
@@ -123,6 +124,7 @@ export class PurchaseReturnService {
       const previous = await lockedDraft(tx, id, expectedVersion);
       const lines = await snapshot(tx, input, previous);
       const { lines: _lines, ...header } = input;
+      void _lines;
       const updated = await tx.purchaseReturn.update({ where: { id }, data: { ...header, subtotalAmount: totals.subtotalAmount, version: { increment: 1 }, lines: { deleteMany: {}, create: lines } }, include: returnInclude });
       await audit(tx, updated, actor, 'UPDATED'); return updated;
     }, txOptions);

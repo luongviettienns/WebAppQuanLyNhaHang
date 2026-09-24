@@ -9,7 +9,6 @@ import {
 } from './inventory-check.math';
 import {
   CreateInventoryCheckInput,
-  InventoryCheckImportPreviewInput,
   InventoryCheckListQuery,
   UpdateInventoryCheckInput
 } from './inventory-check.schemas';
@@ -236,8 +235,7 @@ export class InventoryCheckService {
   }
 
   static async balance(id: number, actor: InventoryCheckActor): Promise<InventoryCheckDto> {
-    let outcome: { check: CheckRecord; ingredientIds: number[] };
-    outcome = await prisma.$transaction(async tx => {
+    const outcome: { check: CheckRecord; ingredientIds: number[] } = await prisma.$transaction(async tx => {
       const current = await tx.inventoryCheck.findUnique({ where: { id }, include: checkInclude });
       if (!current) throw ApiError.notFound('Phiếu kiểm kho không tồn tại');
       if (current.status !== InventoryCheckStatus.DRAFT) throw ApiError.conflict('Chỉ phiếu tạm mới có thể cân bằng kho');

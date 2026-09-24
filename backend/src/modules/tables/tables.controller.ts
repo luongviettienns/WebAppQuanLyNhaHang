@@ -135,6 +135,8 @@ export class TablesController {
     }
   }
 
+  static getTableByNumber = TablesController.getTableByTableNumber;
+
   static async getPublicTables(_req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const data = await TablesService.getPublicTables();
