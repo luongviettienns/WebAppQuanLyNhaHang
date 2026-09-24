@@ -28,8 +28,9 @@ import { AuditLogScreen } from '../features/admin/AuditLogScreen';
 import { InventoryScreen } from '../features/admin/InventoryScreen';
 import { VoucherManagementScreen } from '../features/admin/VoucherManagementScreen';
 import { PriceListScreen } from '../features/admin/PriceListScreen';
+import { OrdersScreen } from '../features/orders/OrdersScreen';
 
-type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'pricing' | 'inventory' | 'vouchers' | 'audit';
+type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'pricing' | 'inventory' | 'orders' | 'vouchers' | 'audit';
 
 interface TabItem {
   key: TabKey;
@@ -41,7 +42,8 @@ interface TabItem {
 const tabsByRole = {
   CASHIER: [
     { key: 'pos', label: 'Bán hàng', icon: ShoppingCart, component: POSScreen },
-    { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen }
+    { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
+    { key: 'orders', label: 'Đơn hàng', icon: ClipboardList, component: OrdersScreen }
   ],
   KITCHEN: [
     { key: 'kds', label: 'Bếp', icon: ChefHat, component: KDSScreen }
@@ -51,6 +53,7 @@ const tabsByRole = {
     { key: 'menu', label: 'Thực đơn', icon: Utensils, component: MenuManagementScreen },
     { key: 'pricing', label: 'Bảng giá', icon: Tags, component: PriceListScreen },
     { key: 'inventory', label: 'Kho hàng', icon: Warehouse, component: InventoryScreen },
+    { key: 'orders', label: 'Đơn hàng', icon: ClipboardList, component: OrdersScreen },
     { key: 'vouchers', label: 'Ưu đãi', icon: Tag, component: VoucherManagementScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
     { key: 'audit', label: 'Nhật ký', icon: ClipboardList, component: AuditLogScreen }

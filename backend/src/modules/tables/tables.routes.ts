@@ -5,6 +5,18 @@ import { authorize } from '../../middlewares/authorize';
 
 export const tablesRouter = Router();
 
+// Configuration routes must precede /:id to avoid static paths being parsed as IDs.
+tablesRouter.get('/manage', authenticate, authorize('ADMIN'), TablesController.manage);
+tablesRouter.get('/manage/export', authenticate, authorize('ADMIN'), TablesController.export);
+tablesRouter.get('/manage/import/template', authenticate, authorize('ADMIN'), TablesController.importTemplate);
+tablesRouter.post('/manage/import/preview', authenticate, authorize('ADMIN'), TablesController.previewImport);
+tablesRouter.post('/manage/import/commit', authenticate, authorize('ADMIN'), TablesController.commitImport);
+tablesRouter.get('/areas', authenticate, authorize('ADMIN'), TablesController.areas);
+tablesRouter.post('/areas', authenticate, authorize('ADMIN'), TablesController.saveArea);
+tablesRouter.patch('/areas/:id', authenticate, authorize('ADMIN'), TablesController.saveArea);
+tablesRouter.post('/', authenticate, authorize('ADMIN'), TablesController.create);
+tablesRouter.patch('/:id', authenticate, authorize('ADMIN'), TablesController.update);
+
 // GET /api/tables/public (Public: Danh sach ban kem QR token de render/in ma QR)
 tablesRouter.get('/public', TablesController.getPublicTables);
 

@@ -275,6 +275,13 @@ export interface PriceListImportCommitDto {
 export interface DiningTableDto {
   id: number;
   tableNumber: number;
+  displayName?: string | null;
+  areaId?: number | null;
+  area?: { id: number; name: string } | null;
+  displayOrder?: number;
+  note?: string | null;
+  isActive?: boolean;
+  seatCount?: number;
   qrCodeToken?: string;
   status: TableStatus;
   capacity: number;
@@ -356,6 +363,133 @@ export interface OrderDto {
   voidedAt?: string | null;
 
   items: OrderItemDto[];
+}
+
+export type OrderInvoiceFilter = {
+  search?: string;
+  from?: string;
+  to?: string;
+  statuses?: OrderStatus[];
+  paymentStatuses?: PaymentStatus[];
+  orderTypes?: OrderType[];
+  page?: number;
+  pageSize?: number;
+};
+
+export interface OrderInvoiceListItemDto {
+  id: number;
+  code: string;
+  createdAt: string;
+  orderType: OrderType;
+  status: OrderStatus;
+  paymentStatus: PaymentStatus;
+  paymentMethod: PaymentMethod | null;
+  customerName: string | null;
+  tableNumber: number | null;
+  totalGoods: number;
+  discountAmount: number;
+  totalAfterDiscount: number;
+  vatAmount: number;
+  finalAmount: number;
+  paidAmount: number;
+  itemCount: number;
+}
+
+export interface OrderInvoiceDetailDto extends OrderInvoiceListItemDto {
+  paidAt: string | null;
+  notes: string | null;
+  createdByUser: { id: number; name: string } | null;
+  items: Array<{
+    id: number;
+    menuItemId: number;
+    sku: string;
+    menuItemName: string;
+    quantity: number;
+    unitPrice: number;
+    subtotal: number;
+    notes: string | null;
+    selectedModifiers: unknown;
+  }>;
+}
+
+export interface OrderInvoiceListDataDto {
+  items: OrderInvoiceListItemDto[];
+  pagination: { page: number; pageSize: number; totalRows: number; totalPages: number };
+  summary: { totalGoods: number; totalDiscount: number; totalAfterDiscount: number; totalVat: number; totalFinal: number; totalPaid: number };
+}
+
+export type SalesReturnStatus = 'COMPLETED' | 'CANCELLED';
+export type SalesReturnFilter = {
+  search?: string;
+  from?: string;
+  to?: string;
+  statuses?: SalesReturnStatus[];
+  tableId?: number;
+  page?: number;
+  pageSize?: number;
+};
+
+export interface SalesReturnCandidateLineDto {
+  orderItemId: number;
+  menuItemId: number;
+  sku: string;
+  menuItemName: string;
+  soldQuantity: number;
+  returnedQuantity: number;
+  remainingQuantity: number;
+  unitPrice: number;
+  subtotal: number;
+}
+
+export interface SalesReturnCandidateDto {
+  orderId: number;
+  code: string;
+  createdAt: string;
+  orderType: OrderType;
+  tableNumber: number | null;
+  customerName: string | null;
+  finalAmount: number;
+  remainingItems: SalesReturnCandidateLineDto[];
+}
+
+export interface SalesReturnDto {
+  id: number;
+  returnCode: string;
+  orderId: number;
+  sourceOrderCode: string;
+  returnedAt: string;
+  tableNumber: number | null;
+  customerName: string | null;
+  status: SalesReturnStatus;
+  totalRefundDue: number;
+  refundedAmount: number;
+  refundMethod: PaymentMethod;
+  note: string | null;
+  createdByUserId: number | null;
+  createdByName: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: Array<{ id: number; orderItemId: number; menuItemId: number; menuItemSku: string; menuItemName: string; quantity: number; unitPrice: number; lineAmount: number }>;
+}
+
+export interface SalesReturnListDataDto {
+  items: SalesReturnDto[];
+  pagination: { page: number; pageSize: number; totalRows: number; totalPages: number };
+  summary: { totalRefundDue: number; totalRefunded: number };
+}
+
+export interface SalesReturnCandidateDataDto {
+  items: SalesReturnCandidateDto[];
+  pagination: { page: number; pageSize: number; totalRows: number; totalPages: number };
+}
+
+export interface SalesReturnCreateInput {
+  orderId: number;
+  lines: Array<{ orderItemId: number; quantity: number }>;
+  refundMethod?: PaymentMethod;
+  refundedAmount?: number;
+  note?: string;
 }
 
 // ==========================================
@@ -887,6 +1021,87 @@ export interface InventoryWasteImportPreviewDto {
 }
 
 export type InventoryWasteExportFormat = 'csv' | 'xlsx';
+
+export type PurchaseReturnStatus = 'DRAFT' | 'COMPLETED' | 'CANCELLED';
+export type PurchaseReturnRefundMethod = 'CASH' | 'BANK_TRANSFER';
+
+export interface PurchaseReturnLineDto {
+  id: number;
+  ingredientId: number;
+  ingredientSku: string;
+  ingredientName: string;
+  unit: string;
+  quantity: number;
+  purchaseUnitCost: number;
+  returnUnitPrice: number;
+  lineAmount: number;
+  stockCostPerUnit: number | null;
+  stockCostAmount: number | null;
+  sourceReceiptLineId: number | null;
+}
+
+export interface PurchaseReturnDto {
+  id: number;
+  returnCode: string;
+  supplierId: number | null;
+  supplier: { id: number; code: string; name: string; isActive: boolean } | null;
+  sourceReceiptId: number | null;
+  sourceReceipt: { id: number; receiptCode: string } | null;
+  returnedAt: string;
+  status: PurchaseReturnStatus;
+  version: number;
+  subtotalAmount: number;
+  discountAmount: number;
+  vatAmount: number;
+  refundAmount: number;
+  refundMethod: PurchaseReturnRefundMethod;
+  payableAmount: number;
+  debtReductionAmount: number;
+  note: string | null;
+  createdByUserId: number | null;
+  completedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  lines: PurchaseReturnLineDto[];
+}
+export type PurchaseReturnDetailDto = PurchaseReturnDto;
+
+export interface PurchaseReturnListDataDto {
+  items: PurchaseReturnDto[];
+  pagination: InventoryCatalogPaginationDto;
+  summary: { totalSubtotal: number; totalDiscount: number; totalVat: number; totalRefund: number; totalDue: number };
+}
+
+export interface PurchaseReturnListFilter {
+  statuses?: PurchaseReturnStatus[];
+  from?: string;
+  to?: string;
+  search?: string;
+  supplierId?: number;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface PurchaseReturnLineInput { ingredientId: number; quantity: number; returnUnitPrice: number }
+export interface PurchaseReturnDraftInput {
+  supplierId?: number | null;
+  sourceReceiptId?: number | null;
+  returnedAt?: string;
+  lines: PurchaseReturnLineInput[];
+  discountAmount?: number;
+  vatAmount?: number;
+  refundAmount?: number;
+  refundMethod?: PurchaseReturnRefundMethod;
+  note?: string | null;
+  expectedVersion?: number;
+}
+export interface PurchaseReturnImportPreviewDto {
+  fileName: string;
+  totalRows: number;
+  validRows: Array<{ rowNumber: number; ingredientId: number; ingredientSku: string; ingredientName: string; unit: string; quantity: number; currentStock: number; costPerUnit: number; returnUnitPrice: number }>;
+  errorRows: Array<{ rowNumber: number; sku: string; name?: string; unit?: string; quantity: number; returnUnitPrice: number; error: string }>;
+}
 
 export interface RecipeIngredientDto {
   id: number;

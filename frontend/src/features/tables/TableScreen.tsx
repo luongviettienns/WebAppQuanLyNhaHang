@@ -22,6 +22,8 @@ import {
   Clock3,
   CreditCard,
   Landmark,
+  LayoutGrid,
+  List,
   RefreshCw,
   Trash2,
   Users,
@@ -36,6 +38,7 @@ import { useToast } from '../../contexts/ToastContext';
 import { elevation, radii, spacing, statusColors, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import type { StatusTone } from '../../ui';
+import { TableManagementScreen } from './TableManagementScreen';
 
 type TableFilter = 'ALL' | 'AVAILABLE' | 'OCCUPIED' | 'CLEANING';
 
@@ -90,6 +93,7 @@ export const TableScreen: React.FC = () => {
   const { tables, isLoadingTables, fetchTables, payOrder, updateTableStatus, transferTable, voidOrder } = useRestaurant();
 
   const [filter, setFilter] = useState<TableFilter>('ALL');
+  const [workspaceMode, setWorkspaceMode] = useState<'OPERATIONS' | 'MANAGEMENT'>('OPERATIONS');
   const [selectedTable, setSelectedTable] = useState<DiningTableDto | null>(null);
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
@@ -340,8 +344,18 @@ export const TableScreen: React.FC = () => {
     { key: 'CLEANING', label: 'Chờ dọn (' + counts.cleaning + ')' }
   ];
 
+  const workspaceTabs = user?.role === 'ADMIN' ? <View style={[styles.workspaceTabs, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
+    <Button variant={workspaceMode === 'OPERATIONS' ? 'primary' : 'quiet'} label="Sơ đồ phục vụ" icon={LayoutGrid} onPress={() => setWorkspaceMode('OPERATIONS')} />
+    <Button variant={workspaceMode === 'MANAGEMENT' ? 'primary' : 'quiet'} label="Danh sách phòng/bàn" icon={List} onPress={() => setWorkspaceMode('MANAGEMENT')} />
+  </View> : null;
+
+  if (user?.role === 'ADMIN' && workspaceMode === 'MANAGEMENT') {
+    return <SafeAreaView style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>{workspaceTabs}<TableManagementScreen /></SafeAreaView>;
+  }
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
+      {workspaceTabs}
       <View style={[styles.header, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
         <ScreenHeader
           title="Sơ đồ bàn"
@@ -947,6 +961,7 @@ export const TableScreen: React.FC = () => {
 };
 
 const styles = StyleSheet.create({
+  workspaceTabs: { borderBottomWidth: 1, flexDirection: 'row', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   container: { flex: 1 },
   header: { borderBottomWidth: 1, paddingHorizontal: spacing.lg, paddingVertical: spacing.md },
   filterToolbar: { borderBottomWidth: 1 },

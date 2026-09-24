@@ -177,6 +177,9 @@ export class OrdersService {
         if (!table) {
           throw ApiError.notFound('Mã QR bàn không hợp lệ hoặc đã hết hạn');
         }
+        if (!table.isActive) {
+          throw ApiError.notFound('Mã QR bàn không hợp lệ hoặc đã hết hạn');
+        }
         if (input.tableId && input.tableId !== table.id) {
           throw ApiError.badRequest('Mã QR không khớp với bàn được chọn');
         }
@@ -192,6 +195,9 @@ export class OrdersService {
         });
         if (!table) {
           throw ApiError.badRequest(`Bàn ăn ID ${input.tableId} không tồn tại`);
+        }
+        if (!table.isActive) {
+          throw ApiError.badRequest('Phòng/bàn đã ngừng hoạt động');
         }
         targetTable = table;
       }
@@ -323,6 +329,9 @@ export class OrdersService {
       transactionResult = await prisma.$transaction(async (tx) => {
         if (input.orderType === 'DINE_IN' && resolvedTableId) {
           await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${resolvedTableId} FOR UPDATE`;
+          const lockedTable = await tx.diningTable.findUnique({ where: { id: resolvedTableId }, select: { id: true, isActive: true } });
+          if (!lockedTable) throw ApiError.badRequest(`Bàn ăn ID ${resolvedTableId} không tồn tại`);
+          if (!lockedTable.isActive) throw createdByUserId === undefined ? ApiError.notFound('Mã QR bàn không hợp lệ hoặc đã hết hạn') : ApiError.badRequest('Phòng/bàn đã ngừng hoạt động');
         }
 
         if (input.idempotencyKey) {

@@ -113,6 +113,7 @@ interface RestaurantContextType {
   // Real-time Updates
   latestOrderStatusChanged?: SocketOrderStatusChangedPayload | null;
   inventoryRevision: number;
+  tablesRevision: number;
 
   // KDS State (Bếp thời gian thực)
   kdsOrders: OrderDto[];
@@ -202,6 +203,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [isLoadingPriceList, setIsLoadingPriceList] = useState(false);
   const [priceListError, setPriceListError] = useState<string | null>(null);
   const [inventoryRevision, setInventoryRevision] = useState(0);
+  const [tablesRevision, setTablesRevision] = useState(0);
 
   // 1. Fetch Menu from Backend API
   const fetchMenu = useCallback(async () => {
@@ -591,6 +593,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
             : t
         )
       );
+    });
+
+    socket.on('tables:changed', () => {
+      setTablesRevision((revision) => revision + 1);
+      if (user?.role !== 'KITCHEN') fetchTables();
     });
 
     // Order Status Changed
@@ -1248,6 +1255,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         voidOrder,
         latestOrderStatusChanged,
         inventoryRevision,
+        tablesRevision,
         kdsOrders,
         isLoadingKDS,
         kdsError,
