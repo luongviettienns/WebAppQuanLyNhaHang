@@ -241,6 +241,28 @@
       - *Hiện tượng*: Khi chạy `vitest` không có cờ `--fileParallelism=false`, nhiều test file cùng gọi `seedDatabase()` và `cleanDatabase()` đồng thời vào database test, dẫn đến lỗi Foreign key constraint violated.
       - *Giải pháp*: Luôn tuân thủ chạy với `--fileParallelism=false` cho test database integration.
 
+36. **Hợp nhất Nhánh `pKhanh` Đợt 2 (7 commits: Trả hàng nhập, Hóa đơn bán hàng, Trả hàng bán, Quản lý phòng bàn & Đặc tả Sổ quỹ)**:
+    - *Bối cảnh & Nghiệp vụ tiếp nhận*: Nhánh `origin/pKhanh` phát triển thêm 7 commit mới với các tính năng:
+      1. **Trả hàng nhập (Purchase Returns)**: Phiếu trả hàng nhập nhà cung cấp, kiểm tra tồn kho, hoàn tiền, import/export Excel.
+      2. **Quản lý hóa đơn (Order Invoices)**: Danh sách hóa đơn, chi tiết, xuất PDF/Excel hóa đơn bán hàng.
+      3. **Trả hàng bán (Sales Returns)**: Đổi trả hàng cho khách sau khi thanh toán, hoàn trả tồn kho nguyên liệu tự động.
+      4. **Quản lý phòng bàn & Khu vực (Table Management)**: CRUD danh mục phòng bàn, chia khu vực (Area), Import/Export Excel và in/xuất QR code bàn hàng loạt.
+      5. **Đặc tả kiến trúc & Kế hoạch Sổ quỹ (Cashbook Design & Plan)**: Tài liệu kiến trúc phân hệ Thu/Chi tiền mặt/ngân hàng.
+    - *Giải quyết Xung đột & Tích hợp An toàn*:
+      1. Khởi tạo nhánh trung gian an toàn `integrate/pkhanh-batch2`.
+      2. Xử lý triệt để xung đột nội dung trên 5 tệp: `backend/prisma/schema.prisma` (kết hợp `DiscountType` voucher và `OrderReturnStatus` / `PurchaseReturn`), `tables.schemas.ts`, `tables.controller.ts`, `tables.service.ts` (bảo toàn 100% logic Chuyển bàn realtime/KDS socket), và `RoleTabs.tsx` (hiển thị đầy đủ cả tab Đơn hàng và Ưu đãi cho Admin).
+      3. Cài đặt các thư viện mới vào frontend: `expo-document-picker`, `expo-sharing`, `jszip`, `qrcode`, `react-native-qrcode-svg`.
+      4. Vá lỗi lint (`prefer-const`, unused variables) và bổ sung alias `getTableByNumber` trong `tables.controller.ts`.
+      5. Đồng bộ schema cơ sở dữ liệu kiểm thử `crispy_bite_test` bằng `npx prisma db push`.
+    - *Kết quả nghiệm thu*:
+      - Backend: 56/56 test files, 378/378 tests PASS (100%).
+      - Frontend: 38/38 test files, 113/113 tests PASS (100%).
+      - Tổng cộng hệ thống: **491/491 tests PASS (100%)**.
+      - `npm run typecheck`: 100% không lỗi (backend + frontend).
+      - `npm run lint`: Sạch lỗi (0 error).
+      - `npm run doctor`: 18/18 checks đạt tiêu chuẩn Expo SDK 54.
+      - Đã hoàn tất gộp vào nhánh chính `main` và cập nhật fast-forward cho local `pKhanh`.
+
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
 
