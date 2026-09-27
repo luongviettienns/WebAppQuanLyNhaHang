@@ -10,6 +10,7 @@ import { radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import { formatInvoiceDate, formatInvoiceMoney, getInvoiceCustomerLabel, getOrderStatusPresentation } from './invoiceViewModel';
 import { SalesReturnListScreen } from './SalesReturnListScreen';
+import { DeliveryPartnersScreen } from './DeliveryPartnersScreen';
 
 const orderStatuses: Array<{ value: OrderStatus; label: string }> = [
   { value: 'PENDING', label: 'Chờ xử lý' }, { value: 'PREPARING', label: 'Đang chuẩn bị' },
@@ -51,7 +52,7 @@ function InvoiceRow({ item, onPress }: { item: OrderInvoiceListItemDto; onPress:
 export const OrdersScreen: React.FC = () => {
   const { theme } = useTheme(); const { token } = useAuth(); const { latestOrderStatusChanged } = useRestaurant(); const { width } = useWindowDimensions();
   const compact = width < 980;
-  const [activeSection, setActiveSection] = useState<'invoices' | 'returns'>('invoices');
+  const [activeSection, setActiveSection] = useState<'invoices' | 'returns' | 'partners'>('invoices');
   const [filter, setFilter] = useState<OrderInvoiceFilter>(initialFilter); const [search, setSearch] = useState(''); const [from, setFrom] = useState(''); const [to, setTo] = useState('');
   const [data, setData] = useState<Awaited<ReturnType<typeof fetchOrderInvoicesApi>> | null>(null); const [detail, setDetail] = useState<OrderInvoiceDetailDto | null>(null);
   const [loading, setLoading] = useState(true); const [error, setError] = useState<string | null>(null); const [exporting, setExporting] = useState<'csv' | 'xlsx' | null>(null);
@@ -67,8 +68,8 @@ export const OrdersScreen: React.FC = () => {
   const items = data?.items || [];
   return <ScrollView style={[styles.screen, { backgroundColor: theme.surfaceCanvas }]} contentContainerStyle={styles.content}>
     {activeSection === 'invoices' && <ScreenHeader title="Hóa đơn" description="Tra cứu đơn hàng, thanh toán và tổng tiền theo bộ lọc" leading={<View style={[styles.headerMark, { backgroundColor: theme.interactiveSecondary }]}><AppIcon icon={ReceiptText} color={theme.primary} /></View>} actions={<View style={styles.headerActions}><Button variant="secondary" label="CSV" icon={Download} loading={exporting === 'csv'} onPress={() => void exportFile('csv')} /><Button variant="secondary" label="XLSX" icon={FileSpreadsheet} loading={exporting === 'xlsx'} onPress={() => void exportFile('xlsx')} /></View>} />}
-    <View style={[styles.subNav, { borderBottomColor: theme.borderSubtle }]}><Pressable accessibilityRole="tab" accessibilityState={{ selected: activeSection === 'invoices' }} onPress={() => setActiveSection('invoices')} style={[styles.subNavItem, activeSection === 'invoices' && styles.subNavItemActive, activeSection === 'invoices' && { borderBottomColor: theme.primary }]}><Text style={[styles.subNavText, { color: activeSection === 'invoices' ? theme.primary : theme.textSecondary }]}>Hóa đơn</Text></Pressable><Pressable accessibilityRole="tab" accessibilityState={{ selected: activeSection === 'returns' }} onPress={() => setActiveSection('returns')} style={[styles.subNavItem, activeSection === 'returns' && styles.subNavItemActive, activeSection === 'returns' && { borderBottomColor: theme.primary }]}><Text style={[styles.subNavText, { color: activeSection === 'returns' ? theme.primary : theme.textSecondary }]}>Trả hàng</Text></Pressable></View>
-    {activeSection === 'returns' ? <SalesReturnListScreen /> : <>
+    <View style={[styles.subNav, { borderBottomColor: theme.borderSubtle }]}><Pressable accessibilityRole="tab" accessibilityState={{ selected: activeSection === 'invoices' }} onPress={() => setActiveSection('invoices')} style={[styles.subNavItem, activeSection === 'invoices' && styles.subNavItemActive, activeSection === 'invoices' && { borderBottomColor: theme.primary }]}><Text style={[styles.subNavText, { color: activeSection === 'invoices' ? theme.primary : theme.textSecondary }]}>Hóa đơn</Text></Pressable><Pressable accessibilityRole="tab" accessibilityState={{ selected: activeSection === 'returns' }} onPress={() => setActiveSection('returns')} style={[styles.subNavItem, activeSection === 'returns' && styles.subNavItemActive, activeSection === 'returns' && { borderBottomColor: theme.primary }]}><Text style={[styles.subNavText, { color: activeSection === 'returns' ? theme.primary : theme.textSecondary }]}>Trả hàng</Text></Pressable><Pressable accessibilityRole="tab" accessibilityState={{ selected: activeSection === 'partners' }} onPress={() => setActiveSection('partners')} style={[styles.subNavItem, activeSection === 'partners' && styles.subNavItemActive, activeSection === 'partners' && { borderBottomColor: theme.primary }]}><Text style={[styles.subNavText, { color: activeSection === 'partners' ? theme.primary : theme.textSecondary }]}>Đối tác giao hàng</Text></Pressable></View>
+    {activeSection === 'returns' ? <SalesReturnListScreen /> : activeSection === 'partners' ? <DeliveryPartnersScreen /> : <>
     {error && <InlineAlert title="Không thể tải dữ liệu" message={error} />}
     <View style={[styles.layout, compact && styles.layoutCompact]}>
       <Surface level="base" style={[styles.filters, compact && styles.filtersCompact, { borderColor: theme.borderSubtle }]}>

@@ -49,6 +49,8 @@ export async function truncateAllTables() {
     'OrderItem',
     'Order',
     'Voucher',
+    'DeliveryPartner',
+    'DeliveryPartnerGroup',
     'PriceListItem',
     'PriceList',
     'ModifierOption',

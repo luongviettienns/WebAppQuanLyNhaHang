@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { OrdersService } from './orders.service';
 import { createOrderSchema, payOrderSchema, updateOrderStatusSchema, voidOrderSchema } from './orders.schemas';
+import { ApiError } from '../../lib/api-error';
 
 export class OrdersController {
   static async getOrders(req: Request, res: Response, next: NextFunction): Promise<void> {
@@ -18,6 +19,9 @@ export class OrdersController {
     try {
       const input = createOrderSchema.parse(req.body);
       const createdByUserId = req.user?.id;
+      if (input.orderType === 'DELIVERY' && (!req.user || !['CASHIER', 'ADMIN'].includes(req.user.role))) {
+        throw ApiError.forbidden('Chỉ thu ngân hoặc quản trị viên được tạo đơn giao hàng');
+      }
 
       const result = await OrdersService.createOrder(input, createdByUserId);
 

@@ -4,8 +4,23 @@ import { authenticate, optionalAuthenticate } from '../../middlewares/authentica
 import { authorize } from '../../middlewares/authorize';
 import { OrderInvoiceController } from './order-invoice.controller';
 import { SalesReturnController } from './sales-return.controller';
+import { DeliveryPartnerController } from './delivery-partner.controller';
 
 export const ordersRouter = Router();
+
+// Delivery partners and their derived delivery KPIs are managed by cashier/admin only.
+ordersRouter.get('/delivery-partner-groups', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.groups);
+ordersRouter.post('/delivery-partner-groups', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.saveGroup);
+ordersRouter.patch('/delivery-partner-groups/:id', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.saveGroup);
+ordersRouter.get('/delivery-partners/export', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.export);
+ordersRouter.get('/delivery-partners/import/template', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.template);
+ordersRouter.post('/delivery-partners/import/preview', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.preview);
+ordersRouter.post('/delivery-partners/import/commit', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.commit);
+ordersRouter.get('/delivery-partners/selectable', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.selectable);
+ordersRouter.get('/delivery-partners', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.list);
+ordersRouter.post('/delivery-partners', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.create);
+ordersRouter.get('/delivery-partners/:id', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.detail);
+ordersRouter.patch('/delivery-partners/:id', authenticate, authorize('CASHIER', 'ADMIN'), DeliveryPartnerController.update);
 
 // GET /api/orders/invoices (Danh sach hoa don quan tri: CASHIER va ADMIN)
 ordersRouter.get('/invoices', authenticate, authorize('CASHIER', 'ADMIN'), OrderInvoiceController.list);

@@ -10,7 +10,10 @@ export const prisma =
   new PrismaClient({
     datasources: {
       db: {
-        url: env.NODE_ENV === 'test' && env.TEST_DATABASE_URL ? env.TEST_DATABASE_URL : env.DATABASE_URL
+        url:
+          (process.env.NODE_ENV === 'test' && process.env.TEST_DATABASE_URL)
+            ? process.env.TEST_DATABASE_URL
+            : (process.env.DATABASE_URL || env.TEST_DATABASE_URL || env.DATABASE_URL)
       }
     },
     log: env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error']

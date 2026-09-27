@@ -102,6 +102,9 @@ interface RestaurantContextType {
     tableId?: number | null;
     qrCodeToken?: string;
     voucherCode?: string;
+    deliveryPartnerId?: number;
+    deliveryAddress?: string;
+    deliveryFee?: number;
     notes?: string;
   }) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string, voucherCode?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
@@ -795,12 +798,18 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     tableId,
     qrCodeToken,
     voucherCode,
+    deliveryPartnerId,
+    deliveryAddress,
+    deliveryFee,
     notes
   }: {
     orderType: OrderType;
     tableId?: number | null;
     qrCodeToken?: string;
     voucherCode?: string;
+    deliveryPartnerId?: number;
+    deliveryAddress?: string;
+    deliveryFee?: number;
     notes?: string;
   }): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
     if (cart.length === 0) {
@@ -825,6 +834,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       ...(orderType === 'DINE_IN' && tableId ? { tableId } : {}),
       ...(orderType === 'DINE_IN' && qrCodeToken ? { qrCodeToken } : {}),
       ...(voucherCode ? { voucherCode } : {}),
+      ...(orderType === 'DELIVERY' ? { deliveryPartnerId, deliveryAddress, deliveryFee } : {}),
       orderType,
       items: itemsPayload,
       notes

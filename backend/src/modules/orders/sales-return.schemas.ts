@@ -6,10 +6,23 @@ const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày phải có đị
 }, 'Ngày không hợp lệ');
 
 const salesReturnQueryShape = {
-  search: z.string().trim().max(120).optional(),
-  from: dateOnly.optional(), to: dateOnly.optional(),
-  statuses: z.string().transform(value => value.split(',').map(item => item.trim()).filter(Boolean)).pipe(z.array(z.enum(['COMPLETED', 'CANCELLED'])).min(1)).optional(),
-  tableId: z.coerce.number().int().positive().optional(),
+  search: z.preprocess(value => (value === '' || value === null ? undefined : value), z.string().trim().max(120).optional()),
+  from: z.preprocess(value => {
+    if (!value || value === '' || value === null) return undefined;
+    if (typeof value === 'string' && value.includes('T')) return value.slice(0, 10);
+    return value;
+  }, dateOnly.optional()),
+  to: z.preprocess(value => {
+    if (!value || value === '' || value === null) return undefined;
+    if (typeof value === 'string' && value.includes('T')) return value.slice(0, 10);
+    return value;
+  }, dateOnly.optional()),
+  statuses: z.preprocess(value => {
+    if (value === undefined || value === null || value === '') return undefined;
+    const values = Array.isArray(value) ? value : String(value).split(',');
+    return values.flatMap(item => String(item).split(',')).map(item => item.trim()).filter(Boolean);
+  }, z.array(z.enum(['COMPLETED', 'CANCELLED'])).min(1).optional()),
+  tableId: z.preprocess(value => (value === '' || value === null || value === undefined ? undefined : value), z.coerce.number().int().positive().optional()),
   page: z.coerce.number().int().min(1).max(1_000_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(50)
 };

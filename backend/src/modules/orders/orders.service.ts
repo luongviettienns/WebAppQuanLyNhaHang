@@ -204,6 +204,15 @@ export class OrdersService {
       }
     }
 
+    const isDelivery = input.orderType === 'DELIVERY';
+    if (isDelivery && (!input.deliveryPartnerId || !input.deliveryAddress)) {
+      throw ApiError.badRequest('Đơn giao hàng cần có đối tác giao hàng và địa chỉ nhận');
+    }
+    if (!isDelivery && (input.deliveryPartnerId || input.deliveryAddress || input.deliveryFee)) {
+      throw ApiError.badRequest('Thông tin giao hàng chỉ áp dụng cho đơn giao hàng');
+    }
+    const deliveryFee = isDelivery ? (input.deliveryFee ?? 0) : 0;
+
     // 3. Lay thong tin cac mon an tu Database de xac thuc gia va tinh toan
     const menuItemIds = input.items.map((i) => i.menuItemId);
     const dbMenuItems = await prisma.menuItem.findMany({
@@ -316,7 +325,7 @@ export class OrdersService {
     // Tinh toan thue VAT 8% tren so tien sau khi tru khuyen mai (800 BPS)
     const taxableAmount = Math.max(0, totalAmount - voucherDiscount);
     let vatAmount = Math.round(taxableAmount * 0.08);
-    let finalAmount = taxableAmount + vatAmount;
+    let finalAmount = taxableAmount + vatAmount + deliveryFee;
 
     // 6. Tao ma don hang duy nhat CRISPY-YYYYMMDD-XXXX
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -365,7 +374,14 @@ export class OrdersService {
         totalAmount = orderItemsData.reduce((sum, item) => sum + item.subtotal, 0);
         const effectiveTaxable = Math.max(0, totalAmount - voucherDiscount);
         vatAmount = Math.round(effectiveTaxable * 0.08);
-        finalAmount = effectiveTaxable + vatAmount;
+        finalAmount = effectiveTaxable + vatAmount + deliveryFee;
+
+        if (isDelivery) {
+          await tx.$queryRaw`SELECT id FROM DeliveryPartner WHERE id = ${input.deliveryPartnerId!} FOR UPDATE`;
+          const partner = await tx.deliveryPartner.findUnique({ where: { id: input.deliveryPartnerId! }, select: { id: true, isActive: true } });
+          if (!partner) throw ApiError.notFound('Đối tác giao hàng không tồn tại');
+          if (!partner.isActive) throw ApiError.badRequest('Đối tác giao hàng đã ngừng hoạt động');
+        }
 
         const trackedMenuItemIds = new Set(
           dbMenuItems.filter((menuItem) => menuItem.trackStock).map((menuItem) => menuItem.id)
@@ -378,6 +394,10 @@ export class OrdersService {
             orderType: input.orderType,
             status: 'PENDING',
             tableId: resolvedTableId,
+            deliveryPartnerId: isDelivery ? input.deliveryPartnerId : null,
+            deliveryAddress: isDelivery ? input.deliveryAddress : null,
+            deliveryFee,
+            deliveryFeePaid: 0,
             priceListId: resolvedPriceListId,
             buzzerNumber: input.buzzerNumber,
             totalAmount,
@@ -401,7 +421,8 @@ export class OrdersService {
               include: {
                 menuItem: true
               }
-            }
+            },
+            deliveryPartner: { select: { id: true, code: true, name: true } }
           }
         });
 
@@ -999,6 +1020,11 @@ function formatOrderDto(order: any) {
     status: order.status,
     tableId: order.tableId,
     tableNumber: order.table?.tableNumber ?? null,
+    deliveryPartnerId: order.deliveryPartnerId ?? null,
+    deliveryPartner: order.deliveryPartner ? { id: order.deliveryPartner.id, code: order.deliveryPartner.code, name: order.deliveryPartner.name } : null,
+    deliveryAddress: order.deliveryAddress ?? null,
+    deliveryFee: order.deliveryFee ?? 0,
+    deliveryFeePaid: order.deliveryFeePaid ?? 0,
     buzzerNumber: order.buzzerNumber ?? null,
     totalAmount: order.totalAmount,
     discountAmount: order.discountAmount ?? 0,

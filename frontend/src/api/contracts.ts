@@ -5,7 +5,8 @@
 // 1. ENUMS
 // ==========================================
 export type Role = 'CASHIER' | 'KITCHEN' | 'ADMIN';
-export type OrderType = 'DINE_IN' | 'TAKE_AWAY';
+export type OrderType = 'DINE_IN' | 'TAKE_AWAY' | 'DELIVERY';
+export type DeliveryPartnerType = 'INDIVIDUAL' | 'COMPANY';
 export type OrderStatus = 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
 export type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'NEED_CLEANING' | 'DIRTY';
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD';
@@ -312,6 +313,9 @@ export interface OrderCreateDto {
   tableId?: number;
   qrCodeToken?: string;
   buzzerNumber?: number;
+  deliveryPartnerId?: number;
+  deliveryAddress?: string;
+  deliveryFee?: number;
   items: OrderItemCreateDto[];
   notes?: string;
   idempotencyKey?: string;
@@ -338,6 +342,11 @@ export interface OrderDto {
   status: OrderStatus;
   tableId?: number | null;
   tableNumber?: number | null;
+  deliveryPartnerId?: number | null;
+  deliveryPartner?: { id: number; code: string; name: string } | null;
+  deliveryAddress?: string | null;
+  deliveryFee?: number;
+  deliveryFeePaid?: number;
   buzzerNumber?: number | null;
   totalAmount: number;
   discountAmount?: number;

@@ -17,6 +17,12 @@ enum Role {
 enum OrderType {
   DINE_IN
   TAKE_AWAY
+  DELIVERY
+}
+
+enum DeliveryPartnerType {
+  INDIVIDUAL
+  COMPANY
 }
 
 enum OrderStatus {
@@ -235,6 +241,10 @@ model Order {
   orderType     OrderType      @default(DINE_IN)
   status        OrderStatus    @default(PENDING)
   tableId       Int?
+  deliveryPartnerId Int?
+  deliveryAddress   String? @db.VarChar(255)
+  deliveryFee       Int     @default(0)
+  deliveryFeePaid   Int     @default(0)
   priceListId   Int?
   buzzerNumber  Int?
   totalAmount    Int // Tong tien truoc thue (VND)
@@ -269,6 +279,7 @@ model Order {
   updatedAt DateTime @updatedAt
 
   table         DiningTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  deliveryPartner DeliveryPartner? @relation(fields: [deliveryPartnerId], references: [id], onDelete: Restrict)
   priceList     PriceList?   @relation(fields: [priceListId], references: [id], onDelete: SetNull)
   createdByUser User?        @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
   voidedByUser  User?        @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
@@ -279,6 +290,7 @@ model Order {
 
   @@index([voucherId])
   @@unique([idempotencyScope, idempotencyKey])
+  @@index([deliveryPartnerId, status])
 }
 
 model OrderItem {
@@ -582,6 +594,39 @@ model SupplierGroup {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   suppliers Supplier[]
+}
+
+model DeliveryPartner {
+  id          Int                 @id @default(autoincrement())
+  code        String              @unique
+  name        String
+  phone       String?
+  email       String?
+  partnerType DeliveryPartnerType @default(INDIVIDUAL)
+  address     String?             @db.VarChar(255)
+  province    String?             @db.VarChar(100)
+  district    String?             @db.VarChar(100)
+  ward        String?             @db.VarChar(100)
+  note        String?             @db.VarChar(1000)
+  groupId     Int?
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  group       DeliveryPartnerGroup? @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  orders      Order[]
+
+  @@index([name])
+  @@index([isActive])
+  @@index([groupId])
+}
+
+model DeliveryPartnerGroup {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(100)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  partners  DeliveryPartner[]
 }
 
 model PurchaseReceipt {

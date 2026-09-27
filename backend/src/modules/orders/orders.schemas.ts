@@ -13,10 +13,13 @@ export const orderItemCreateSchema = z.object({
 });
 
 export const createOrderSchema = z.object({
-  orderType: z.enum(['DINE_IN', 'TAKE_AWAY']).default('DINE_IN'),
+  orderType: z.enum(['DINE_IN', 'TAKE_AWAY', 'DELIVERY']).default('DINE_IN'),
   tableId: z.number().optional(),
   qrCodeToken: z.string().trim().min(1, 'Mã QR bàn là bắt buộc khi khách tự gọi món').optional(),
   buzzerNumber: z.number().optional(),
+  deliveryPartnerId: z.number().int().positive().optional(),
+  deliveryAddress: z.string().trim().min(3, 'Địa chỉ giao hàng phải có ít nhất 3 ký tự').max(255).optional(),
+  deliveryFee: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER).optional(),
   idempotencyKey: z.string().optional(),
   voucherCode: z.string().trim().optional(),
   notes: z.string().max(200).optional(),

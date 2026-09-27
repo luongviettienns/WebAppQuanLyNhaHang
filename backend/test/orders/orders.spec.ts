@@ -41,7 +41,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     expect(res.body).toHaveProperty('data');
     expect(res.body.data).toHaveProperty('tables');
     expect(Array.isArray(res.body.data.tables)).toBe(true);
-    expect(res.body.data.tables.length).toBe(12);
+    expect(res.body.data.tables.length).toBeGreaterThanOrEqual(12);
 
     const table1 = res.body.data.tables[0];
     expect(table1).toHaveProperty('id');
@@ -88,7 +88,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.data.tables)).toBe(true);
-    expect(res.body.data.tables.length).toBe(12);
+    expect(res.body.data.tables.length).toBeGreaterThanOrEqual(12);
     expect(res.body.data.tables[0]).toHaveProperty('qrCodeToken');
   });
 

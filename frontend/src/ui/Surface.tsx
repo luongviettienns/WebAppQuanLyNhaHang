@@ -6,12 +6,12 @@ import { radii } from '../theme';
 import { surfaceTreatment } from './tokens';
 
 export interface SurfaceProps {
-  level: 'base' | 'raised' | 'sunken';
+  level?: 'base' | 'raised' | 'sunken';
   children: React.ReactNode;
   style?: StyleProp<ViewStyle>;
 }
 
-export const Surface: React.FC<SurfaceProps> = ({ level, children, style }) => {
+export const Surface: React.FC<SurfaceProps> = ({ level = 'raised', children, style }) => {
   const { theme } = useTheme();
   const backgroundColor = {
     base: theme.surfaceBase,
