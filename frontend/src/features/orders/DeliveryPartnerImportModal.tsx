@@ -5,7 +5,7 @@ import { commitDeliveryPartnerImportApi, DeliveryPartnerImportPreview, downloadD
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { AppIcon, Button, InlineAlert, Surface } from '../../ui';
-import { radii, spacing, typography } from '../../theme';
+import { spacing, typography } from '../../theme';
 
 function requireWeb() { if (typeof document === 'undefined') throw new Error('Nhập và tải file hiện hỗ trợ trên giao diện Web.'); }
 async function pickFile() { requireWeb(); return new Promise<{ fileName: string; fileBase64: string } | null>((resolve, reject) => { const input = document.createElement('input'); input.type = 'file'; input.accept = '.xlsx,.csv'; input.onchange = () => { const file = input.files?.[0]; if (!file) return resolve(null); if (file.size > 5 * 1024 * 1024) return reject(new Error('File tối đa 5 MB')); const reader = new FileReader(); reader.onerror = () => reject(new Error('Không thể đọc file')); reader.onload = () => resolve({ fileName: file.name, fileBase64: String(reader.result).split(',')[1] }); reader.readAsDataURL(file); }; input.click(); }); }

@@ -5,7 +5,6 @@ import { DeliveryPartnerService } from './delivery-partner.service';
 import { DeliveryPartnerTransferService } from './delivery-partner-transfer.service';
 
 function parseId(value: string) { const id = Number(value); if (!Number.isSafeInteger(id) || id <= 0) throw ApiError.badRequest('ID đối tác giao hàng không hợp lệ'); return id; }
-function csvCell(value: unknown) { const text = String(value ?? ''); return /^[=+\-@]/.test(text) ? `'${text.replace(/"/g, '""')}` : `"${text.replace(/"/g, '""')}"`; }
 
 export class DeliveryPartnerController {
   static async list(req: Request, res: Response, next: NextFunction) { try { res.json({ data: await DeliveryPartnerService.list(deliveryPartnerListQuerySchema.parse(req.query)) }); } catch (error) { next(error); } }
