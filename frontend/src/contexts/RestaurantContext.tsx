@@ -119,6 +119,7 @@ interface RestaurantContextType {
   inventoryRevision: number;
   tablesRevision: number;
   customersRevision: number;
+  employeesRevision: number;
   reservationsRevision: number;
   orderPaymentsRevision: number;
 
@@ -212,6 +213,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [inventoryRevision, setInventoryRevision] = useState(0);
   const [tablesRevision, setTablesRevision] = useState(0);
   const [customersRevision, setCustomersRevision] = useState(0);
+  const [employeesRevision, setEmployeesRevision] = useState(0);
   const [reservationsRevision, setReservationsRevision] = useState(0);
   const [orderPaymentsRevision, setOrderPaymentsRevision] = useState(0);
 
@@ -595,6 +597,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     });
 
     socket.on('customers:changed', () => setCustomersRevision(revision => revision + 1));
+    socket.on('employees:changed', () => setEmployeesRevision(revision => revision + 1));
     socket.on('reservations:changed', () => setReservationsRevision(revision => revision + 1));
     socket.on('order:paymentChanged', () => setOrderPaymentsRevision(revision => revision + 1));
 
@@ -1285,6 +1288,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         inventoryRevision,
         tablesRevision,
         customersRevision,
+        employeesRevision,
         reservationsRevision,
         orderPaymentsRevision,
         kdsOrders,

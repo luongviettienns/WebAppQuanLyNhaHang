@@ -39,7 +39,8 @@ export type EmployeeInput = {
   ward?: string | null; email?: string | null; facebook?: string | null; bankName?: string | null;
   bankAccountNumber?: string | null; bankAccountName?: string | null; initialCompensation?: EmployeeCompensationInput;
 };
-export type EmployeeUpdateInput = Partial<Omit<EmployeeInput, 'initialCompensation'>>;
+export type EmployeeProfileInput = Omit<EmployeeInput, 'initialCompensation'>;
+export type EmployeeUpdateInput = Partial<EmployeeProfileInput>;
 export type EmployeeAvatarUploadResult = { avatarUrl: string; fileName: string };
 
 const headers = (token: string | null, json = false): Record<string, string> => ({
