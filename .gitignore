@@ -6,6 +6,7 @@ frontend/node_modules/
 .pnp.js
 
 # Environment variables & secrets (NEVER COMMIT)
+# The root .env includes local bank-account details used for deposit QR codes.
 .env
 .env.*
 *.env
