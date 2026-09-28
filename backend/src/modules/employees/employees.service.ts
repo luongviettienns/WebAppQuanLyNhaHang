@@ -72,11 +72,15 @@ const toEmployeeData = (input: EmployeeCreateInput | EmployeeUpdateInput): Prism
   return data as Prisma.EmployeeUncheckedUpdateInput;
 };
 
-const assertReferencesActive = async (tx: Prisma.TransactionClient, input: { departmentId?: number | null; jobTitleId?: number | null }) => {
-  if (input.departmentId != null && !await tx.department.findFirst({ where: { id: input.departmentId, isActive: true }, select: { id: true } })) {
+const assertReferencesActive = async (
+  tx: Prisma.TransactionClient,
+  input: { departmentId?: number | null; jobTitleId?: number | null },
+  current?: { departmentId: number | null; jobTitleId: number | null }
+) => {
+  if (input.departmentId != null && input.departmentId !== current?.departmentId && !await tx.department.findFirst({ where: { id: input.departmentId, isActive: true }, select: { id: true } })) {
     throw ApiError.badRequest('Phòng ban không tồn tại hoặc đã ngừng hoạt động');
   }
-  if (input.jobTitleId != null && !await tx.jobTitle.findFirst({ where: { id: input.jobTitleId, isActive: true }, select: { id: true } })) {
+  if (input.jobTitleId != null && input.jobTitleId !== current?.jobTitleId && !await tx.jobTitle.findFirst({ where: { id: input.jobTitleId, isActive: true }, select: { id: true } })) {
     throw ApiError.badRequest('Chức danh không tồn tại hoặc đã ngừng hoạt động');
   }
 };
@@ -203,8 +207,9 @@ export class EmployeesService {
   static async update(id: number, input: EmployeeUpdateInput, actorId: number, actorName: string) {
     try {
       await prisma.$transaction(async tx => {
-        if (!await tx.employee.findUnique({ where: { id }, select: { id: true } })) throw ApiError.notFound('Không tìm thấy hồ sơ nhân viên');
-        await assertReferencesActive(tx, input);
+        const current = await tx.employee.findUnique({ where: { id }, select: { id: true, departmentId: true, jobTitleId: true } });
+        if (!current) throw ApiError.notFound('Không tìm thấy hồ sơ nhân viên');
+        await assertReferencesActive(tx, input, current);
         await assertUserLinkAvailable(tx, input.userId, id);
         await tx.employee.update({ where: { id }, data: toEmployeeData(input) });
         await AuditService.logInTransaction(tx, {

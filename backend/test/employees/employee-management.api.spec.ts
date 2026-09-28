@@ -86,6 +86,23 @@ describe('employee management API', () => {
     expect(created.body.data).toMatchObject({ department: { name: 'Bếp nóng' }, jobTitle: { name: 'Đầu bếp' } });
   });
 
+  it('allows editing an employee while preserving already-assigned inactive department and job title', async () => {
+    const department = await request(app).post('/api/employees/departments').set(auth(adminToken)).send({ name: 'Phòng cũ' });
+    const jobTitle = await request(app).post('/api/employees/job-titles').set(auth(adminToken)).send({ name: 'Chức danh cũ' });
+    const employee = await createEmployee({ departmentId: department.body.data.id, jobTitleId: jobTitle.body.data.id });
+    await request(app).patch(`/api/employees/departments/${department.body.data.id}`).set(auth(adminToken)).send({ isActive: false });
+    await request(app).patch(`/api/employees/job-titles/${jobTitle.body.data.id}`).set(auth(adminToken)).send({ isActive: false });
+
+    const updated = await request(app).patch(`/api/employees/${employee.body.data.id}`).set(auth(adminToken)).send({
+      name: 'Đổi tên hồ sơ', departmentId: department.body.data.id, jobTitleId: jobTitle.body.data.id
+    });
+    const reassignment = await createEmployee({ name: 'Nhân viên mới', departmentId: department.body.data.id, jobTitleId: jobTitle.body.data.id });
+
+    expect(updated.status).toBe(200);
+    expect(updated.body.data).toMatchObject({ name: 'Đổi tên hồ sơ', department: { id: department.body.data.id, isActive: false }, jobTitle: { id: jobTitle.body.data.id, isActive: false } });
+    expect(reassignment.status).toBe(400);
+  });
+
   it('returns private profile fields only through the Admin detail endpoint', async () => {
     const created = await createEmployee({
       nationalId: '079123456789',

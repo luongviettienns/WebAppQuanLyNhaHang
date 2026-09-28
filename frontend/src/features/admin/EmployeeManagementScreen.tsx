@@ -7,8 +7,8 @@ import { useTheme } from '../../contexts/ThemeContext';
 import {
   appendEmployeeCompensationApi, createEmployeeApi, fetchEmployeeApi, fetchEmployeeDepartmentsApi,
   fetchEmployeeJobTitlesApi, fetchEmployeesApi, fetchLinkableUsersApi, saveEmployeeDepartmentApi,
-  saveEmployeeJobTitleApi, updateEmployeeApi, uploadEmployeeAvatarApi,
-  type EmployeeCompensationInput, type EmployeeDetailDto, type EmployeeFilter, type EmployeeProfileInput,
+  saveEmployeeJobTitleApi, updateEmployeeApi, updateEmployeeStatusApi, uploadEmployeeAvatarApi,
+  type EmployeeCompensationInput, type EmployeeDetailDto, type EmployeeFilter, type EmployeeProfileInput, type EmployeeStatus,
   type EmployeeListData, type EmployeeReferenceDto, type EmployeeUserDto
 } from '../../api/employeeManagement';
 import { radii, spacing, typography } from '../../theme';
@@ -76,6 +76,7 @@ export const EmployeeManagementScreen: React.FC = () => {
   const [quickError, setQuickError] = useState('');
   const [savingQuick, setSavingQuick] = useState(false);
   const requestId = useRef(0);
+  const linkableUsersRequestId = useRef(0);
 
   const load = useCallback(async () => {
     const currentRequest = ++requestId.current;
@@ -104,20 +105,24 @@ export const EmployeeManagementScreen: React.FC = () => {
   useEffect(() => { void load(); }, [load, employeesRevision, revision]);
   useEffect(() => { void loadReferences(); }, [loadReferences, employeesRevision, revision]);
   useEffect(() => {
-    const timer = setTimeout(() => setSearch(searchInput.trim()), 250);
+    const timer = setTimeout(() => {
+      setSearch(searchInput.trim());
+      setFilter(current => current.page === 1 ? current : { ...current, page: 1 });
+    }, 250);
     return () => clearTimeout(timer);
   }, [searchInput]);
 
   const changeFilter = (patch: Partial<EmployeeFilter>) => setFilter(current => ({ ...current, ...patch, page: 1 }));
   const openCreate = async () => {
     setEditing(null); setFormOpen(true); setError('');
-    try { setLinkableUsers(await fetchLinkableUsersApi(token)); } catch { setLinkableUsers([]); }
+    try { await searchLinkableUsers(''); } catch { /* only the latest lookup may update the selector */ }
   };
   const openEdit = async (id: number) => {
     setError('');
     try {
-      const [employee, users] = await Promise.all([fetchEmployeeApi(token, id), fetchLinkableUsersApi(token)]);
-      setEditing(employee); setLinkableUsers(employee.user && !users.some(user => user.id === employee.user?.id) ? [...users, employee.user] : users); setFormOpen(true);
+      const employee = await fetchEmployeeApi(token, id);
+      setEditing(employee); setFormOpen(true);
+      try { await searchLinkableUsers(''); } catch { /* only the latest lookup may update the selector */ }
     } catch (failure: any) { setError(failure.message || 'Không thể tải hồ sơ nhân viên'); }
   };
 
@@ -130,6 +135,23 @@ export const EmployeeManagementScreen: React.FC = () => {
     }
     setFormOpen(false); setEditing(null); setRevision(value => value + 1);
   };
+
+  const changeEmployeeStatus = async (status: EmployeeStatus, endDate?: string) => {
+    if (!editing) return;
+    await updateEmployeeStatusApi(token, editing.id, { status, ...(status === 'RESIGNED' && endDate ? { endDate } : {}) });
+    setFormOpen(false); setEditing(null); setRevision(value => value + 1);
+  };
+
+  const searchLinkableUsers = useCallback(async (value: string) => {
+    const currentRequest = ++linkableUsersRequestId.current;
+    try {
+      const users = await fetchLinkableUsersApi(token, value);
+      if (currentRequest === linkableUsersRequestId.current) setLinkableUsers(users);
+    } catch (failure) {
+      if (currentRequest === linkableUsersRequestId.current) setLinkableUsers([]);
+      throw failure;
+    }
+  }, [token]);
 
   const createDepartment = async (name: string) => {
     const department = await saveEmployeeDepartmentApi(token, null, { name });
@@ -230,6 +252,7 @@ export const EmployeeManagementScreen: React.FC = () => {
     </View>
     <EmployeeFormModal visible={formOpen} employee={editing} departments={departments} jobTitles={jobTitles} linkableUsers={linkableUsers}
       onClose={() => { setFormOpen(false); setEditing(null); }} onSave={saveEmployee} onCreateDepartment={createDepartment} onCreateJobTitle={createJobTitle}
+      onStatusChange={changeEmployeeStatus} onSearchUsers={searchLinkableUsers}
       onUploadAvatar={(dataUrl, fileName) => uploadEmployeeAvatarApi(token, dataUrl, fileName)} />
     {quickCreateModal}
   </View>;

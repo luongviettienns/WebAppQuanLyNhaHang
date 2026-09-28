@@ -54,13 +54,19 @@ export class EmployeesController {
       const filePath = path.join(getUploadsDir(), fileName);
       fs.writeFileSync(filePath, buffer, { flag: 'wx' });
 
-      await AuditService.log({
-        action: 'EMPLOYEE_AVATAR_UPLOADED',
-        targetType: 'EmployeeAvatar',
-        actorId: req.user?.id,
-        actorName: req.user?.name,
-        metadata: { fileName, mimeType, fileSize: buffer.length }
-      });
+      try {
+        const audit = await AuditService.log({
+          action: 'EMPLOYEE_AVATAR_UPLOADED',
+          targetType: 'EmployeeAvatar',
+          actorId: req.user?.id,
+          actorName: req.user?.name,
+          metadata: { fileName, mimeType, fileSize: buffer.length }
+        });
+        if (!audit) throw ApiError.internal('Không thể ghi lịch sử tải ảnh nhân viên');
+      } catch (error) {
+        try { fs.unlinkSync(filePath); } catch { /* preserve the audit failure as the primary error */ }
+        throw error;
+      }
 
       res.status(201).json({ data: { avatarUrl: `/uploads/${fileName}`, fileName } });
     } catch (error) { next(error); }

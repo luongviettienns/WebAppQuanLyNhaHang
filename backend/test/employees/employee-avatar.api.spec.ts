@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from '../../src/config/env';
+import { AuditService } from '../../src/modules/audit/audit.service';
 import { prismaTest, truncateAllTables } from '../helpers/database';
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
@@ -123,6 +124,16 @@ describe('employee avatar upload API', () => {
 
     expect([unauthorized.status, forbidden.status, invalid.status]).toEqual([401, 403, 400]);
     expect(after).toEqual(before);
+    expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_AVATAR_UPLOADED' } })).toBe(0);
+  });
+
+  it('removes an uploaded avatar when its audit record cannot be written', async () => {
+    const auditSpy = vi.spyOn(AuditService, 'log').mockResolvedValue(null);
+    const response = await upload(adminToken, pngDataUrl(68));
+    auditSpy.mockRestore();
+
+    expect(response.status).toBe(500);
+    expect(fs.readdirSync(uploadsDir).filter(name => name.startsWith('employee_avatar_'))).toEqual([]);
     expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_AVATAR_UPLOADED' } })).toBe(0);
   });
 });

@@ -10,14 +10,17 @@ const { createNativeComponent } = vi.hoisted(() => ({
   }
 }));
 const { stubScreen } = vi.hoisted(() => ({ stubScreen: () => () => null }));
-const { getDocumentAsyncMock } = vi.hoisted(() => ({ getDocumentAsyncMock: vi.fn() }));
+const { getDocumentAsyncMock, getScreenWidth, setScreenWidth } = vi.hoisted(() => {
+  let screenWidth = 1200;
+  return { getDocumentAsyncMock: vi.fn(), getScreenWidth: () => screenWidth, setScreenWidth: (width: number) => { screenWidth = width; } };
+});
 
 vi.mock('react-native', () => ({
   ActivityIndicator: createNativeComponent('ActivityIndicator'), Alert: { alert: vi.fn() }, Image: createNativeComponent('Image'),
   Modal: createNativeComponent('Modal'), Platform: { OS: 'web' }, Pressable: createNativeComponent('Pressable'),
   ScrollView: createNativeComponent('ScrollView'), StyleSheet: { create: (styles: any) => styles },
   Text: createNativeComponent('Text'), TextInput: createNativeComponent('TextInput'), View: createNativeComponent('View'),
-  useWindowDimensions: () => ({ width: 1200, height: 900 })
+  useWindowDimensions: () => ({ width: getScreenWidth(), height: 900 })
 }));
 vi.mock('lucide-react-native', () => {
   const Icon = createNativeComponent('Icon');
@@ -64,7 +67,7 @@ vi.mock('../../api/employeeManagement', () => ({
 
 import {
   appendEmployeeCompensationApi, createEmployeeApi, fetchEmployeeApi, fetchEmployeeDepartmentsApi, fetchEmployeeJobTitlesApi, fetchEmployeesApi,
-  fetchLinkableUsersApi, updateEmployeeApi, uploadEmployeeAvatarApi
+  fetchLinkableUsersApi, updateEmployeeApi, updateEmployeeStatusApi, uploadEmployeeAvatarApi
 } from '../../api/employeeManagement';
 import { EmployeeManagementScreen } from './EmployeeManagementScreen';
 import { getTabsForRole } from '../../navigation/RoleTabs';
@@ -81,6 +84,7 @@ const profile = {
 describe('employee management screen', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    setScreenWidth(1200);
     vi.mocked(fetchEmployeesApi).mockResolvedValue(emptyResult);
     vi.mocked(fetchEmployeeDepartmentsApi).mockResolvedValue([{ id: 2, name: 'Bếp', isActive: true }]);
     vi.mocked(fetchEmployeeJobTitlesApi).mockResolvedValue([{ id: 3, name: 'Đầu bếp', isActive: true }]);
@@ -127,6 +131,20 @@ describe('employee management screen', () => {
     await act(async () => screen.unmount());
   });
 
+  it('resets pagination when the debounced employee search changes', async () => {
+    vi.mocked(fetchEmployeesApi).mockResolvedValue({ ...emptyResult, pagination: { page: 1, pageSize: 30, totalRows: 31, totalPages: 2 } });
+    let screen: any;
+    await act(async () => { screen = create(<EmployeeManagementScreen />); await Promise.resolve(); });
+    const nextButton = screen.root.findAllByType('Pressable').find((node: any) => node.findAllByType('Text').some((text: any) => text.children.includes('Sau')));
+    expect(nextButton).toBeDefined();
+    await act(async () => { nextButton.props.onPress(); await Promise.resolve(); });
+    expect(fetchEmployeesApi).toHaveBeenLastCalledWith('admin-token', expect.objectContaining({ page: 2 }));
+    await act(async () => { screen.root.findByProps({ testID: 'employee-search' }).props.onChangeText('Minh'); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+    expect(fetchEmployeesApi).toHaveBeenLastCalledWith('admin-token', expect.objectContaining({ page: 1, search: 'Minh' }));
+    await act(async () => screen.unmount());
+  });
+
   it('saves optional linked user and initial compensation data', async () => {
     vi.mocked(createEmployeeApi).mockResolvedValue({ ...profile, userId: 99, avatarUrl: null, departmentId: 2, jobTitleId: 3, startDate: null, endDate: null, birthDate: null, gender: null, address: null, province: null, ward: null, email: null, facebook: null, bankName: null, bankAccountNumber: null, bankAccountName: null, user: null, compensations: [] } as any);
     let screen: any;
@@ -138,10 +156,11 @@ describe('employee management screen', () => {
     await act(async () => { screen.root.findByProps({ testID: 'employee-user-99' }).props.onPress(); });
     await act(async () => { screen.root.findByProps({ testID: 'employee-form-tab-salary' }).props.onPress(); });
     await act(async () => { screen.root.findByProps({ testID: 'employee-base-rate' }).props.onChangeText('12000000'); screen.root.findByProps({ testID: 'employee-effective-from' }).props.onChangeText('2026-09-01'); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-compensation-note' }).props.onChangeText('Lương thử việc'); });
     await act(async () => { screen.root.findByProps({ testID: 'employee-save' }).props.onPress(); await Promise.resolve(); });
     expect(createEmployeeApi).toHaveBeenCalledWith('admin-token', expect.objectContaining({
       name: 'Nguyễn Minh Anh', phone: '0903000280', userId: 99,
-      initialCompensation: { payBasis: 'MONTHLY', baseRate: 12000000, effectiveFrom: '2026-09-01' }
+      initialCompensation: { payBasis: 'MONTHLY', baseRate: 12000000, effectiveFrom: '2026-09-01', note: 'Lương thử việc' }
     }));
     await act(async () => screen.unmount());
   });
@@ -161,6 +180,21 @@ describe('employee management screen', () => {
     await act(async () => screen.unmount());
   });
 
+  it('allows adding a non-duplicate retroactive compensation entry', async () => {
+    const detail = { ...profile, userId: null, avatarUrl: null, departmentId: 2, jobTitleId: 3, startDate: null, endDate: null, birthDate: null, gender: null, address: null, province: null, ward: null, email: null, facebook: null, bankName: null, bankAccountNumber: null, bankAccountName: null, user: null, compensations: [{ id: 5, employeeId: 7, payBasis: 'MONTHLY', baseRate: 12000000, effectiveFrom: '2026-09-01T00:00:00.000Z', note: null }] };
+    vi.mocked(fetchEmployeesApi).mockResolvedValue({ ...emptyResult, items: [profile as any], pagination: { ...emptyResult.pagination, totalRows: 1, totalPages: 1 }, summary: { totalCount: 1, workingCount: 1, resignedCount: 0 } });
+    vi.mocked(fetchEmployeeApi).mockResolvedValue(detail as any);
+    vi.mocked(updateEmployeeApi).mockResolvedValue(detail as any);
+    let screen: any;
+    await act(async () => { screen = create(<EmployeeManagementScreen />); await Promise.resolve(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-row-7' }).props.onPress(); await Promise.resolve(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-form-tab-salary' }).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-base-rate' }).props.onChangeText('13000000'); screen.root.findByProps({ testID: 'employee-effective-from' }).props.onChangeText('2026-08-01'); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-save' }).props.onPress(); await Promise.resolve(); });
+    expect(appendEmployeeCompensationApi).toHaveBeenCalledWith('admin-token', 7, expect.objectContaining({ baseRate: 13000000, effectiveFrom: '2026-08-01' }));
+    await act(async () => screen.unmount());
+  });
+
   it('validates image type and size before requesting an employee avatar upload', async () => {
     getDocumentAsyncMock.mockResolvedValueOnce({ canceled: false, assets: [{ name: 'large.png', mimeType: 'image/png', size: 2 * 1024 * 1024 + 1, base64: 'iVBORw0KGgo=' }] });
     getDocumentAsyncMock.mockResolvedValueOnce({ canceled: false, assets: [{ name: 'avatar.png', mimeType: 'image/png', size: 10, base64: 'iVBORw0KGgo=' }] });
@@ -172,6 +206,58 @@ describe('employee management screen', () => {
     expect(JSON.stringify(screen.toJSON())).toContain('tối đa 2 MiB');
     await act(async () => { screen.root.findByProps({ testID: 'employee-avatar' }).props.onPress(); await Promise.resolve(); });
     expect(uploadEmployeeAvatarApi).toHaveBeenCalledWith('admin-token', 'data:image/png;base64,iVBORw0KGgo=', 'avatar.png');
+    await act(async () => screen.unmount());
+  });
+
+  it('stacks the employee identity and avatar fields on narrow screens', async () => {
+    setScreenWidth(390);
+    let screen: any;
+    await act(async () => { screen = create(<EmployeeManagementScreen />); await Promise.resolve(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-add' }).props.onPress(); await Promise.resolve(); });
+    const identity = screen.root.findByProps({ testID: 'employee-identity-section' });
+    expect(identity.props.style).toEqual(expect.arrayContaining([expect.objectContaining({ flexDirection: 'column' })]));
+    await act(async () => screen.unmount());
+  });
+
+  it('keeps searched login accounts visible if the initial account lookup fails late', async () => {
+    const pending: Array<{ resolve: (users: any[]) => void; reject: (error: Error) => void }> = [];
+    vi.mocked(fetchLinkableUsersApi).mockImplementation(() => new Promise((resolve, reject) => pending.push({ resolve, reject })) as any);
+    let screen: any;
+    await act(async () => { screen = create(<EmployeeManagementScreen />); await Promise.resolve(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-add' }).props.onPress(); await Promise.resolve(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-section-work' }).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-account-picker' }).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-account-search' }).props.onChangeText('Khanh'); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
+    expect(fetchLinkableUsersApi).toHaveBeenLastCalledWith('admin-token', 'Khanh');
+    expect(pending).toHaveLength(2);
+    await act(async () => { pending[1].resolve([{ id: 101, username: 'khanh', name: 'Phan Văn Khánh', role: 'CASHIER' }]); await Promise.resolve(); });
+    await act(async () => { pending[0].reject(new Error('Lần tải ban đầu thất bại')); await Promise.resolve(); await Promise.resolve(); });
+    expect(JSON.stringify(screen.toJSON())).toContain('Phan Văn Khánh');
+    expect(JSON.stringify(screen.toJSON())).not.toContain('Kết quả cũ');
+    await act(async () => screen.unmount());
+  });
+
+  it('lets an admin resign and reactivate an employee from the edit form', async () => {
+    const detail = { ...profile, userId: null, avatarUrl: null, departmentId: 2, jobTitleId: 3, startDate: null, endDate: null, birthDate: null, gender: null, address: null, province: null, ward: null, email: null, facebook: null, bankName: null, bankAccountNumber: null, bankAccountName: null, user: null, compensations: [] };
+    vi.mocked(fetchEmployeesApi).mockResolvedValue({ ...emptyResult, items: [profile as any], pagination: { ...emptyResult.pagination, totalRows: 1, totalPages: 1 }, summary: { totalCount: 1, workingCount: 1, resignedCount: 0 } });
+    vi.mocked(fetchEmployeeApi).mockResolvedValueOnce(detail as any).mockResolvedValueOnce({ ...detail, status: 'RESIGNED', endDate: '2026-09-29T00:00:00.000Z' } as any);
+    vi.mocked(updateEmployeeStatusApi).mockResolvedValue(detail as any);
+    let screen: any;
+    await act(async () => { screen = create(<EmployeeManagementScreen />); await Promise.resolve(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-row-7' }).props.onPress(); await Promise.resolve(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-section-work' }).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-status-toggle' }).props.onPress(); });
+    expect(JSON.stringify(screen.toJSON())).toContain('Để trống ngày nghỉ việc để dùng ngày hôm nay');
+    await act(async () => { screen.root.findByProps({ testID: 'employee-status-end-date' }).props.onChangeText('2026-09-28'); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-status-confirm' }).props.onPress(); await Promise.resolve(); });
+    expect(updateEmployeeStatusApi).toHaveBeenLastCalledWith('admin-token', 7, { status: 'RESIGNED', endDate: '2026-09-28' });
+
+    await act(async () => { screen.root.findByProps({ testID: 'employee-row-7' }).props.onPress(); await Promise.resolve(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-section-work' }).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-status-toggle' }).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'employee-status-confirm' }).props.onPress(); await Promise.resolve(); });
+    expect(updateEmployeeStatusApi).toHaveBeenLastCalledWith('admin-token', 7, { status: 'WORKING' });
     await act(async () => screen.unmount());
   });
 

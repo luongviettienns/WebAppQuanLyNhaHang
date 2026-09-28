@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Camera, ChevronDown, ChevronUp, UserRound, X } from 'lucide-react-native';
 import type {
   EmployeeCompensationInput, EmployeeDetailDto, EmployeeGender, EmployeePayBasis,
-  EmployeeProfileInput, EmployeeReferenceDto, EmployeeUserDto
+  EmployeeProfileInput, EmployeeReferenceDto, EmployeeStatus, EmployeeUserDto
 } from '../../api/employeeManagement';
 import { resolveImageUrl } from '../../api/config';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -24,6 +24,8 @@ interface EmployeeFormModalProps {
   onSave: (profile: EmployeeProfileInput, compensation?: EmployeeCompensationInput) => Promise<void>;
   onCreateDepartment: (name: string) => Promise<EmployeeReferenceDto>;
   onCreateJobTitle: (name: string) => Promise<EmployeeReferenceDto>;
+  onStatusChange: (status: EmployeeStatus, endDate?: string) => Promise<void>;
+  onSearchUsers: (search: string) => Promise<void>;
   onUploadAvatar: (dataUrl: string, fileName: string) => Promise<{ avatarUrl: string; fileName: string }>;
 }
 
@@ -107,26 +109,33 @@ function ReferencePicker({ label, selectedId, options, testPrefix, onSelect, onC
 
 export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   visible, employee = null, departments, jobTitles, linkableUsers, onClose, onSave,
-  onCreateDepartment, onCreateJobTitle, onUploadAvatar
+  onCreateDepartment, onCreateJobTitle, onStatusChange, onSearchUsers, onUploadAvatar
 }) => {
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
+  const compact = width < 720;
   const [tab, setTab] = useState<FormTab>('information');
   const [values, setValues] = useState<ProfileValues>(emptyValues);
   const [expanded, setExpanded] = useState<Record<SectionName, boolean>>({ work: false, bank: false, personal: false });
   const [accountOpen, setAccountOpen] = useState(false);
+  const [accountSearch, setAccountSearch] = useState('');
   const [salaryBasis, setSalaryBasis] = useState<EmployeePayBasis>('MONTHLY');
   const [salaryRate, setSalaryRate] = useState('');
   const [salaryDate, setSalaryDate] = useState('');
+  const [salaryNote, setSalaryNote] = useState('');
   const [salaryDirty, setSalaryDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [statusSaving, setStatusSaving] = useState(false);
+  const [pendingStatus, setPendingStatus] = useState<EmployeeStatus | null>(null);
+  const [pendingEndDate, setPendingEndDate] = useState('');
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<{ name?: string; phone?: string; salaryDate?: string }>({});
 
   useEffect(() => {
     if (!visible) return;
     const compensation = employee?.compensations?.[employee.compensations.length - 1];
-    setTab('information'); setError(''); setFieldErrors({}); setAccountOpen(false);
+    setTab('information'); setError(''); setFieldErrors({}); setAccountOpen(false); setAccountSearch(''); setPendingStatus(null); setPendingEndDate('');
     setExpanded({ work: false, bank: false, personal: false });
     setValues(employee ? {
       name: employee.name, phone: employee.phone, userId: employee.userId, avatarUrl: employee.avatarUrl,
@@ -139,15 +148,30 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     setSalaryBasis(compensation?.payBasis || 'MONTHLY');
     setSalaryRate(compensation ? String(compensation.baseRate) : '');
     setSalaryDate(compensation ? dateText(compensation.effectiveFrom) : '');
+    setSalaryNote(compensation?.note || '');
     setSalaryDirty(false);
   }, [employee, visible]);
+
+  useEffect(() => {
+    if (!visible || !accountOpen) return;
+    const timer = setTimeout(() => {
+      void onSearchUsers(accountSearch.trim()).catch((failure: any) => setError(failure.message || 'Không thể tìm tài khoản'));
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [accountOpen, accountSearch, onSearchUsers, visible]);
 
   const update = (patch: Partial<ProfileValues>) => setValues(current => ({ ...current, ...patch }));
   const validPhone = (value: string) => /^[+\d\s().-]+$/.test(value.trim()) && value.replace(/\D/g, '').length >= 7;
   const rateNumber = Number(salaryRate.replace(/[^0-9]/g, ''));
   const salaryHasDigits = /\d/.test(salaryRate);
   const salaryDateIso = useMemo(() => toIsoDate(salaryDate), [salaryDate]);
-  const isValid = values.name.trim().length >= 2 && validPhone(values.phone) && (!salaryDirty || !salaryRate.trim() || (salaryHasDigits && rateNumber <= 2_000_000_000 && Boolean(salaryDateIso)));
+  const salaryEntryRequested = Boolean(salaryRate.trim() || salaryDate.trim() || salaryNote.trim());
+  const salaryDateError = salaryDirty && salaryEntryRequested
+    ? !salaryDateIso ? 'Nhập ngày hiệu lực hợp lệ theo dd/MM/yyyy hoặc yyyy-MM-dd.'
+      : employee?.compensations.some(compensation => compensation.effectiveFrom.slice(0, 10) === salaryDateIso) ? 'Ngày này đã có thiết lập lương; hãy chọn một ngày khác.'
+        : undefined
+    : undefined;
+  const isValid = values.name.trim().length >= 2 && validPhone(values.phone) && (!salaryDirty || !salaryEntryRequested || (salaryHasDigits && rateNumber <= 2_000_000_000 && !salaryDateError));
 
   const pickAvatar = async () => {
     setError('');
@@ -177,7 +201,8 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     const nextErrors: typeof fieldErrors = {};
     if (values.name.trim().length < 2) nextErrors.name = 'Tên nhân viên phải có ít nhất 2 ký tự.';
     if (!validPhone(values.phone)) nextErrors.phone = 'Nhập số điện thoại hợp lệ.';
-    if (salaryRate.trim() && !salaryDateIso) nextErrors.salaryDate = 'Nhập ngày hiệu lực theo dd/MM/yyyy hoặc yyyy-MM-dd.';
+    if (salaryEntryRequested && !salaryRate.trim()) nextErrors.salaryDate = 'Nhập mức lương trước khi thêm thiết lập lương.';
+    if (salaryDateError) nextErrors.salaryDate = salaryDateError;
     setFieldErrors(nextErrors);
     if (Object.keys(nextErrors).length) return;
     setSaving(true); setError('');
@@ -186,8 +211,8 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
       payload.name = values.name.trim(); payload.phone = values.phone.trim();
       if (payload.startDate) payload.startDate = toIsoDate(payload.startDate) || payload.startDate;
       if (payload.birthDate) payload.birthDate = toIsoDate(payload.birthDate) || payload.birthDate;
-      const compensation = salaryDirty && salaryRate.trim() ? {
-        payBasis: salaryBasis, baseRate: rateNumber, effectiveFrom: salaryDateIso as string
+      const compensation = salaryDirty && salaryEntryRequested && salaryRate.trim() ? {
+        payBasis: salaryBasis, baseRate: rateNumber, effectiveFrom: salaryDateIso as string, note: salaryNote.trim() || null
       } satisfies EmployeeCompensationInput : undefined;
       await onSave(payload, compensation);
     } catch (failure: any) { setError(failure.message || 'Không thể lưu hồ sơ nhân viên.'); }
@@ -195,6 +220,19 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
   };
 
   const currentUser = linkableUsers.find(user => user.id === values.userId) || employee?.user || null;
+  const confirmStatusChange = async () => {
+    if (!pendingStatus || statusSaving) return;
+    const parsedEndDate = pendingStatus === 'RESIGNED' && pendingEndDate.trim() ? toIsoDate(pendingEndDate) : undefined;
+    if (pendingStatus === 'RESIGNED' && pendingEndDate.trim() && !parsedEndDate) {
+      setError('Ngày nghỉ việc không hợp lệ. Nhập dd/MM/yyyy hoặc yyyy-MM-dd.');
+      return;
+    }
+    const endDate = parsedEndDate || undefined;
+    setStatusSaving(true); setError('');
+    try { await onStatusChange(pendingStatus, endDate); setPendingStatus(null); }
+    catch (failure: any) { setError(failure.message || 'Không thể cập nhật tình trạng nhân viên.'); }
+    finally { setStatusSaving(false); }
+  };
   const section = (name: SectionName, title: string, content: React.ReactNode) => <View key={name} style={[styles.section, { backgroundColor: theme.surfaceBase }]}>
     <Pressable testID={`employee-section-${name}`} accessibilityRole="button" accessibilityState={{ expanded: expanded[name] }} onPress={() => setExpanded(current => ({ ...current, [name]: !current[name] }))} style={styles.sectionHeading}>
       <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>{title}</Text>
@@ -222,14 +260,15 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {error ? <InlineAlert message={error} /> : null}
           {tab === 'information' ? <>
-            <View style={[styles.section, styles.identitySection, { backgroundColor: theme.surfaceBase }]}>
+            <View testID="employee-identity-section" style={[styles.section, compact ? styles.identityStack : styles.identitySection, { backgroundColor: theme.surfaceBase }]}>
               <View style={styles.identityFields}>
                 <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Thông tin khởi tạo</Text>
                 <Field label="Tên nhân viên *" testID="employee-name" value={values.name} onChangeText={name => update({ name })} placeholder="Bắt buộc" error={fieldErrors.name} />
                 <Field label="Mã nhân viên" value={employee?.code || 'Tự động'} editable={false} />
+                <Field label="Mã chấm công" value={employee?.attendanceCode || 'Tự động'} editable={false} />
                 <Field label="Số điện thoại *" testID="employee-phone" value={values.phone} onChangeText={phoneValue => update({ phone: phoneValue })} placeholder="Bắt buộc" keyboardType="phone-pad" error={fieldErrors.phone} />
               </View>
-              <View style={styles.avatarColumn}>
+              <View style={[styles.avatarColumn, compact && styles.avatarColumnStack]}>
                 {avatar ? <Image source={{ uri: avatar }} style={[styles.avatar, { borderColor: theme.borderSubtle }]} /> : <View style={[styles.avatar, styles.avatarEmpty, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}><AppIcon icon={UserRound} color={theme.textSecondary} size={42} /></View>}
                 <Button variant="secondary" testID="employee-avatar" label={uploading ? 'Đang tải ảnh' : 'Thêm ảnh'} icon={Camera} loading={uploading} onPress={() => void pickAvatar()} />
                 <Text style={{ color: theme.textSecondary, fontSize: typography.sizes.xs, textAlign: 'center' }}>JPEG, PNG, WebP · tối đa 2 MiB</Text>
@@ -242,16 +281,26 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 <Field label="Ngày bắt đầu làm việc" testID="employee-start-date" placeholder="dd/MM/yyyy" value={values.startDate || ''} onChangeText={startDate => update({ startDate })} />
                 <View style={styles.fieldBlock}>
                   <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Tài khoản đăng nhập (không bắt buộc)</Text>
-                  <Pressable testID="employee-account-picker" onPress={() => setAccountOpen(value => !value)} style={[styles.select, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+                  <Pressable testID="employee-account-picker" accessibilityState={{ expanded: accountOpen }} onPress={() => { setAccountOpen(value => !value); setAccountSearch(''); }} style={[styles.select, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
                     <Text style={{ color: currentUser ? theme.textPrimary : theme.textSecondary }}>{currentUser ? `${currentUser.name} · ${currentUser.username}` : 'Chưa liên kết tài khoản'}</Text>
                     <AppIcon icon={accountOpen ? ChevronUp : ChevronDown} color={theme.textSecondary} size={16} />
                   </Pressable>
                   {accountOpen && <View style={[styles.optionList, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderSubtle }]}>
+                    <TextInput accessibilityLabel="Tìm tài khoản đăng nhập" testID="employee-account-search" value={accountSearch} onChangeText={setAccountSearch} placeholder="Tìm tên hoặc tên đăng nhập" placeholderTextColor={theme.textSecondary} style={[styles.accountSearch, { color: theme.textPrimary, borderColor: theme.borderSubtle }]} />
                     <Pressable testID="employee-user-none" onPress={() => { update({ userId: null }); setAccountOpen(false); }} style={styles.option}><Text style={{ color: theme.textSecondary }}>Không liên kết</Text></Pressable>
                     {linkableUsers.map(user => <Pressable key={user.id} testID={`employee-user-${user.id}`} onPress={() => { update({ userId: user.id }); setAccountOpen(false); }} style={styles.option}><Text style={{ color: theme.textPrimary }}>{user.name} · {user.username} ({user.role})</Text></Pressable>)}
                   </View>}
                 </View>
               </View>
+              {employee && <View style={[styles.statusCard, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                <View>
+                  <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Tình trạng: {employee.status === 'WORKING' ? 'Đang làm việc' : 'Đã nghỉ'}</Text>
+                  {pendingStatus && <Text style={{ color: theme.textSecondary }}>{pendingStatus === 'RESIGNED' ? 'Để trống ngày nghỉ việc để dùng ngày hôm nay theo múi giờ nhà hàng.' : 'Ngày nghỉ việc hiện tại sẽ được xóa khi kích hoạt lại.'}</Text>}
+                </View>
+                {pendingStatus === 'RESIGNED' && <Field label="Ngày nghỉ việc (không bắt buộc)" testID="employee-status-end-date" placeholder="dd/MM/yyyy hoặc yyyy-MM-dd" value={pendingEndDate} onChangeText={setPendingEndDate} error={pendingEndDate.trim() && !toIsoDate(pendingEndDate) ? 'Ngày không hợp lệ.' : undefined} />}
+                {!pendingStatus ? <Button variant="secondary" testID="employee-status-toggle" label={employee.status === 'WORKING' ? 'Đánh dấu nghỉ việc' : 'Kích hoạt lại'} onPress={() => setPendingStatus(employee.status === 'WORKING' ? 'RESIGNED' : 'WORKING')} /> :
+                  <View style={styles.statusActions}><Button variant="quiet" testID="employee-status-cancel" label="Hủy" onPress={() => { setPendingStatus(null); setPendingEndDate(''); }} disabled={statusSaving} /><Button variant="primary" testID="employee-status-confirm" label={pendingStatus === 'RESIGNED' ? 'Xác nhận nghỉ việc' : 'Xác nhận kích hoạt'} onPress={() => void confirmStatusChange()} loading={statusSaving} disabled={pendingStatus === 'RESIGNED' && Boolean(pendingEndDate.trim()) && !toIsoDate(pendingEndDate)} /></View>}
+              </View>}
               <Field label="Ghi chú" testID="employee-note" value={values.note || ''} onChangeText={note => update({ note })} />
             </>)}
             {section('bank', 'Thông tin ngân hàng', <View style={styles.twoColumns}>
@@ -283,8 +332,9 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
             </View></View>
             <View style={styles.twoColumns}>
               <Field label="Mức lương (đ)" testID="employee-base-rate" keyboardType="numeric" value={salaryRate} onChangeText={value => { setSalaryDirty(true); setSalaryRate(value); }} placeholder="Ví dụ: 12000000" />
-              <Field label="Ngày hiệu lực" testID="employee-effective-from" placeholder="dd/MM/yyyy" value={salaryDate} onChangeText={value => { setSalaryDirty(true); setSalaryDate(value); }} error={fieldErrors.salaryDate} />
+              <Field label="Ngày hiệu lực" testID="employee-effective-from" placeholder="dd/MM/yyyy" value={salaryDate} onChangeText={value => { setSalaryDirty(true); setSalaryDate(value); }} error={fieldErrors.salaryDate || salaryDateError} />
             </View>
+            <Field label="Ghi chú thiết lập lương" testID="employee-compensation-note" value={salaryNote} onChangeText={value => { setSalaryDirty(true); setSalaryNote(value); }} />
           </View>}
         </ScrollView>
         <View style={[styles.footer, { backgroundColor: theme.surfaceBase, borderTopColor: theme.borderSubtle }]}>
@@ -305,8 +355,9 @@ const styles = StyleSheet.create({
   tab: { borderBottomWidth: 2, borderColor: 'transparent', paddingVertical: spacing.md },
   scroll: { flex: 1 }, content: { gap: spacing.md, padding: spacing.md },
   section: { borderRadius: radii.md, gap: spacing.md, padding: spacing.lg },
-  identitySection: { alignItems: 'center', flexDirection: 'row' }, identityFields: { flex: 1, gap: spacing.md, minWidth: 0 },
+  identitySection: { alignItems: 'center', flexDirection: 'row' }, identityStack: { alignItems: 'stretch', flexDirection: 'column' }, identityFields: { flex: 1, gap: spacing.md, minWidth: 0 },
   avatarColumn: { alignItems: 'center', gap: spacing.sm, justifyContent: 'center', paddingHorizontal: spacing.lg, width: 230 },
+  avatarColumnStack: { paddingHorizontal: 0, width: '100%' },
   avatar: { borderRadius: radii.pill, borderWidth: 1, height: 128, resizeMode: 'cover', width: 128 },
   avatarEmpty: { alignItems: 'center', borderStyle: 'dashed', borderWidth: 2, justifyContent: 'center' },
   sectionHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 28 },
@@ -317,6 +368,7 @@ const styles = StyleSheet.create({
   chips: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   choiceChip: { alignItems: 'center', borderRadius: radii.pill, borderWidth: 1, justifyContent: 'center', minHeight: 38, paddingHorizontal: spacing.md },
   picker: { flex: 1, gap: spacing.xs, minWidth: 220 }, select: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 44, paddingHorizontal: spacing.md },
-  optionList: { borderRadius: radii.md, borderWidth: 1, maxHeight: 280, overflow: 'hidden' }, option: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md },
+  optionList: { borderRadius: radii.md, borderWidth: 1, maxHeight: 280, overflow: 'hidden' }, option: { minHeight: 40, justifyContent: 'center', paddingHorizontal: spacing.md }, accountSearch: { borderBottomWidth: 1, minHeight: 42, paddingHorizontal: spacing.md },
+  statusCard: { alignItems: 'flex-start', borderRadius: radii.md, borderWidth: 1, gap: spacing.sm, padding: spacing.md }, statusActions: { alignSelf: 'stretch', flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end' },
   quickCreate: { borderTopWidth: 1, gap: spacing.sm, padding: spacing.md }, footer: { alignItems: 'center', borderTopWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end', padding: spacing.md }
 });
