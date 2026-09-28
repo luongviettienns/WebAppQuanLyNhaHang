@@ -1,16 +1,18 @@
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { app } from '../../src/app';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from '../../src/config/env';
-import { getUploadsDir } from '../../src/lib/uploads';
 import { prismaTest, truncateAllTables } from '../helpers/database';
 
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+const uploadsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'employee-avatar-tests-'));
+vi.mock('../../src/lib/uploads', () => ({ getUploadsDir: () => uploadsDir }));
 
 describe('employee avatar upload API', () => {
+  let app: typeof import('../../src/app').app;
   let adminToken: string;
   let cashierToken: string;
   const uploadedFiles = new Set<string>();
@@ -31,6 +33,10 @@ describe('employee avatar upload API', () => {
   };
   const imageDataUrl = (mime: 'jpeg' | 'webp', bytes: Buffer) => `data:image/${mime};base64,${bytes.toString('base64')}`;
 
+  beforeAll(async () => {
+    ({ app } = await import('../../src/app'));
+  });
+
   beforeEach(async () => {
     await truncateAllTables();
     const [admin, cashier] = await Promise.all([
@@ -43,11 +49,13 @@ describe('employee avatar upload API', () => {
 
   afterEach(() => {
     for (const fileName of uploadedFiles) {
-      const filePath = path.join(getUploadsDir(), fileName);
+      const filePath = path.join(uploadsDir, fileName);
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
     }
     uploadedFiles.clear();
   });
+
+  afterAll(() => fs.rmSync(uploadsDir, { recursive: true, force: true }));
 
   it('uploads supported employee avatar with generated file name and private audit metadata', async () => {
     const response = await upload(adminToken, pngDataUrl(68), '../../avatar.png');
@@ -58,7 +66,7 @@ describe('employee avatar upload API', () => {
     expect(fileName).toMatch(/^employee_avatar_[a-f0-9-]+\.png$/);
     expect(fileName).not.toContain('avatar.png');
     expect(response.body.data.avatarUrl).toBe(`/uploads/${fileName}`);
-    expect(fs.readFileSync(path.join(getUploadsDir(), fileName))).toHaveLength(68);
+    expect(fs.readFileSync(path.join(uploadsDir, fileName))).toHaveLength(68);
 
     const audit = await prismaTest.auditLog.findFirst({ where: { action: 'EMPLOYEE_AVATAR_UPLOADED' } });
     expect(audit).not.toBeNull();
@@ -85,10 +93,10 @@ describe('employee avatar upload API', () => {
   it('accepts exactly 2 MiB and rejects larger avatar', async () => {
     const accepted = await upload(adminToken, pngDataUrl(MAX_AVATAR_BYTES));
     if (typeof accepted.body.data?.fileName === 'string') uploadedFiles.add(accepted.body.data.fileName);
-    const beforeOversize = fs.readdirSync(getUploadsDir()).filter((name) => name.startsWith('employee_avatar_'));
+    const beforeOversize = fs.readdirSync(uploadsDir).filter((name) => name.startsWith('employee_avatar_'));
 
     const rejected = await upload(adminToken, pngDataUrl(MAX_AVATAR_BYTES + 1));
-    const afterOversize = fs.readdirSync(getUploadsDir()).filter((name) => name.startsWith('employee_avatar_'));
+    const afterOversize = fs.readdirSync(uploadsDir).filter((name) => name.startsWith('employee_avatar_'));
 
     expect(accepted.status).toBe(201);
     expect(rejected.status).toBe(400);
@@ -102,16 +110,16 @@ describe('employee avatar upload API', () => {
     const malformed = await upload(adminToken, 'data:image/png;base64,not-base64!');
 
     expect([mismatch.status, unsupported.status, malformed.status]).toEqual([400, 400, 400]);
-    expect(fs.readdirSync(getUploadsDir()).filter((name) => name.startsWith('employee_avatar_'))).toEqual([]);
+    expect(fs.readdirSync(uploadsDir).filter((name) => name.startsWith('employee_avatar_'))).toEqual([]);
     expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_AVATAR_UPLOADED' } })).toBe(0);
   });
 
   it('does not write a file for unauthorized or invalid upload', async () => {
-    const before = fs.readdirSync(getUploadsDir()).filter((name) => name.startsWith('employee_avatar_'));
+    const before = fs.readdirSync(uploadsDir).filter((name) => name.startsWith('employee_avatar_'));
     const unauthorized = await request(app).post('/api/employees/avatar').send({ dataUrl: pngDataUrl(68) });
     const forbidden = await upload(cashierToken, pngDataUrl(68));
     const invalid = await upload(adminToken, 'not-an-image');
-    const after = fs.readdirSync(getUploadsDir()).filter((name) => name.startsWith('employee_avatar_'));
+    const after = fs.readdirSync(uploadsDir).filter((name) => name.startsWith('employee_avatar_'));
 
     expect([unauthorized.status, forbidden.status, invalid.status]).toEqual([401, 403, 400]);
     expect(after).toEqual(before);
