@@ -48,8 +48,15 @@ enum PaymentMethod {
 
 enum PaymentStatus {
   UNPAID
+  WAITING_CONFIRMATION
   PAID
   VOIDED
+}
+
+enum OrderPaymentTransactionStatus {
+  PENDING
+  SUCCESS
+  REJECTED
 }
 
 enum MenuType {
@@ -88,6 +95,50 @@ enum PriceListScopeType {
   CUSTOMER_GROUP
 }
 
+enum CustomerType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum CustomerGender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum ReservationStatus {
+  PENDING_DEPOSIT
+  CONFIRMED
+  CHECKED_IN
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum DepositStatus {
+  UNPAID
+  WAITING_CONFIRMATION
+  PAID
+  REFUND_PENDING
+  REFUNDED
+  FORFEITED
+  APPLIED_TO_BILL
+}
+
+enum ReservationDepositTransactionType {
+  DEPOSIT
+  REFUND
+  PARTIAL_REFUND
+  FORFEIT
+  APPLY_TO_BILL
+}
+
+enum ReservationDepositTransactionStatus {
+  PENDING
+  SUCCESS
+  REJECTED
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
@@ -100,6 +151,131 @@ model User {
   createdOrders Order[]    @relation("CreatedOrders")
   voidedOrders  Order[]    @relation("VoidedOrders")
   auditLogs     AuditLog[] @relation("AuditLogs")
+  confirmedOrderPaymentTransactions OrderPaymentTransaction[] @relation("OrderPaymentConfirmer")
+}
+
+model CustomerGroup {
+  id          Int        @id @default(autoincrement())
+  code        String     @unique @db.VarChar(40)
+  name        String     @unique @db.VarChar(120)
+  description String?    @db.VarChar(500)
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  customers   Customer[]
+}
+
+model Customer {
+  id          Int             @id @default(autoincrement())
+  code        String          @unique @db.VarChar(40)
+  name        String          @db.VarChar(160)
+  phone       String?         @unique @db.VarChar(30)
+  email       String?         @db.VarChar(160)
+  type        CustomerType    @default(INDIVIDUAL)
+  gender      CustomerGender?
+  birthDate   DateTime?       @db.Date
+  province    String?         @db.VarChar(120)
+  address     String?         @db.VarChar(255)
+  groupId     Int?
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  group        CustomerGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  orders       Order[]
+  reservations Reservation[]
+
+  @@index([groupId, isActive])
+  @@index([name])
+}
+
+model ReservationPolicy {
+  id                        Int      @id @default(autoincrement())
+  name                      String   @unique @db.VarChar(120)
+  depositAmount             Int      @default(300000)
+  freeCancelBeforeMinutes   Int      @default(120)
+  lateCancelRefundPercent   Int      @default(0)
+  noShowRefundPercent       Int      @default(0)
+  gracePeriodMinutes        Int      @default(30)
+  isActive                  Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+  reservations              Reservation[]
+
+  @@index([isActive])
+}
+
+model Reservation {
+  id                              Int               @id @default(autoincrement())
+  code                            String            @unique @db.VarChar(40)
+  accessToken                     String            @unique @db.VarChar(96)
+  customerId                      Int
+  tableId                         Int?
+  policyId                        Int?
+  scheduledAt                     DateTime
+  partySize                       Int
+  contactName                     String            @db.VarChar(160)
+  contactPhone                    String            @db.VarChar(30)
+  note                            String?           @db.VarChar(1000)
+  status                          ReservationStatus @default(PENDING_DEPOSIT)
+  depositStatus                   DepositStatus     @default(UNPAID)
+  depositAmount                   Int               @default(0)
+  freeCancelBeforeMinutesSnapshot Int               @default(120)
+  lateCancelRefundPercentSnapshot Int               @default(0)
+  noShowRefundPercentSnapshot     Int               @default(0)
+  gracePeriodMinutesSnapshot      Int               @default(30)
+  paymentDeclaredAt               DateTime?
+  checkedInAt                     DateTime?
+  checkedInByUserId               Int?
+  cancelledAt                     DateTime?
+  cancelReason                    String?           @db.VarChar(500)
+  createdAt                       DateTime          @default(now())
+  updatedAt                       DateTime          @updatedAt
+
+  customer        Customer           @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  table           DiningTable?       @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  policy          ReservationPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  transactions    ReservationDepositTransaction[]
+  changes         ReservationChange[]
+  orders          Order[]
+
+  @@index([status, scheduledAt])
+  @@index([tableId, scheduledAt])
+  @@index([customerId, scheduledAt])
+}
+
+model ReservationDepositTransaction {
+  id                Int                                @id @default(autoincrement())
+  reservationId     Int
+  orderId           Int?
+  type              ReservationDepositTransactionType
+  status            ReservationDepositTransactionStatus @default(PENDING)
+  amount            Int
+  paymentMethod     PaymentMethod?
+  externalReference String?                            @unique @db.VarChar(120)
+  reason            String?                            @db.VarChar(500)
+  confirmedByUserId Int?
+  confirmedAt       DateTime?
+  createdAt         DateTime                           @default(now())
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@unique([reservationId, orderId])
+  @@index([reservationId, createdAt])
+}
+
+model ReservationChange {
+  id                 Int         @id @default(autoincrement())
+  reservationId      Int
+  oldScheduledAt     DateTime
+  newScheduledAt     DateTime
+  reason             String?     @db.VarChar(500)
+  changedByUserId    Int?
+  createdAt          DateTime    @default(now())
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@index([reservationId, createdAt])
 }
 
 model Category {
@@ -216,8 +392,9 @@ model DiningTable {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  orders Order[]
-  area   TableArea? @relation(fields: [areaId], references: [id], onDelete: Restrict)
+  orders       Order[]
+  reservations Reservation[]
+  area         TableArea? @relation(fields: [areaId], references: [id], onDelete: Restrict)
 
   @@index([areaId])
   @@index([isActive])
@@ -241,6 +418,8 @@ model Order {
   orderType     OrderType      @default(DINE_IN)
   status        OrderStatus    @default(PENDING)
   tableId       Int?
+  customerId    Int?
+  reservationId Int?
   deliveryPartnerId Int?
   deliveryAddress   String? @db.VarChar(255)
   deliveryFee       Int     @default(0)
@@ -255,6 +434,7 @@ model Order {
   voucherCode    String?
   paymentMethod  PaymentMethod?
   paymentStatus PaymentStatus  @default(UNPAID)
+  payLaterAuthorized Boolean @default(false)
   paidAt        DateTime?
   notes         String?
 
@@ -279,6 +459,8 @@ model Order {
   updatedAt DateTime @updatedAt
 
   table         DiningTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  customer      Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  reservation   Reservation? @relation(fields: [reservationId], references: [id], onDelete: SetNull)
   deliveryPartner DeliveryPartner? @relation(fields: [deliveryPartnerId], references: [id], onDelete: Restrict)
   priceList     PriceList?   @relation(fields: [priceListId], references: [id], onDelete: SetNull)
   createdByUser User?        @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
@@ -287,10 +469,31 @@ model Order {
   items         OrderItem[]
   inventoryTransactions InventoryTransaction[]
   returns       OrderReturn[]
+  paymentTransactions OrderPaymentTransaction[]
 
   @@index([voucherId])
   @@unique([idempotencyScope, idempotencyKey])
   @@index([deliveryPartnerId, status])
+  @@index([customerId, createdAt])
+  @@index([reservationId])
+}
+
+model OrderPaymentTransaction {
+  id                Int                            @id @default(autoincrement())
+  orderId           Int
+  status            OrderPaymentTransactionStatus @default(PENDING)
+  amount            Int
+  paymentMethod     PaymentMethod                 @default(BANK_TRANSFER)
+  externalReference String?                        @unique @db.VarChar(120)
+  reason            String?                        @db.VarChar(500)
+  confirmedByUserId Int?
+  confirmedAt       DateTime?
+  createdAt         DateTime                       @default(now())
+
+  order           Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  confirmedByUser User?  @relation("OrderPaymentConfirmer", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, status, createdAt])
 }
 
 model OrderItem {
