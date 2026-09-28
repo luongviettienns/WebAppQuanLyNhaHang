@@ -100,6 +100,7 @@ interface RestaurantContextType {
   createOrder: (payload: {
     orderType: OrderType;
     tableId?: number | null;
+    customerId?: number | null;
     qrCodeToken?: string;
     voucherCode?: string;
     deliveryPartnerId?: number;
@@ -107,7 +108,7 @@ interface RestaurantContextType {
     deliveryFee?: number;
     notes?: string;
   }) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
-  createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string, voucherCode?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
+  createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string, voucherCode?: string, reservationAccessToken?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   payOrder: (orderId: number, paymentMethod: PaymentMethod) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   updateTableStatus: (tableId: number, status: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') => Promise<{ success: boolean; table?: DiningTableDto; error?: string }>;
   transferTable: (fromTableId: number, toTableId: number) => Promise<{ success: boolean; data?: { fromTable: DiningTableDto; toTable: DiningTableDto }; error?: string }>;
@@ -117,6 +118,9 @@ interface RestaurantContextType {
   latestOrderStatusChanged?: SocketOrderStatusChangedPayload | null;
   inventoryRevision: number;
   tablesRevision: number;
+  customersRevision: number;
+  reservationsRevision: number;
+  orderPaymentsRevision: number;
 
   // KDS State (Bếp thời gian thực)
   kdsOrders: OrderDto[];
@@ -207,6 +211,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [priceListError, setPriceListError] = useState<string | null>(null);
   const [inventoryRevision, setInventoryRevision] = useState(0);
   const [tablesRevision, setTablesRevision] = useState(0);
+  const [customersRevision, setCustomersRevision] = useState(0);
+  const [reservationsRevision, setReservationsRevision] = useState(0);
+  const [orderPaymentsRevision, setOrderPaymentsRevision] = useState(0);
 
   // 1. Fetch Menu from Backend API
   const fetchMenu = useCallback(async () => {
@@ -587,6 +594,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       setInventoryRevision((revision) => revision + 1);
     });
 
+    socket.on('customers:changed', () => setCustomersRevision(revision => revision + 1));
+    socket.on('reservations:changed', () => setReservationsRevision(revision => revision + 1));
+    socket.on('order:paymentChanged', () => setOrderPaymentsRevision(revision => revision + 1));
+
     // Table Status Changed
     socket.on('table:statusChanged', (payload: SocketTableStatusChangedPayload) => {
       setTables((prevTables) =>
@@ -796,7 +807,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const createOrder = async ({
     orderType,
     tableId,
+    customerId,
     qrCodeToken,
+    reservationAccessToken,
     voucherCode,
     deliveryPartnerId,
     deliveryAddress,
@@ -805,7 +818,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   }: {
     orderType: OrderType;
     tableId?: number | null;
+    customerId?: number | null;
     qrCodeToken?: string;
+    reservationAccessToken?: string;
     voucherCode?: string;
     deliveryPartnerId?: number;
     deliveryAddress?: string;
@@ -832,7 +847,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const orderPayload = {
       ...(orderType === 'DINE_IN' && tableId ? { tableId } : {}),
+      ...(customerId ? { customerId } : {}),
       ...(orderType === 'DINE_IN' && qrCodeToken ? { qrCodeToken } : {}),
+      ...(orderType === 'DINE_IN' && reservationAccessToken ? { reservationAccessToken } : {}),
       ...(voucherCode ? { voucherCode } : {}),
       ...(orderType === 'DELIVERY' ? { deliveryPartnerId, deliveryAddress, deliveryFee } : {}),
       orderType,
@@ -880,9 +897,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     tableId: number,
     notes?: string,
     qrCodeToken?: string,
-    voucherCode?: string
+    voucherCode?: string,
+    reservationAccessToken?: string
   ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
-    return createOrder({ orderType: 'DINE_IN', tableId, notes, qrCodeToken, voucherCode });
+    return createOrder({ orderType: 'DINE_IN', tableId, notes, qrCodeToken, voucherCode, reservationAccessToken });
   };
 
   const payOrder = async (
@@ -1266,6 +1284,9 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         latestOrderStatusChanged,
         inventoryRevision,
         tablesRevision,
+        customersRevision,
+        reservationsRevision,
+        orderPaymentsRevision,
         kdsOrders,
         isLoadingKDS,
         kdsError,

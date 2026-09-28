@@ -10,7 +10,7 @@ export type DeliveryPartnerType = 'INDIVIDUAL' | 'COMPANY';
 export type OrderStatus = 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
 export type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'NEED_CLEANING' | 'DIRTY';
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD';
-export type PaymentStatus = 'UNPAID' | 'PAID' | 'VOIDED';
+export type PaymentStatus = 'UNPAID' | 'WAITING_CONFIRMATION' | 'PAID' | 'VOIDED';
 export type MenuType = 'FOOD' | 'DRINK' | 'SERVICE' | 'OTHER';
 export type MenuItemType = 'REGULAR' | 'TOPPING' | 'COMBO' | 'SERVICE';
 export type PriceListType = 'GENERAL' | 'CUSTOM';
@@ -356,6 +356,7 @@ export interface OrderDto {
   finalAmount: number;
   paymentMethod?: PaymentMethod | null;
   paymentStatus: PaymentStatus;
+  payLaterAuthorized?: boolean;
   paidAt?: string | null;
   notes?: string | null;
   

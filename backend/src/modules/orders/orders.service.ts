@@ -1,14 +1,24 @@
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll, emitToRoom } from '../../lib/socket';
-import { CreateOrderInput, PayOrderInput, VoidOrderInput } from './orders.schemas';
-import { PaymentMethod } from '@prisma/client';
+import {
+  ConfirmOrderPaymentInput,
+  AuthorizeReservationOrderPayLaterInput,
+  CreateOrderInput,
+  PayOrderInput,
+  RejectOrderPaymentInput,
+  ReservationOrderPaymentDeclarationInput,
+  VoidOrderInput
+} from './orders.schemas';
+import { PaymentMethod, PriceListScopeType } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { VouchersService } from '../vouchers/vouchers.service';
 import { emitInventoryChanged } from '../inventory/inventory.events';
 import { PriceListService } from '../price-lists/price-list.service';
 import { createHash } from 'crypto';
+import { ReservationsService } from '../reservations/reservations.service';
+import { getVietQrInstructions } from '../../lib/vietqr';
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -145,6 +155,9 @@ export class OrdersService {
    * Tao don hang moi (Dat tai ban qua QR hoac POS)
    */
   static async createOrder(input: CreateOrderInput, createdByUserId?: number) {
+    const isGuestPrepayment = createdByUserId === undefined;
+    const requiresReservationPrepayment = isGuestPrepayment && input.orderType === 'DINE_IN';
+    if (input.payLaterOverride && createdByUserId === undefined) throw ApiError.forbidden('Chỉ nhân viên được cho phép trả sau');
     const idempotencyScope = createdByUserId === undefined ? 'guest' : `user:${createdByUserId}`;
     const requestHash = hashOrderRequest(input);
     const assertMatchingRequest = (existingHash: string | null) => {
@@ -167,6 +180,9 @@ export class OrdersService {
     let resolvedTableId = input.tableId;
     if (input.orderType === 'DINE_IN') {
       if (createdByUserId === undefined) {
+        if (!input.reservationAccessToken) {
+          throw ApiError.conflict('Khách cần đặt bàn, check-in và đặt cọc trước khi gọi món');
+        }
         if (!input.qrCodeToken) {
           throw ApiError.badRequest('Khách gọi món tại bàn cần có mã QR hợp lệ');
         }
@@ -334,15 +350,26 @@ export class OrdersService {
 
     // 7. Thuc hien Transaction tao Order va cap nhat Table
     let resolvedPriceListId: number | null = null;
-    let transactionResult: { order: any; isDuplicate: boolean; stockChanges: MenuStockChange[] };
+    let transactionResult: { order: any; isDuplicate: boolean; stockChanges: MenuStockChange[]; awaitingPayment?: boolean };
     try {
       transactionResult = await prisma.$transaction(async (tx) => {
+        let reservationContext: { id: number; customerId: number } | null = null;
         if (input.orderType === 'DINE_IN' && resolvedTableId) {
           await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${resolvedTableId} FOR UPDATE`;
           const lockedTable = await tx.diningTable.findUnique({ where: { id: resolvedTableId }, select: { id: true, isActive: true } });
           if (!lockedTable) throw ApiError.badRequest(`Bàn ăn ID ${resolvedTableId} không tồn tại`);
           if (!lockedTable.isActive) throw createdByUserId === undefined ? ApiError.notFound('Mã QR bàn không hợp lệ hoặc đã hết hạn') : ApiError.badRequest('Phòng/bàn đã ngừng hoạt động');
         }
+
+        if (isGuestPrepayment && input.orderType === 'DINE_IN') {
+          if (!resolvedTableId || !input.reservationAccessToken) throw ApiError.notFound('Mã đặt bàn không hợp lệ hoặc chưa được check-in');
+          reservationContext = await ReservationsService.requireCheckedInToken(tx, input.reservationAccessToken, resolvedTableId);
+        }
+
+        const customerId = reservationContext?.customerId ?? input.customerId ?? null;
+        const pricingCustomer = customerId ? await tx.customer.findUnique({ where: { id: customerId }, select: { id: true, groupId: true, isActive: true } }) : null;
+        if (input.customerId && (!pricingCustomer || !pricingCustomer.isActive)) throw ApiError.badRequest('Khách hàng không tồn tại hoặc đã ngừng hoạt động');
+        if (input.payLaterOverride && (!pricingCustomer || !pricingCustomer.isActive)) throw ApiError.badRequest('Cho phép trả sau cần khách hàng đang hoạt động');
 
         if (input.idempotencyKey) {
           const existing = await findExisting(tx);
@@ -352,25 +379,40 @@ export class OrdersService {
           }
         }
 
+        const menuItemIdsForPricing = input.items.map(item => item.menuItemId);
         const generalPriceList = await PriceListService.getGeneralPriceList(tx);
-        resolvedPriceListId = generalPriceList?.id ?? null;
-        const resolvedPrices = await PriceListService.resolveEffectivePrices(
-          tx,
-          input.items.map(item => item.menuItemId),
-          generalPriceList ? { priceListId: generalPriceList.id } : undefined
+        const generalPrices = await PriceListService.resolveEffectivePrices(
+          tx, menuItemIdsForPricing, generalPriceList ? { priceListId: generalPriceList.id } : undefined
         );
+        const customerGroupPriceList = pricingCustomer?.groupId ? await tx.priceList.findFirst({
+          where: {
+            scopeType: PriceListScopeType.CUSTOMER_GROUP,
+            scopeKey: String(pricingCustomer.groupId),
+            isActive: true
+          },
+          orderBy: { id: 'asc' },
+          select: { id: true }
+        }) : null;
+        const customerGroupPrices = customerGroupPriceList
+          ? await PriceListService.resolveEffectivePrices(tx, menuItemIdsForPricing, { priceListId: customerGroupPriceList.id })
+          : new Map();
+        let usedGroupPrice = false;
+        resolvedPriceListId = generalPriceList?.id ?? null;
         for (let index = 0; index < input.items.length; index += 1) {
           const itemInput = input.items[index];
-          const resolved = resolvedPrices.get(itemInput.menuItemId);
+          const groupPrice = customerGroupPrices.get(itemInput.menuItemId);
+          const resolved = groupPrice?.source === 'PRICE_LIST' ? groupPrice : generalPrices.get(itemInput.menuItemId);
           if (!resolved) {
             throw ApiError.notFound(`Không thể xác định giá món ID ${itemInput.menuItemId}`);
           }
+          if (groupPrice?.source === 'PRICE_LIST') usedGroupPrice = true;
           const selectedMods = (orderItemsData[index].selectedModifiersJson ?? []) as Array<{ priceDelta: number }>;
           const modifierDelta = selectedMods.reduce((sum, modifier) => sum + modifier.priceDelta, 0);
           const unitPrice = resolved.salePrice + modifierDelta;
           orderItemsData[index].unitPrice = unitPrice;
           orderItemsData[index].subtotal = unitPrice * itemInput.quantity;
         }
+        if (usedGroupPrice && customerGroupPriceList) resolvedPriceListId = customerGroupPriceList.id;
         totalAmount = orderItemsData.reduce((sum, item) => sum + item.subtotal, 0);
         const effectiveTaxable = Math.max(0, totalAmount - voucherDiscount);
         vatAmount = Math.round(effectiveTaxable * 0.08);
@@ -386,7 +428,7 @@ export class OrdersService {
         const trackedMenuItemIds = new Set(
           dbMenuItems.filter((menuItem) => menuItem.trackStock).map((menuItem) => menuItem.id)
         );
-        const stockChanges = await reserveMenuStockForOrder(tx, input.items, trackedMenuItemIds);
+        const stockChanges = requiresReservationPrepayment ? [] : await reserveMenuStockForOrder(tx, input.items, trackedMenuItemIds);
 
         const order = await tx.order.create({
           data: {
@@ -394,6 +436,8 @@ export class OrdersService {
             orderType: input.orderType,
             status: 'PENDING',
             tableId: resolvedTableId,
+            customerId,
+            reservationId: reservationContext?.id ?? null,
             deliveryPartnerId: isDelivery ? input.deliveryPartnerId : null,
             deliveryAddress: isDelivery ? input.deliveryAddress : null,
             deliveryFee,
@@ -407,6 +451,7 @@ export class OrdersService {
             voucherId: appliedVoucherId,
             voucherCode: appliedVoucherCode,
             paymentStatus: 'UNPAID', // Mac dinh chua thanh toan (Post-Paid)
+            payLaterAuthorized: input.payLaterOverride === true,
             notes: input.notes,
             idempotencyKey: input.idempotencyKey,
             idempotencyScope,
@@ -424,6 +469,11 @@ export class OrdersService {
             },
             deliveryPartner: { select: { id: true, code: true, name: true } }
           }
+        });
+
+        if (input.payLaterOverride) await AuditService.logInTransaction(tx, {
+          action: 'ORDER_PAY_LATER_AUTHORIZED', targetType: 'Order', targetId: order.id,
+          actorId: createdByUserId, metadata: { customerId, reason: input.payLaterReason, amount: finalAmount }
         });
 
         if (appliedVoucherId) {
@@ -457,7 +507,7 @@ export class OrdersService {
         }
 
         // Neu la don an tai ban -> cap nhat trang thai ban sang OCCUPIED
-        if (input.orderType === 'DINE_IN' && resolvedTableId) {
+        if (!isGuestPrepayment && input.orderType === 'DINE_IN' && resolvedTableId) {
           await tx.diningTable.update({
             where: { id: resolvedTableId },
             data: {
@@ -467,7 +517,7 @@ export class OrdersService {
           });
         }
 
-        return { order, isDuplicate: false, stockChanges };
+        return { order, isDuplicate: false, stockChanges, awaitingPayment: requiresReservationPrepayment };
       });
     } catch (error) {
       if (!input.idempotencyKey || !isUniqueConstraintError(error)) throw error;
@@ -482,6 +532,10 @@ export class OrdersService {
     }
     emitMenuStockChanged(transactionResult.stockChanges);
     const createdOrder = formatOrderDto(transactionResult.order);
+
+    if (transactionResult.awaitingPayment) {
+      return { order: transactionResult.order, isDuplicate: false, awaitingPayment: true };
+    }
 
     // Phat su kien don hang moi chi vao phong KDS bep va toan he thong
     emitToRoom('restaurant:kds', 'order:new', { order: createdOrder });
@@ -499,10 +553,193 @@ export class OrdersService {
     return { order: transactionResult.order, isDuplicate: false };
   }
 
+  private static async availableReservationCredit(tx: any, reservationId: number) {
+    const movements = await tx.reservationDepositTransaction.findMany({
+      where: { reservationId, status: 'SUCCESS' }, select: { type: true, amount: true }
+    });
+    const received = movements.filter((row: any) => row.type === 'DEPOSIT').reduce((sum: number, row: any) => sum + row.amount, 0);
+    const used = movements.filter((row: any) => ['REFUND', 'PARTIAL_REFUND', 'FORFEIT', 'APPLY_TO_BILL'].includes(row.type))
+      .reduce((sum: number, row: any) => sum + row.amount, 0);
+    return Math.max(0, received - used);
+  }
+
+  private static async reserveOrderItems(tx: any, items: Array<{ menuItemId: number; quantity: number }>) {
+    const menuItems = await tx.menuItem.findMany({ where: { id: { in: items.map(item => item.menuItemId) } }, select: { id: true, trackStock: true } });
+    return reserveMenuStockForOrder(tx, items, new Set(menuItems.filter((item: any) => item.trackStock).map((item: any) => item.id)));
+  }
+
+  private static emitPrepaidOrder(order: any, stockChanges: MenuStockChange[]) {
+    emitMenuStockChanged(stockChanges);
+    const orderDto = formatOrderDto(order);
+    emitToRoom('restaurant:kds', 'order:new', { order: orderDto });
+    emitToAll('order:new', { order: orderDto });
+    if (order.table) emitToAll('table:statusChanged', {
+      tableId: order.table.id, tableNumber: order.table.tableNumber, status: 'OCCUPIED', currentOrderId: order.id
+    });
+  }
+
+  static async declareReservationOrderPayment(orderId: number, input: ReservationOrderPaymentDeclarationInput) {
+    const result = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
+      const current = await tx.order.findUnique({ where: { id: orderId }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
+      if (!current || !current.reservationId || !current.tableId) throw ApiError.notFound('Không tìm thấy order đặt bàn');
+      const reservation = await ReservationsService.requireCheckedInToken(tx, input.reservationAccessToken, current.tableId);
+      if (reservation.id !== current.reservationId) throw ApiError.notFound('Order không thuộc mã đặt bàn này');
+      if (current.status !== 'PENDING') throw ApiError.conflict('Order không còn chờ thanh toán');
+      if (current.paymentStatus === 'WAITING_CONFIRMATION') {
+        const pending = await tx.orderPaymentTransaction.findFirst({ where: { orderId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } });
+        if (!pending) throw ApiError.conflict('Không tìm thấy giao dịch chờ xác nhận');
+        return { order: current, amountDue: pending.amount, autoPaid: false, stockChanges: [] };
+      }
+      if (current.paymentStatus !== 'UNPAID') throw ApiError.conflict('Order không còn chờ thanh toán trước');
+
+      const availableCredit = await this.availableReservationCredit(tx, reservation.id);
+      const amountDue = Math.max(0, current.finalAmount - availableCredit);
+      if (amountDue > 0) {
+        await tx.orderPaymentTransaction.create({ data: { orderId, status: 'PENDING', amount: amountDue, paymentMethod: 'BANK_TRANSFER' } });
+        const order = await tx.order.update({ where: { id: orderId }, data: { paymentStatus: 'WAITING_CONFIRMATION' }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
+        await AuditService.logInTransaction(tx, {
+          action: 'RESERVATION_ORDER_PAYMENT_DECLARED', targetType: 'Order', targetId: orderId,
+          metadata: { reservationId: reservation.id, amountDue }
+        });
+        return { order, amountDue, autoPaid: false, stockChanges: [] };
+      }
+
+      const appliedDeposit = Math.min(current.finalAmount, availableCredit);
+      if (appliedDeposit > 0) {
+        await tx.reservationDepositTransaction.create({ data: {
+          reservationId: reservation.id, orderId, type: 'APPLY_TO_BILL', status: 'SUCCESS', amount: appliedDeposit,
+          reason: 'Dùng tiền cọc trả trước cho order', confirmedAt: new Date()
+        } });
+        await tx.reservation.update({ where: { id: reservation.id }, data: { depositStatus: 'APPLIED_TO_BILL' } });
+      }
+      const paidAt = new Date();
+      const order = await tx.order.update({ where: { id: orderId }, data: { paymentStatus: 'PAID', paidAt }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
+      const stockChanges = await this.reserveOrderItems(tx, current.items);
+      await tx.diningTable.update({ where: { id: current.tableId }, data: { currentOrderId: orderId, status: 'OCCUPIED' } });
+      await AuditService.logInTransaction(tx, {
+        action: 'RESERVATION_ORDER_PAID_BY_DEPOSIT', targetType: 'Order', targetId: orderId,
+        metadata: { reservationId: reservation.id, appliedDeposit }
+      });
+      return { order, amountDue: 0, autoPaid: true, stockChanges };
+    });
+    if (result.autoPaid) this.emitPrepaidOrder(result.order, result.stockChanges);
+    emitToAll('reservations:changed', { ids: [result.order.reservationId], updatedAt: new Date().toISOString() });
+    emitToAll('order:paymentChanged', { orderId, paymentStatus: result.order.paymentStatus, updatedAt: new Date().toISOString() });
+    const transferContent = `THU ${result.order.code}`;
+    return { order: result.order, paymentStatus: result.order.paymentStatus, amountDue: result.amountDue, transferContent, paymentInstructions: result.amountDue > 0 ? getVietQrInstructions(result.amountDue, transferContent) : null };
+  }
+
+  static async confirmReservationOrderPayment(orderId: number, input: ConfirmOrderPaymentInput, actorId: number, actorName: string) {
+    try {
+      const result = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
+        const current = await tx.order.findUnique({ where: { id: orderId }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
+        if (!current || !current.reservationId || !current.tableId) throw ApiError.notFound('Không tìm thấy order đặt bàn');
+        await tx.$queryRaw`SELECT id FROM Reservation WHERE id = ${current.reservationId} FOR UPDATE`;
+        const reservation = await tx.reservation.findUnique({ where: { id: current.reservationId } });
+        if (!reservation || reservation.status !== 'CHECKED_IN' || reservation.tableId !== current.tableId) throw ApiError.conflict('Order không còn thuộc lượt đặt bàn đang check-in');
+        if (current.paymentStatus !== 'WAITING_CONFIRMATION') throw ApiError.conflict('Order không còn chờ xác nhận thanh toán');
+        const pending = await tx.orderPaymentTransaction.findFirst({ where: { orderId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } });
+        if (!pending) throw ApiError.conflict('Không tìm thấy giao dịch thanh toán đang chờ');
+
+        const availableCredit = await this.availableReservationCredit(tx, reservation.id);
+        const amountDue = Math.max(0, current.finalAmount - availableCredit);
+        if (input.amount !== pending.amount || input.amount !== amountDue) throw ApiError.conflict('Số tiền chuyển khoản đã thay đổi; cần tạo lại yêu cầu thanh toán');
+        const appliedDeposit = Math.min(current.finalAmount, availableCredit);
+        const now = new Date();
+        if (appliedDeposit > 0) {
+          await tx.reservationDepositTransaction.create({ data: {
+            reservationId: reservation.id, orderId, type: 'APPLY_TO_BILL', status: 'SUCCESS', amount: appliedDeposit,
+            reason: 'Dùng tiền cọc trả trước cho order', confirmedByUserId: actorId, confirmedAt: now
+          } });
+          await tx.reservation.update({ where: { id: reservation.id }, data: { depositStatus: 'APPLIED_TO_BILL' } });
+        }
+
+        await tx.orderPaymentTransaction.create({ data: {
+          orderId, status: 'SUCCESS', amount: input.amount, paymentMethod: 'BANK_TRANSFER',
+          externalReference: input.externalReference, confirmedByUserId: actorId, confirmedAt: now
+        } });
+        const order = await tx.order.update({ where: { id: orderId }, data: {
+          paymentStatus: 'PAID', paymentMethod: 'BANK_TRANSFER', paidAt: now
+        }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
+        const stockChanges = await this.reserveOrderItems(tx, current.items);
+        await tx.diningTable.update({ where: { id: current.tableId }, data: { currentOrderId: orderId, status: 'OCCUPIED' } });
+        await AuditService.logInTransaction(tx, {
+          action: 'RESERVATION_ORDER_PREPAYMENT_CONFIRMED', targetType: 'Order', targetId: orderId,
+          actorId, actorName, metadata: { reservationId: reservation.id, amount: input.amount, appliedDeposit, externalReference: input.externalReference }
+        });
+        return { order, stockChanges };
+      });
+      this.emitPrepaidOrder(result.order, result.stockChanges);
+      emitToAll('reservations:changed', { ids: [result.order.reservationId], updatedAt: new Date().toISOString() });
+      return result.order;
+    } catch (error) {
+      if (isUniqueConstraintError(error)) throw ApiError.conflict('Mã giao dịch đã được ghi nhận hoặc tiền cọc đã được áp dụng cho order này');
+      throw error;
+    }
+  }
+
+  static async rejectReservationOrderPayment(orderId: number, input: RejectOrderPaymentInput, actorId: number, actorName: string) {
+    const order = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
+      const current = await tx.order.findUnique({ where: { id: orderId } });
+      if (!current || !current.reservationId) throw ApiError.notFound('Không tìm thấy order đặt bàn');
+      if (current.paymentStatus !== 'WAITING_CONFIRMATION') throw ApiError.conflict('Order không còn chờ xác nhận thanh toán');
+      const pending = await tx.orderPaymentTransaction.findFirst({ where: { orderId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } });
+      if (!pending) throw ApiError.conflict('Không tìm thấy giao dịch thanh toán đang chờ');
+      await tx.orderPaymentTransaction.create({ data: {
+        orderId, status: 'REJECTED', amount: pending.amount, paymentMethod: 'BANK_TRANSFER', reason: input.reason,
+        confirmedByUserId: actorId, confirmedAt: new Date()
+      } });
+      const updated = await tx.order.update({ where: { id: orderId }, data: { paymentStatus: 'UNPAID' } });
+      await AuditService.logInTransaction(tx, {
+        action: 'RESERVATION_ORDER_PREPAYMENT_REJECTED', targetType: 'Order', targetId: orderId,
+        actorId, actorName, metadata: { reason: input.reason, amount: pending.amount }
+      });
+      return updated;
+    });
+    emitToAll('order:paymentChanged', { orderId, paymentStatus: order.paymentStatus, updatedAt: new Date().toISOString() });
+    return order;
+  }
+
+  static async authorizeReservationOrderPayLater(orderId: number, input: AuthorizeReservationOrderPayLaterInput, actorId: number, actorName: string) {
+    const result = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
+      const current = await tx.order.findUnique({ where: { id: orderId }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
+      if (!current || !current.reservationId || !current.tableId) throw ApiError.notFound('Không tìm thấy order đặt bàn');
+      if (current.status !== 'PENDING' || current.paymentStatus === 'PAID' || current.payLaterAuthorized) throw ApiError.conflict('Order hiện không thể được cấp quyền trả sau');
+      await tx.$queryRaw`SELECT id FROM Reservation WHERE id = ${current.reservationId} FOR UPDATE`;
+      const reservation = await tx.reservation.findUnique({ where: { id: current.reservationId } });
+      if (!reservation || reservation.status !== 'CHECKED_IN' || reservation.tableId !== current.tableId || !['PAID', 'APPLIED_TO_BILL'].includes(reservation.depositStatus)) {
+        throw ApiError.conflict('Chỉ được cấp trả sau cho lượt đặt bàn đã check-in và có tiền cọc xác nhận');
+      }
+      if (current.paymentStatus === 'WAITING_CONFIRMATION') {
+        const pending = await tx.orderPaymentTransaction.findMany({ where: { orderId, status: 'PENDING' } });
+        for (const transaction of pending) await tx.orderPaymentTransaction.create({ data: {
+          orderId, status: 'REJECTED', amount: transaction.amount, paymentMethod: transaction.paymentMethod,
+          reason: `Được phép trả sau: ${input.reason}`, confirmedByUserId: actorId, confirmedAt: new Date()
+        } });
+      }
+      const order = await tx.order.update({ where: { id: orderId }, data: { paymentStatus: 'UNPAID', payLaterAuthorized: true }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
+      const stockChanges = await this.reserveOrderItems(tx, current.items);
+      await tx.diningTable.update({ where: { id: current.tableId }, data: { currentOrderId: orderId, status: 'OCCUPIED' } });
+      await AuditService.logInTransaction(tx, {
+        action: 'RESERVATION_ORDER_PAY_LATER_AUTHORIZED', targetType: 'Order', targetId: orderId,
+        actorId, actorName, metadata: { reservationId: reservation.id, customerId: reservation.customerId, reason: input.reason, amount: current.finalAmount }
+      });
+      return { order, stockChanges };
+    });
+    this.emitPrepaidOrder(result.order, result.stockChanges);
+    emitToAll('order:paymentChanged', { orderId, paymentStatus: 'UNPAID', payLaterAuthorized: true, updatedAt: new Date().toISOString() });
+    emitToAll('reservations:changed', { ids: [result.order.reservationId], updatedAt: new Date().toISOString() });
+    return formatOrderDto(result.order);
+  }
+
   /**
    * Thanh toan don hang va tu dong reset ban an ve AVAILABLE khi het don UNPAID
    */
-  static async payOrder(orderId: number, input: PayOrderInput) {
+  static async payOrder(orderId: number, input: PayOrderInput, actorId?: number, actorName?: string) {
     const existingOrder = await prisma.order.findUnique({
       where: { id: orderId },
       include: { items: true }
@@ -510,6 +747,10 @@ export class OrdersService {
 
     if (!existingOrder) {
       throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
+    }
+
+    if (existingOrder.reservationId && existingOrder.createdByUserId === null && !existingOrder.payLaterAuthorized && existingOrder.paymentStatus !== 'PAID') {
+      throw ApiError.conflict('Order QR của khách phải được xác nhận prepayment trước khi vào bếp');
     }
 
     // Double-pay guard (FSM check): Nếu đơn đã trả thì ném 409 CONFLICT
@@ -538,6 +779,27 @@ export class OrdersService {
 
       if (lockedOrder.paymentStatus === 'PAID') {
         throw ApiError.conflict(`Đơn hàng ID ${orderId} đã được thanh toán từ trước`);
+      }
+
+      if (lockedOrder.reservationId && lockedOrder.createdByUserId === null && !lockedOrder.payLaterAuthorized) {
+        throw ApiError.conflict('Order QR của khách phải được xác nhận prepayment hoặc cấp quyền trả sau trước khi thu tiền');
+      }
+
+      if (lockedOrder.reservationId) {
+        await tx.$queryRaw`SELECT id FROM Reservation WHERE id = ${lockedOrder.reservationId} FOR UPDATE`;
+        const availableDeposit = await this.availableReservationCredit(tx, lockedOrder.reservationId);
+        const appliedDeposit = Math.min(lockedOrder.finalAmount, availableDeposit);
+        if (appliedDeposit > 0) {
+          await tx.reservationDepositTransaction.create({ data: {
+            reservationId: lockedOrder.reservationId, orderId, type: 'APPLY_TO_BILL', status: 'SUCCESS', amount: appliedDeposit,
+            reason: 'Dùng tiền cọc trả cho order trả sau', confirmedByUserId: actorId, confirmedAt: new Date()
+          } });
+          await tx.reservation.update({ where: { id: lockedOrder.reservationId }, data: { depositStatus: 'APPLIED_TO_BILL' } });
+          await AuditService.logInTransaction(tx, {
+            action: 'RESERVATION_DEPOSIT_APPLIED_TO_ORDER', targetType: 'Order', targetId: orderId,
+            actorId, actorName, metadata: { reservationId: lockedOrder.reservationId, appliedDeposit }
+          });
+        }
       }
 
       const order = await tx.order.update({
@@ -616,7 +878,12 @@ export class OrdersService {
    * Lay danh sach don hang cho man hinh bep KDS hoac quan ly
    */
   static async getOrders(filter?: { status?: string[] }) {
-    const where: any = {};
+    const where: any = { OR: [
+      { createdByUserId: { not: null } },
+      { payLaterAuthorized: true },
+      { reservationId: null },
+      { paymentStatus: 'PAID' }
+    ] };
     if (filter?.status && filter.status.length > 0) {
       where.status = { in: filter.status };
     }
@@ -631,6 +898,34 @@ export class OrdersService {
     });
 
     return orders.map(formatOrderDto);
+  }
+
+  static async getReservationPaymentConfirmations() {
+    const orders = await prisma.order.findMany({
+      where: {
+        reservationId: { not: null }, status: 'PENDING', paymentStatus: { in: ['UNPAID', 'WAITING_CONFIRMATION'] },
+        payLaterAuthorized: false, reservation: { is: { status: 'CHECKED_IN' } }
+      },
+      orderBy: { updatedAt: 'asc' },
+      include: {
+        items: true,
+        table: { select: { id: true, tableNumber: true } },
+        customer: { select: { id: true, name: true, phone: true } },
+        reservation: { select: { id: true, code: true, contactName: true, contactPhone: true } },
+        paymentTransactions: {
+          where: { status: 'PENDING' }, orderBy: { createdAt: 'desc' }, take: 1,
+          select: { id: true, amount: true, paymentMethod: true, createdAt: true }
+        }
+      }
+    });
+
+    return orders.map(order => ({
+      ...formatOrderDto(order),
+      reservationId: order.reservationId,
+      reservation: order.reservation,
+      customer: order.customer,
+      paymentDeclaration: order.paymentTransactions[0] ?? null
+    }));
   }
 
   /**
@@ -1034,6 +1329,7 @@ function formatOrderDto(order: any) {
     finalAmount: order.finalAmount,
     paymentMethod: order.paymentMethod,
     paymentStatus: order.paymentStatus,
+    payLaterAuthorized: order.payLaterAuthorized ?? false,
     paidAt: order.paidAt ? (order.paidAt instanceof Date ? order.paidAt.toISOString() : order.paidAt) : null,
     notes: order.notes,
     createdAt: order.createdAt instanceof Date ? order.createdAt.toISOString() : order.createdAt,

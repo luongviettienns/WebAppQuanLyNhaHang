@@ -17,7 +17,7 @@ export function getOrderStatusPresentation(status: OrderStatus): { label: string
 }
 
 export function getPaymentStatusLabel(status: PaymentStatus): string {
-  return ({ UNPAID: 'Chưa thanh toán', PAID: 'Đã thanh toán', VOIDED: 'Đã hoàn tác' })[status];
+  return ({ UNPAID: 'Chưa thanh toán', WAITING_CONFIRMATION: 'Chờ xác nhận', PAID: 'Đã thanh toán', VOIDED: 'Đã hoàn tác' })[status];
 }
 
 export function getInvoiceCustomerLabel(item: Pick<OrderInvoiceListItemDto, 'customerName'>): string {

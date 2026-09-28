@@ -39,6 +39,7 @@ export const ReceiptModal: React.FC<Props> = ({ visible, order, onClose }) => {
   const paymentStatus: { label: string; tone: StatusTone } = {
     PAID: { label: 'Đã thanh toán', tone: 'success' as const },
     VOIDED: { label: 'Đã hủy', tone: 'danger' as const },
+    WAITING_CONFIRMATION: { label: 'Chờ xác nhận thanh toán', tone: 'info' as const },
     UNPAID: { label: 'Chưa thanh toán', tone: 'warning' as const }
   }[order.paymentStatus];
 

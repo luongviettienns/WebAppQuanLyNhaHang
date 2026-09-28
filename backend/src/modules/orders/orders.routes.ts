@@ -34,10 +34,17 @@ ordersRouter.get('/returns/export', authenticate, authorize('CASHIER', 'ADMIN'),
 ordersRouter.get('/returns/:id', authenticate, authorize('CASHIER', 'ADMIN'), SalesReturnController.detail);
 ordersRouter.post('/returns', authenticate, authorize('CASHIER', 'ADMIN'), SalesReturnController.create);
 
+// Manual bank-transfer declarations are reconciled by cashier/admin; the guest access token is never returned.
+ordersRouter.get('/payment-confirmations', authenticate, authorize('CASHIER', 'ADMIN'), OrdersController.getReservationPaymentConfirmations);
+
 // GET /api/orders (Lay danh sach don KDS: Chi KITCHEN va ADMIN)
 ordersRouter.get('/', authenticate, authorize('KITCHEN', 'ADMIN'), OrdersController.getOrders);
 
 // POST /api/orders (Tao don hang: Khach tai ban qua QR hoac Nhan vien POS)
+ordersRouter.post('/:id/payment-declaration', OrdersController.declareReservationOrderPayment);
+ordersRouter.post('/:id/payment/confirm', authenticate, authorize('CASHIER', 'ADMIN'), OrdersController.confirmReservationOrderPayment);
+ordersRouter.post('/:id/payment/reject', authenticate, authorize('CASHIER', 'ADMIN'), OrdersController.rejectReservationOrderPayment);
+ordersRouter.post('/:id/pay-later', authenticate, authorize('CASHIER', 'ADMIN'), OrdersController.authorizeReservationOrderPayLater);
 ordersRouter.post('/', optionalAuthenticate, OrdersController.createOrder);
 
 // PATCH /api/orders/:id/status (Chuyen trang thai bep FSM: Chi KITCHEN va ADMIN)

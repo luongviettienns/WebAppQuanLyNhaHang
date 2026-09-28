@@ -62,7 +62,7 @@ describe('Payment authorization', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.order).toMatchObject({ id: 42, paymentStatus: 'PAID' });
     expect(OrdersService.payOrder).toHaveBeenCalledOnce();
-    expect(OrdersService.payOrder).toHaveBeenCalledWith(42, { paymentMethod: 'CASH' });
+    expect(OrdersService.payOrder).toHaveBeenCalledWith(42, { paymentMethod: 'CASH' }, 1, 'Staff');
   });
 
   it('keeps guest order creation public', async () => {

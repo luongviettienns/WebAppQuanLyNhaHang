@@ -22,11 +22,13 @@ import {
   Trash2,
   Truck,
   Utensils,
+  UserRound,
   X
 } from 'lucide-react-native';
 import { MenuItemDto, OrderDto, OrderType, VoucherValidationResultDto } from '../../api/contracts';
 import { validateVoucherApi } from '../../api/vouchers';
 import { DeliveryPartnerDto, fetchSelectableDeliveryPartnersApi } from '../../api/deliveryPartners';
+import { fetchSelectableCustomersApi, SelectableCustomerDto } from '../../api/customers';
 import { useAuth } from '../../contexts/AuthContext';
 import { CartItem, useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -283,6 +285,9 @@ export const POSScreen: React.FC = () => {
   const [selectedDeliveryPartnerId, setSelectedDeliveryPartnerId] = useState<number | null>(null);
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryFeeText, setDeliveryFeeText] = useState('0');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerSuggestions, setCustomerSuggestions] = useState<SelectableCustomerDto[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<SelectableCustomerDto | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successOrderCode, setSuccessOrderCode] = useState<string | null>(null);
@@ -310,6 +315,16 @@ export const POSScreen: React.FC = () => {
     void fetchSelectableDeliveryPartnersApi(token).then(setDeliveryPartners).catch(error => setSubmitError(error.message || 'Không thể tải đối tác giao hàng.'));
   }, [isConfirmModalOpen, orderType, token]);
 
+  useEffect(() => {
+    const search = customerSearch.trim();
+    if (!isConfirmModalOpen || search.length < 2) { setCustomerSuggestions([]); return; }
+    let active = true;
+    const timer = setTimeout(() => {
+      void fetchSelectableCustomersApi(token, search).then(result => { if (active) setCustomerSuggestions(result); }).catch(error => { if (active) setSubmitError(error.message || 'Không thể tra cứu khách hàng.'); });
+    }, 220);
+    return () => { active = false; clearTimeout(timer); };
+  }, [customerSearch, isConfirmModalOpen, token]);
+
   const handleOpenConfirmModal = () => {
     setSubmitError(null);
     setSuccessOrderCode(null);
@@ -333,6 +348,7 @@ export const POSScreen: React.FC = () => {
     const result = await createOrder({
       orderType,
       tableId: orderType === 'DINE_IN' ? selectedTableId : undefined,
+      customerId: selectedCustomer?.id,
       voucherCode: appliedVoucher?.code,
       deliveryPartnerId: orderType === 'DELIVERY' ? selectedDeliveryPartnerId ?? undefined : undefined,
       deliveryAddress: orderType === 'DELIVERY' ? deliveryAddress.trim() : undefined,
@@ -344,6 +360,7 @@ export const POSScreen: React.FC = () => {
       setSuccessOrderCode(result.order.code);
       setCreatedOrder(result.order);
       setAppliedVoucher(null);
+      setSelectedCustomer(null); setCustomerSearch('');
       const chosenTable = tables.find((t) => t.id === selectedTableId);
       showToast({
         type: 'success',
@@ -521,6 +538,15 @@ export const POSScreen: React.FC = () => {
                   </View>
                 </View>
 
+                <View style={styles.checkoutSection}>
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Khách hàng (không bắt buộc)</Text>
+                  {selectedCustomer ? <View style={[styles.selectedCustomer, { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+                    <AppIcon icon={UserRound} color={theme.primary} size={17} /><View style={{ flex: 1 }}><Text style={{ color: theme.textPrimary, fontFamily: typography.families.bodySemibold }}>{selectedCustomer.name}</Text><Text style={{ color: theme.textSecondary }}>{selectedCustomer.code}{selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : ''}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Bỏ chọn khách hàng" onPress={() => { setSelectedCustomer(null); setCustomerSearch(''); }}><AppIcon icon={X} color={theme.textSecondary} size={18} /></Pressable>
+                  </View> : <TextInput accessibilityLabel="Tìm khách theo mã, tên, số điện thoại" value={customerSearch} onChangeText={setCustomerSearch} placeholder="Tìm theo mã, tên, số điện thoại" placeholderTextColor={theme.textSecondary} style={[styles.customerInput, { color: theme.textPrimary, borderColor: theme.borderSubtle }]} />}
+                  {!selectedCustomer && customerSuggestions.map(customer => <Pressable key={customer.id} accessibilityRole="button" onPress={() => { setSelectedCustomer(customer); setCustomerSuggestions([]); setSubmitError(null); }} style={[styles.customerSuggestion, { borderBottomColor: theme.borderSubtle }]}><View style={{ flex: 1 }}><Text style={{ color: theme.textPrimary, fontFamily: typography.families.bodySemibold }}>{customer.name}</Text><Text style={{ color: theme.textSecondary }}>{customer.code}{customer.phone ? ` · ${customer.phone}` : ''}{customer.group?.name ? ` · ${customer.group.name}` : ''}</Text></View><AppIcon icon={UserRound} color={theme.primary} size={17} /></Pressable>)}
+                  {!!customerSearch.trim() && customerSearch.trim().length >= 2 && !customerSuggestions.length && <Text style={{ color: theme.textSecondary }}>Không tìm thấy khách hàng phù hợp.</Text>}
+                </View>
+
                 {orderType === 'DINE_IN' && (
                   <View style={styles.checkoutSection}>
                     <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Chọn bàn ({selectableTables.length} bàn)</Text>
@@ -635,6 +661,9 @@ const styles = StyleSheet.create({
   modalClose: { alignItems: 'center', borderRadius: radii.sm, height: 44, justifyContent: 'center', width: 44 },
   checkoutBody: { gap: spacing.lg, padding: spacing.lg },
   checkoutSection: { gap: spacing.sm },
+  customerInput: { borderRadius: radii.sm, borderWidth: 1, minHeight: 44, paddingHorizontal: spacing.md },
+  customerSuggestion: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', minHeight: 48, paddingVertical: spacing.xs },
+  selectedCustomer: { alignItems: 'center', borderRadius: radii.sm, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 54, paddingHorizontal: spacing.md },
   sectionTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
   orderTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   typeButton: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.sm, minHeight: spacing.touchTargetPOS, paddingHorizontal: spacing.md },
