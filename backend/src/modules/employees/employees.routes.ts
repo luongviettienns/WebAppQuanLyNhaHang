@@ -6,6 +6,7 @@ import { EmployeesController } from './employees.controller';
 export const employeesRouter = Router();
 const adminOnly = [authenticate, authorize('ADMIN')];
 
+employeesRouter.post('/avatar', ...adminOnly, EmployeesController.uploadAvatar);
 employeesRouter.get('/departments', ...adminOnly, EmployeesController.departments);
 employeesRouter.post('/departments', ...adminOnly, EmployeesController.createDepartment);
 employeesRouter.patch('/departments/:id', ...adminOnly, EmployeesController.updateDepartment);

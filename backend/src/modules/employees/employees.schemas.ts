@@ -69,6 +69,10 @@ export const jobTitleCreateSchema = departmentCreateSchema;
 export const jobTitleUpdateSchema = departmentUpdateSchema;
 
 export const linkableUsersQuerySchema = z.object({ search: z.string().trim().max(160).optional() });
+export const employeeAvatarUploadSchema = z.object({
+  dataUrl: z.string().min(1).max(3 * 1024 * 1024),
+  fileName: z.string().trim().max(255).optional()
+});
 export const employeeIdSchema = z.coerce.number().int().positive();
 
 export type EmployeeListQuery = z.infer<typeof employeeListQuerySchema>;
