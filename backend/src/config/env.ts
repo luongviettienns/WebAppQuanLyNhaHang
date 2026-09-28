@@ -20,6 +20,9 @@ const envSchema = z.object({
   EXPO_PUBLIC_SOCKET_URL: z.string().optional(),
   VAT_RATE_BPS: z.coerce.number().default(800), // 8% = 800 basis points
   BUSINESS_TIMEZONE: z.string().default('Asia/Ho_Chi_Minh'),
+  DEPOSIT_VIETQR_BANK_ID: z.string().trim().optional(),
+  DEPOSIT_BANK_ACCOUNT: z.string().trim().optional(),
+  DEPOSIT_ACCOUNT_NAME: z.string().trim().optional(),
   SEED_CASHIER_PASSWORD: z.string().default('cashier123'),
   SEED_KITCHEN_PASSWORD: z.string().default('kitchen123'),
   SEED_ADMIN_PASSWORD: z.string().default('admin123')

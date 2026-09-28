@@ -14,6 +14,8 @@ import { auditRouter } from './modules/audit/audit.routes';
 import { inventoryRouter } from './modules/inventory/inventory.routes';
 import { vouchersRouter } from './modules/vouchers/vouchers.routes';
 import { priceListRouter } from './modules/price-lists/price-list.routes';
+import { customersRouter } from './modules/customers/customers.routes';
+import { reservationsRouter } from './modules/reservations/reservations.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
 import { getUploadsDir } from './lib/uploads';
@@ -85,6 +87,12 @@ app.use('/api/vouchers', vouchersRouter);
 
 // General price list management (Admin only)
 app.use('/api/price-lists', priceListRouter);
+
+// Customer profiles and groups (Admin management; staff selection is limited)
+app.use('/api/customers', customersRouter);
+
+// Public booking and manual-deposit declaration endpoints
+app.use('/api/reservations', reservationsRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);

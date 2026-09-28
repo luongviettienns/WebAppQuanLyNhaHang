@@ -91,6 +91,27 @@ export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
   }
   console.log(`✅ Da seed ${userData.length} User (Admin, Cashier, Kitchen, Manager)`);
 
+  await prisma.reservationPolicy.upsert({
+    where: { name: 'Chính sách đặt cọc mặc định' },
+    update: {
+      depositAmount: 300000,
+      freeCancelBeforeMinutes: 120,
+      lateCancelRefundPercent: 0,
+      noShowRefundPercent: 0,
+      gracePeriodMinutes: 30,
+      isActive: true
+    },
+    create: {
+      name: 'Chính sách đặt cọc mặc định',
+      depositAmount: 300000,
+      freeCancelBeforeMinutes: 120,
+      lateCancelRefundPercent: 0,
+      noShowRefundPercent: 0,
+      gracePeriodMinutes: 30,
+      isActive: true
+    }
+  });
+
   // =========================================================================
   // 2. SEED 20 KHU VỰC BÀN (TABLE AREAS) & 24 BÀN ĂN (DINING TABLES)
   // =========================================================================

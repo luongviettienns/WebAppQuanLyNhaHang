@@ -58,6 +58,23 @@ describe('Database Seed & Schema Verification (Task 5)', () => {
     expect(requiredGroup?.isRequired).toBe(true);
   });
 
+  it('tao chinh sach dat coc mac dinh de booking snapshot quy dinh tai thoi diem tao', async () => {
+    const policy = await prismaTest.reservationPolicy.findFirst({
+      where: { isActive: true },
+      orderBy: { id: 'asc' }
+    });
+
+    expect(policy).not.toBeNull();
+    expect(policy).toMatchObject({
+      depositAmount: 300000,
+      freeCancelBeforeMinutes: 120,
+      lateCancelRefundPercent: 0,
+      noShowRefundPercent: 0,
+      gracePeriodMinutes: 30,
+      isActive: true
+    });
+  });
+
   it('tao it nhat 20 ban an voi QR token duy nhat', async () => {
     await seedDatabase(prismaTest);
 
