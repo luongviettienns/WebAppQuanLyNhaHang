@@ -16,6 +16,7 @@ import { vouchersRouter } from './modules/vouchers/vouchers.routes';
 import { priceListRouter } from './modules/price-lists/price-list.routes';
 import { customersRouter } from './modules/customers/customers.routes';
 import { reservationsRouter } from './modules/reservations/reservations.routes';
+import { employeesRouter } from './modules/employees/employees.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
 import { getUploadsDir } from './lib/uploads';
@@ -93,6 +94,9 @@ app.use('/api/customers', customersRouter);
 
 // Public booking and manual-deposit declaration endpoints
 app.use('/api/reservations', reservationsRouter);
+
+// Employee profiles and workforce master data (Admin only)
+app.use('/api/employees', employeesRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);

@@ -14,6 +14,23 @@ enum Role {
   ADMIN
 }
 
+enum EmployeeStatus {
+  WORKING
+  RESIGNED
+}
+
+enum EmployeeGender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum EmployeePayBasis {
+  MONTHLY
+  HOURLY
+  PER_SHIFT
+}
+
 enum OrderType {
   DINE_IN
   TAKE_AWAY
@@ -152,6 +169,84 @@ model User {
   voidedOrders  Order[]    @relation("VoidedOrders")
   auditLogs     AuditLog[] @relation("AuditLogs")
   confirmedOrderPaymentTransactions OrderPaymentTransaction[] @relation("OrderPaymentConfirmer")
+  employeeProfile Employee?
+  createdEmployeeCompensations EmployeeCompensation[] @relation("EmployeeCompensationCreator")
+}
+
+model Department {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(120)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+}
+
+model JobTitle {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(120)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+}
+
+model Employee {
+  id                Int             @id @default(autoincrement())
+  code              String          @unique @db.VarChar(32)
+  attendanceCode    String          @unique @db.VarChar(32)
+  name              String          @db.VarChar(160)
+  phone             String          @db.VarChar(30)
+  status            EmployeeStatus  @default(WORKING)
+  userId            Int?            @unique
+  avatarUrl         String?         @db.VarChar(500)
+  departmentId      Int?
+  jobTitleId        Int?
+  startDate         DateTime?       @db.Date
+  endDate           DateTime?       @db.Date
+  note              String?         @db.VarChar(500)
+  nationalId        String?         @unique @db.VarChar(32)
+  birthDate         DateTime?       @db.Date
+  gender            EmployeeGender?
+  address           String?         @db.VarChar(255)
+  province          String?         @db.VarChar(120)
+  ward              String?         @db.VarChar(120)
+  email             String?         @db.VarChar(160)
+  facebook          String?         @db.VarChar(255)
+  bankName          String?         @db.VarChar(120)
+  bankAccountNumber String?         @db.VarChar(80)
+  bankAccountName   String?         @db.VarChar(120)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  user          User?                  @relation(fields: [userId], references: [id], onDelete: SetNull)
+  department    Department?            @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  jobTitle      JobTitle?              @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  compensations EmployeeCompensation[]
+
+  @@index([status, createdAt])
+  @@index([name])
+  @@index([departmentId, status])
+  @@index([jobTitleId, status])
+}
+
+model EmployeeCompensation {
+  id              Int              @id @default(autoincrement())
+  employeeId      Int
+  payBasis        EmployeePayBasis
+  baseRate        Int
+  effectiveFrom   DateTime         @db.Date
+  note            String?          @db.VarChar(500)
+  createdByUserId Int?
+  createdAt       DateTime         @default(now())
+
+  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy User?    @relation("EmployeeCompensationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom])
 }
 
 model CustomerGroup {
