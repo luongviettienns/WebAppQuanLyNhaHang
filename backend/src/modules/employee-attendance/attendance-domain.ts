@@ -133,6 +133,18 @@ export function getBusinessWeekBounds(workDate: string): { weekStart: string; we
   return { weekStart: formatDate(monday), weekEnd: formatDate(addDays(monday, 6)) };
 }
 
+export function getBusinessWeekUtcBounds(
+  weekStart: string,
+  timeZone = ATTENDANCE_BUSINESS_TIMEZONE
+): { startInclusive: Date; endExclusive: Date } {
+  const monday = parseDate(weekStart);
+  if (isoWeekday(monday) !== 1) throw new AttendanceDomainError('ATTENDANCE_DATE_INVALID', 'Ngày đầu tuần phải là thứ Hai');
+  return {
+    startInclusive: localDateMinuteToInstant(weekStart, 0, timeZone),
+    endExclusive: localDateMinuteToInstant(formatDate(addDays(monday, 7)), 0, timeZone)
+  };
+}
+
 function validateShiftMinutes(startMinute: number, endMinute: number): void {
   if (!Number.isInteger(startMinute) || !Number.isInteger(endMinute) || startMinute < 0 || startMinute > 1439 || endMinute < 1 || endMinute > 1440 || startMinute >= endMinute) {
     throw new AttendanceDomainError('SCHEDULE_NOT_AVAILABLE', 'Ca làm việc không có khung giờ hợp lệ');
@@ -302,7 +314,14 @@ export function hasOpenAttendanceSession(sessions: Array<{ checkInAt: Date; chec
 
 export function projectOccurrenceAttendance(input: {
   occurrence: AttendanceOccurrence;
-  session: { checkInAt: Date; checkOutAt: Date | null; linkStatus: AttendanceLinkStatus } | null;
+  session: {
+    checkInAt: Date;
+    checkOutAt: Date | null;
+    linkStatus: AttendanceLinkStatus;
+    plannedWorkDate?: string | null;
+    plannedStartMinute?: number | null;
+    plannedEndMinute?: number | null;
+  } | null;
   disposition?: 'ABSENT' | null;
   now: Date;
   timeZone?: string;
@@ -320,14 +339,17 @@ export function projectOccurrenceAttendance(input: {
     };
   }
   const timeZone = input.timeZone ?? ATTENDANCE_BUSINESS_TIMEZONE;
+  const snapshotDate = input.session.plannedWorkDate ?? input.occurrence.scheduleDate;
+  const snapshotStartMinute = input.session.plannedStartMinute ?? input.occurrence.plannedStartMinute;
+  const snapshotEndMinute = input.session.plannedEndMinute ?? input.occurrence.plannedEndMinute;
   return {
     occurrenceStatus: 'ATTENDED',
     reviewConflict,
     classification: classifyAttendanceSession({
       checkInAt: input.session.checkInAt,
       checkOutAt: input.session.checkOutAt,
-      plannedStartAt: localDateMinuteToInstant(input.occurrence.scheduleDate, input.occurrence.plannedStartMinute, timeZone),
-      plannedEndAt: localDateMinuteToInstant(input.occurrence.scheduleDate, input.occurrence.plannedEndMinute, timeZone),
+      plannedStartAt: localDateMinuteToInstant(snapshotDate, snapshotStartMinute, timeZone),
+      plannedEndAt: localDateMinuteToInstant(snapshotDate, snapshotEndMinute, timeZone),
       now: input.now,
       linkStatus: input.session.linkStatus
     })

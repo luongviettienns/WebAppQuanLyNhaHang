@@ -28,6 +28,11 @@ export async function truncateAllTables() {
   // Xoa du lieu theo thu tu khoa ngoai
   await prismaTest.$executeRawUnsafe(`SET FOREIGN_KEY_CHECKS = 0;`);
   const tables = [
+    'AttendanceKioskIdempotency',
+    'EmployeeAttendanceDisposition',
+    'EmployeeAttendanceSession',
+    'AttendanceKioskRateLimitBucket',
+    'AttendanceKioskSession',
     'EmployeeScheduleException',
     'EmployeeScheduleRule',
     'WorkShift',
@@ -79,6 +84,11 @@ export async function truncateAllTables() {
     } catch {
       // Bang co the chua ton tai neu chua migrate
     }
+  }
+  try {
+    await prismaTest.branch.deleteMany({ where: { code: { not: 'MAIN' } } });
+  } catch {
+    // Branch table may not exist before the attendance foundation migration is applied.
   }
   await prismaTest.$executeRawUnsafe(`SET FOREIGN_KEY_CHECKS = 1;`);
 }

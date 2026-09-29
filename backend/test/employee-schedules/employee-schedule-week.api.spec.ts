@@ -76,6 +76,22 @@ describe('employee schedule week API', () => {
     expect(oversizedPage.status).toBe(400);
   });
 
+  it('keeps the existing schedule endpoint scoped to the default MAIN branch', async () => {
+    const otherBranch = await prismaTest.branch.create({ data: { code: 'OTHER', name: 'Chi nhánh khác' } });
+    const otherShift = await prismaTest.workShift.create({ data: { code: 'OTHER-MORNING', name: 'Ca sáng chi nhánh khác', startMinute: 480, endMinute: 720 } });
+    await prismaTest.employeeScheduleRule.create({
+      data: {
+        employeeId, branchId: otherBranch.id, shiftId: otherShift.id, recurrenceType: 'ONCE',
+        startDate: day('2026-09-29'), createdByUserId: Number(JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString()).sub)
+      }
+    });
+
+    const response = await request(app).get('/api/employee-schedules/week?weekStart=2026-09-28').set(auth());
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.employees[0].occurrences).toEqual([]);
+  });
+
   it('filters employees by code or name and returns bounded pagination', async () => {
     await prismaTest.employee.create({ data: { code: `NVO${Date.now()}`, attendanceCode: `CCO${Date.now()}`, name: 'Lê Quốc Bảo', phone: '0900000002' } });
 

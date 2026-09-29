@@ -18,6 +18,11 @@ import type { CreateScheduleBatchInput, CreateWorkShiftInput, ScheduleDeleteInpu
 const dateFromIso = (value: string) => new Date(`${value}T00:00:00.000Z`);
 const isoDate = (value: Date | null) => value?.toISOString().slice(0, 10) ?? null;
 const isoDateTime = (value: Date | null) => value?.toISOString() ?? null;
+async function resolveMainBranchId(client: Pick<Prisma.TransactionClient, 'branch'>): Promise<number> {
+  const branch = await client.branch.findUnique({ where: { code: 'MAIN' }, select: { id: true } });
+  if (!branch) throw ApiError.internal('Chưa khởi tạo chi nhánh mặc định MAIN.');
+  return branch.id;
+}
 const addDays = (value: string, count: number) => {
   const date = dateFromIso(value);
   date.setUTCDate(date.getUTCDate() + count);
@@ -112,6 +117,7 @@ async function createScheduleDraftsInTransaction(
   const employeeIds = [...new Set(drafts.map(draft => draft.employeeId))].sort((left, right) => left - right);
   const shiftIds = [...new Set(drafts.map(draft => draft.shiftId))].sort((left, right) => left - right);
   await lockEmployeeRows(tx, employeeIds);
+  const branchId = await resolveMainBranchId(tx);
 
   const employees = await tx.employee.findMany({
     where: { id: { in: employeeIds } },
@@ -156,7 +162,7 @@ async function createScheduleDraftsInTransaction(
   }
 
   const existingRulesRaw = await tx.employeeScheduleRule.findMany({
-    where: { employeeId: { in: employeeIds } },
+    where: { employeeId: { in: employeeIds }, branchId },
     include: { shift: { select: { code: true, name: true, startMinute: true, endMinute: true } }, exceptions: { select: { workDate: true, type: true } } }
   });
   const existingRules = existingRulesRaw.map(toScheduleRule);
@@ -203,6 +209,7 @@ async function createScheduleDraftsInTransaction(
     const created = await tx.employeeScheduleRule.create({
       data: {
         employeeId: draft.employeeId,
+        branchId,
         shiftId: draft.shiftId,
         recurrenceType: draft.recurrenceType,
         startDate: dateFromIso(draft.startDate),
@@ -285,6 +292,7 @@ export class EmployeeSchedulesService {
     const weekEnd = addDays(query.weekStart, 6);
     const weekStartDate = dateFromIso(query.weekStart);
     const weekEndDate = dateFromIso(weekEnd);
+    const branchId = await resolveMainBranchId(prisma);
 
     const where: Prisma.EmployeeWhereInput = {
       ...(query.search ? { OR: [
@@ -306,6 +314,7 @@ export class EmployeeSchedulesService {
           jobTitle: { select: { id: true, name: true } },
           scheduleRules: {
             where: {
+              branchId,
               cancelledAt: null,
               startDate: { lte: weekEndDate },
               OR: [{ endDate: null }, { endDate: { gte: weekStartDate } }]
@@ -439,7 +448,8 @@ export class EmployeeSchedulesService {
 
   static async mutateRule(ruleId: number, input: ScheduleMutationInput, actor: { id: number; name: string }) {
     ensureNotPast(input.workDate);
-    const initial = await prisma.employeeScheduleRule.findUnique({ where: { id: ruleId }, select: { employeeId: true } });
+    const branchId = await resolveMainBranchId(prisma);
+    const initial = await prisma.employeeScheduleRule.findFirst({ where: { id: ruleId, branchId }, select: { employeeId: true } });
     if (!initial) throw ApiError.notFound('Không tìm thấy lịch làm việc', 'NOT_FOUND');
 
     const result = await prisma.$transaction(async tx => {
@@ -448,7 +458,7 @@ export class EmployeeSchedulesService {
         where: { id: ruleId },
         include: { shift: { select: { code: true, name: true, startMinute: true, endMinute: true } }, exceptions: { select: { workDate: true, type: true } } }
       });
-      if (!rule || rule.employeeId !== initial.employeeId) throw ApiError.notFound('Lịch làm việc không còn tồn tại');
+      if (!rule || rule.employeeId !== initial.employeeId || rule.branchId !== branchId) throw ApiError.notFound('Lịch làm việc không còn tồn tại');
       if (rule.cancelledAt) throw ApiError.conflict('Lịch làm việc đã bị hủy', 'CONFLICT', { ruleId: String(ruleId) });
 
       const normalizedRule = toScheduleRule(rule);
@@ -482,7 +492,7 @@ export class EmployeeSchedulesService {
       }
 
       const existingRulesRaw = await tx.employeeScheduleRule.findMany({
-        where: { employeeId: rule.employeeId },
+        where: { employeeId: rule.employeeId, branchId },
         include: { shift: { select: { code: true, name: true, startMinute: true, endMinute: true } }, exceptions: { select: { workDate: true, type: true } } }
       });
       const effectiveRules = existingRulesRaw.map(toScheduleRule);
@@ -575,6 +585,7 @@ export class EmployeeSchedulesService {
       for (const candidate of candidates) {
         const created = await tx.employeeScheduleRule.create({ data: {
           employeeId: candidate.employeeId,
+          branchId,
           shiftId: candidate.shiftId,
           recurrenceType: candidate.recurrenceType,
           startDate: dateFromIso(candidate.startDate),
@@ -599,7 +610,8 @@ export class EmployeeSchedulesService {
 
   static async deleteRule(ruleId: number, input: ScheduleDeleteInput, actor: { id: number; name: string }) {
     ensureNotPast(input.workDate);
-    const initial = await prisma.employeeScheduleRule.findUnique({ where: { id: ruleId }, select: { employeeId: true } });
+    const branchId = await resolveMainBranchId(prisma);
+    const initial = await prisma.employeeScheduleRule.findFirst({ where: { id: ruleId, branchId }, select: { employeeId: true } });
     if (!initial) throw ApiError.notFound('Không tìm thấy lịch làm việc');
 
     const result = await prisma.$transaction(async tx => {
@@ -608,7 +620,7 @@ export class EmployeeSchedulesService {
         where: { id: ruleId },
         include: { shift: { select: { code: true, name: true, startMinute: true, endMinute: true } }, exceptions: { select: { workDate: true, type: true } } }
       });
-      if (!rule || rule.employeeId !== initial.employeeId) throw ApiError.notFound('Lịch làm việc không còn tồn tại');
+      if (!rule || rule.employeeId !== initial.employeeId || rule.branchId !== branchId) throw ApiError.notFound('Lịch làm việc không còn tồn tại');
       if (rule.cancelledAt) throw ApiError.conflict('Lịch làm việc đã bị hủy', 'CONFLICT', { ruleId: String(ruleId) });
 
       const normalizedRule = toScheduleRule(rule);

@@ -146,6 +146,7 @@ export class EmployeeScheduleTransferService {
     const shiftCodes = [...new Set(parsed.candidates.map(row => row.shiftCode))];
     const [employees, shifts] = await Promise.all([
       prisma.employee.findMany({ where: { code: { in: employeeCodes } }, select: { id: true, code: true, name: true, status: true, startDate: true, endDate: true, scheduleRules: {
+        where: { branch: { code: 'MAIN' } },
         include: { shift: { select: { code: true, name: true, startMinute: true, endMinute: true } }, exceptions: { select: { workDate: true, type: true } } }
       } } }),
       prisma.workShift.findMany({ where: { code: { in: shiftCodes } }, select: { id: true, code: true, name: true, startMinute: true, endMinute: true, isActive: true } })

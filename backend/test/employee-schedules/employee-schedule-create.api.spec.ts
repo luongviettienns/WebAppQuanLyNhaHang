@@ -63,6 +63,9 @@ describe('employee schedule batch create API', () => {
     expect(await prismaTest.employeeScheduleRule.count()).toBe(4);
     expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_SCHEDULE_CREATED', actorId } })).toBe(4);
     expect(response.body.data.rules).toHaveLength(4);
+    const mainBranch = await prismaTest.branch.findUniqueOrThrow({ where: { code: 'MAIN' } });
+    const savedRules = await prismaTest.employeeScheduleRule.findMany({ select: { branchId: true } });
+    expect(savedRules.every(rule => rule.branchId === mainBranch.id)).toBe(true);
   });
 
   it('creates a bounded weekly rule using the ISO weekday of its start date', async () => {

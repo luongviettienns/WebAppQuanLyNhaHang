@@ -3,6 +3,7 @@ import {
   businessDateAt,
   expandAttendanceOccurrences,
   getBusinessWeekBounds,
+  getBusinessWeekUtcBounds,
   hasOpenAttendanceSession,
   classifyAttendanceSession,
   projectOccurrenceAttendance,
@@ -44,6 +45,14 @@ describe('attendance business dates and schedule occurrences', () => {
 
   it('returns the Monday-to-Sunday business week around a date', () => {
     expect(getBusinessWeekBounds('2026-10-04')).toEqual({ weekStart: '2026-09-28', weekEnd: '2026-10-04' });
+  });
+
+  it('returns UTC half-open bounds for the Asia/Ho_Chi_Minh business week', () => {
+    expect(getBusinessWeekUtcBounds('2026-09-28')).toEqual({
+      startInclusive: new Date('2026-09-27T17:00:00.000Z'),
+      endExclusive: new Date('2026-10-04T17:00:00.000Z')
+    });
+    expect(() => getBusinessWeekUtcBounds('2026-09-29')).toThrowError();
   });
 
   it('expands once and weekly rules while omitting canceled dates and foreign branches/employees', () => {
@@ -185,6 +194,25 @@ describe('actual attendance classification', () => {
     });
     expect(conflict.occurrenceStatus).toBe('ATTENDED');
     expect(conflict.reviewConflict).toBe(true);
+  });
+
+  it('classifies actual punches against the frozen schedule snapshot, not a later-edited shift rule', () => {
+    const actualCheckIn = new Date('2026-09-29T02:01:00.000Z');
+    const projection = projectOccurrenceAttendance({
+      occurrence: occurrence({ plannedStartMinute: 480, plannedEndMinute: 720 }),
+      session: {
+        checkInAt: actualCheckIn,
+        checkOutAt: null,
+        linkStatus: 'SCHEDULED',
+        plannedWorkDate: '2026-09-29',
+        plannedStartMinute: 540,
+        plannedEndMinute: 780
+      },
+      now: actualCheckIn
+    });
+
+    expect(projection.classification?.checkInDeltaMinutes).toBe(1);
+    expect(projection.classification?.checkInTiming).toBe('LATE');
   });
 
   it('treats an open session from a prior business date as a blocking session', () => {
