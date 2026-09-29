@@ -1,26 +1,24 @@
 import { PrismaClient } from '@prisma/client';
 import dotenv from 'dotenv';
 import path from 'path';
+import { resolveTestDatabaseTarget } from '../../scripts/test-database-guard';
 
 // Load .env tu thu muc goc monorepo (WebAppQuanLyNhaHang/.env)
 // process.cwd() trong test = backend/ nen can di len 1 cap
 dotenv.config({ path: path.resolve(process.cwd(), '..', '.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') }); // fallback
 
-const devUrl = process.env.DATABASE_URL;
-const testUrl = process.env.TEST_DATABASE_URL || devUrl;
+const testTarget = resolveTestDatabaseTarget(process.env);
 
 // Kiem tra an toan tuyet doi de khong bao gio xoa nham Development DB trong test
 export function validateTestEnvironment() {
-  if (process.env.NODE_ENV === 'test' && devUrl && testUrl && devUrl === testUrl) {
-    throw new Error('NGUY HIEM: TEST_DATABASE_URL va DATABASE_URL khong duoc phep trung nhau khi chay test!');
-  }
+  resolveTestDatabaseTarget(process.env);
 }
 
 export const prismaTest = new PrismaClient({
   datasources: {
     db: {
-      url: testUrl
+      url: testTarget.url
     }
   }
 });
@@ -30,6 +28,9 @@ export async function truncateAllTables() {
   // Xoa du lieu theo thu tu khoa ngoai
   await prismaTest.$executeRawUnsafe(`SET FOREIGN_KEY_CHECKS = 0;`);
   const tables = [
+    'EmployeeScheduleException',
+    'EmployeeScheduleRule',
+    'WorkShift',
     'OrderPaymentTransaction',
     'ReservationDepositTransaction',
     'ReservationChange',

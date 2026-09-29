@@ -14,7 +14,16 @@ export type ErrorCode =
   | 'VOUCHER_NOT_STARTED'
   | 'VOUCHER_USAGE_EXHAUSTED'
   | 'MIN_ORDER_VALUE_NOT_MET'
-  | 'VOUCHER_INACTIVE';
+  | 'VOUCHER_INACTIVE'
+  | 'EMPLOYEE_NOT_FOUND'
+  | 'EMPLOYEE_NOT_WORKING'
+  | 'SHIFT_NOT_FOUND'
+  | 'SHIFT_INACTIVE'
+  | 'SCHEDULE_DATE_INVALID'
+  | 'SCHEDULE_TIME_INVALID'
+  | 'SCHEDULE_RECURRENCE_INVALID'
+  | 'SCHEDULE_DUPLICATE'
+  | 'SCHEDULE_OVERLAP';
 
 export class ApiError extends Error {
   public readonly statusCode: number;
@@ -54,8 +63,8 @@ export class ApiError extends Error {
     return new ApiError(404, code, message);
   }
 
-  static conflict(message: string, code: ErrorCode = 'CONFLICT') {
-    return new ApiError(409, code, message);
+  static conflict(message: string, code: ErrorCode = 'CONFLICT', details?: Record<string, string>) {
+    return new ApiError(409, code, message, details);
   }
 
   static orderStateInvalid(message: string) {
