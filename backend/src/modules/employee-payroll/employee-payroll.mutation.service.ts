@@ -5,14 +5,14 @@ import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { businessDateAt } from '../employee-attendance/attendance-domain';
 import { calculatePayrollLine, getPayrollMonthBounds } from './employee-payroll.calculation';
-import type { PayrollCreateInput } from './employee-payroll.schemas';
+import type { PayrollAdjustmentInput, PayrollCancelInput, PayrollCreateInput, PayrollReasonInput } from './employee-payroll.schemas';
 
 export interface PayrollActor { id: number; name: string }
 export interface PayrollMutationResult {
   id: number;
   code: string;
   name: string;
-  status: 'DRAFT' | 'CALCULATED';
+  status: 'DRAFT' | 'CALCULATED' | 'FINALIZED' | 'CANCELLED';
   periodStart: string;
   periodEnd: string;
   employeeCount: number;
@@ -20,6 +20,7 @@ export interface PayrollMutationResult {
   totalNetAmount: number;
   totalRemainingAmount: number;
   version: number;
+  cancelReason?: string | null;
 }
 
 type PayrollEmitter = (event: string, payload: Record<string, unknown>) => void;
@@ -143,6 +144,52 @@ async function calculateLineDrafts(
     return { employee, calculation, employeeDispositions, employeeRules };
   });
 }
+
+async function recomputeFinancialTotals(tx: Prisma.TransactionClient, batchId: number) {
+  const lines = await tx.employeePayrollLine.findMany({
+    where: { payrollBatchId: batchId },
+    include: { adjustments: { where: { reversedAt: null }, select: { type: true, amount: true } } },
+    orderBy: { id: 'asc' }
+  });
+  let totalGrossAmount = 0;
+  let totalAdjustmentAmount = 0;
+  let totalNetAmount = 0;
+  let totalPaidAmount = 0;
+  let totalRemainingAmount = 0;
+  for (const line of lines) {
+    const bonusAmount = line.adjustments.filter(item => item.type === 'BONUS').reduce((sum, item) => sum + item.amount, 0);
+    const deductionAmount = line.adjustments.filter(item => item.type === 'DEDUCTION').reduce((sum, item) => sum + item.amount, 0);
+    const netAmount = Math.max(0, line.grossAmount + bonusAmount - deductionAmount);
+    const remainingAmount = Math.max(0, netAmount - line.paidAmount);
+    await tx.employeePayrollLine.update({
+      where: { id: line.id }, data: { bonusAmount, deductionAmount, netAmount, remainingAmount }
+    });
+    totalGrossAmount += line.grossAmount;
+    totalAdjustmentAmount += bonusAmount - deductionAmount;
+    totalNetAmount += netAmount;
+    totalPaidAmount += line.paidAmount;
+    totalRemainingAmount += remainingAmount;
+  }
+  return { lines, totalGrossAmount, totalAdjustmentAmount, totalNetAmount, totalPaidAmount, totalRemainingAmount };
+}
+
+const lifecycleResult = (batch: {
+  id: number; code: string; name: string; status: string; periodStart: Date; periodEnd: Date;
+  totalGrossAmount: number; totalNetAmount: number; totalRemainingAmount: number; version: number; cancelReason: string | null;
+}, employeeCount: number): PayrollMutationResult => ({
+  id: batch.id,
+  code: batch.code,
+  name: batch.name,
+  status: batch.status as PayrollMutationResult['status'],
+  periodStart: isoDate(batch.periodStart)!,
+  periodEnd: isoDate(batch.periodEnd)!,
+  employeeCount,
+  totalGrossAmount: batch.totalGrossAmount,
+  totalNetAmount: batch.totalNetAmount,
+  totalRemainingAmount: batch.totalRemainingAmount,
+  version: batch.version,
+  cancelReason: batch.cancelReason
+});
 
 export class EmployeePayrollMutationService {
   constructor(
@@ -475,6 +522,172 @@ export class EmployeePayrollMutationService {
         revision: outcome.result.version
       });
     }
+    return outcome.result;
+  }
+
+  async addAdjustment(batchId: number, lineId: number, input: PayrollAdjustmentInput, actor: PayrollActor) {
+    const outcome = await this.db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM EmployeePayrollBatch WHERE id = ${batchId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM EmployeePayrollLine WHERE id = ${lineId} FOR UPDATE`;
+      const batch = await tx.employeePayrollBatch.findUnique({ where: { id: batchId } });
+      if (!batch) throw ApiError.notFound('Không tìm thấy bảng lương');
+      if (batch.status !== 'DRAFT' && batch.status !== 'CALCULATED') {
+        throw ApiError.conflict('Không thể điều chỉnh bảng lương đã khóa', 'PAYROLL_STATE_INVALID');
+      }
+      const line = await tx.employeePayrollLine.findFirst({ where: { id: lineId, payrollBatchId: batchId } });
+      if (!line) throw ApiError.notFound('Không tìm thấy dòng lương');
+      const adjustment = await tx.employeePayrollAdjustment.create({
+        data: { payrollLineId: line.id, type: input.type, amount: input.amount, reason: input.reason, createdByUserId: actor.id }
+      });
+      const totals = await recomputeFinancialTotals(tx, batch.id);
+      const { lines: _lines, ...financialTotals } = totals;
+      const updated = await tx.employeePayrollBatch.update({
+        where: { id: batch.id },
+        data: { ...financialTotals, version: { increment: 1 } }
+      });
+      await tx.auditLog.create({
+        data: {
+          action: 'EMPLOYEE_PAYROLL_ADJUSTMENT_ADDED', targetType: 'EmployeePayrollAdjustment', targetId: adjustment.id,
+          actorId: actor.id, actorName: actor.name,
+          metadata: jsonValue({ batchId, lineId, type: input.type, amount: input.amount, reason: input.reason, beforeVersion: batch.version, afterVersion: updated.version })
+        }
+      });
+      return { adjustment, batch: updated, employeeId: line.employeeId };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30_000 });
+    this.emit('employee-payroll:changed', {
+      batchId, branchId: outcome.batch.branchId, employeeIds: [outcome.employeeId],
+      periodStart: isoDate(outcome.batch.periodStart), periodEnd: isoDate(outcome.batch.periodEnd), revision: outcome.batch.version
+    });
+    return outcome.adjustment;
+  }
+
+  async reverseAdjustment(batchId: number, lineId: number, adjustmentId: number, input: PayrollReasonInput, actor: PayrollActor) {
+    const outcome = await this.db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM EmployeePayrollBatch WHERE id = ${batchId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM EmployeePayrollAdjustment WHERE id = ${adjustmentId} FOR UPDATE`;
+      const batch = await tx.employeePayrollBatch.findUnique({ where: { id: batchId } });
+      if (!batch) throw ApiError.notFound('Không tìm thấy bảng lương');
+      if (batch.status !== 'DRAFT' && batch.status !== 'CALCULATED') {
+        throw ApiError.conflict('Không thể đảo điều chỉnh của bảng lương đã khóa', 'PAYROLL_STATE_INVALID');
+      }
+      const adjustment = await tx.employeePayrollAdjustment.findFirst({
+        where: { id: adjustmentId, payrollLineId: lineId, payrollLine: { payrollBatchId: batchId } },
+        include: { payrollLine: { select: { employeeId: true } } }
+      });
+      if (!adjustment) throw ApiError.notFound('Không tìm thấy điều chỉnh lương');
+      if (adjustment.reversedAt) throw ApiError.conflict('Điều chỉnh đã được đảo trước đó', 'PAYROLL_STATE_INVALID');
+      const reversed = await tx.employeePayrollAdjustment.update({
+        where: { id: adjustment.id },
+        data: { reversedAt: new Date(), reversedByUserId: actor.id, reverseReason: input.reason }
+      });
+      const totals = await recomputeFinancialTotals(tx, batch.id);
+      const { lines: _lines, ...financialTotals } = totals;
+      const updated = await tx.employeePayrollBatch.update({
+        where: { id: batch.id }, data: { ...financialTotals, version: { increment: 1 } }
+      });
+      await tx.auditLog.create({
+        data: {
+          action: 'EMPLOYEE_PAYROLL_ADJUSTMENT_REVERSED', targetType: 'EmployeePayrollAdjustment', targetId: adjustment.id,
+          actorId: actor.id, actorName: actor.name,
+          metadata: jsonValue({ batchId, lineId, adjustmentId, reason: input.reason, amount: adjustment.amount, beforeVersion: batch.version, afterVersion: updated.version })
+        }
+      });
+      return { adjustment: reversed, batch: updated, employeeId: adjustment.payrollLine.employeeId };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30_000 });
+    this.emit('employee-payroll:changed', {
+      batchId, branchId: outcome.batch.branchId, employeeIds: [outcome.employeeId],
+      periodStart: isoDate(outcome.batch.periodStart), periodEnd: isoDate(outcome.batch.periodEnd), revision: outcome.batch.version
+    });
+    return outcome.adjustment;
+  }
+
+  async finalize(batchId: number, actor: PayrollActor, idempotencyKey: string): Promise<PayrollMutationResult> {
+    const operation = `FINALIZE:${batchId}`;
+    const digest = requestDigest('FINALIZE', { batchId });
+    const outcome = await this.db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM EmployeePayrollBatch WHERE id = ${batchId} FOR UPDATE`;
+      const replay = await tx.employeePayrollIdempotency.findUnique({
+        where: { actorId_operation_idempotencyKey: { actorId: actor.id, operation, idempotencyKey } }
+      });
+      if (replay) {
+        if (replay.requestDigest !== digest) {
+          throw ApiError.conflict('Idempotency-Key đã được dùng cho yêu cầu khác', 'PAYROLL_IDEMPOTENCY_KEY_REUSED');
+        }
+        return { result: replay.response as unknown as PayrollMutationResult, replayed: true, branchId: 0, employeeIds: [] as number[] };
+      }
+      const batch = await tx.employeePayrollBatch.findUnique({ where: { id: batchId } });
+      if (!batch) throw ApiError.notFound('Không tìm thấy bảng lương');
+      const totals = await recomputeFinancialTotals(tx, batch.id);
+      const blocked = totals.lines.some(line => line.calculationStatus === 'REVIEW_REQUIRED');
+      if (blocked) {
+        throw ApiError.conflict('Bảng lương còn dữ liệu nguồn cần xử lý', 'PAYROLL_ATTENDANCE_UNRESOLVED');
+      }
+      if (batch.status !== 'CALCULATED') {
+        throw ApiError.conflict('Chỉ được chốt bảng lương đã tính xong', 'PAYROLL_STATE_INVALID');
+      }
+      const updated = await tx.employeePayrollBatch.update({
+        where: { id: batch.id },
+        data: {
+          totalGrossAmount: totals.totalGrossAmount,
+          totalAdjustmentAmount: totals.totalAdjustmentAmount,
+          totalNetAmount: totals.totalNetAmount,
+          totalPaidAmount: totals.totalPaidAmount,
+          totalRemainingAmount: totals.totalRemainingAmount,
+          status: 'FINALIZED', finalizedAt: new Date(), finalizedByUserId: actor.id, version: { increment: 1 }
+        }
+      });
+      const employeeIds = totals.lines.map(line => line.employeeId);
+      const result = lifecycleResult(updated, totals.lines.length);
+      await tx.auditLog.create({
+        data: {
+          action: 'EMPLOYEE_PAYROLL_FINALIZED', targetType: 'EmployeePayrollBatch', targetId: batch.id,
+          actorId: actor.id, actorName: actor.name,
+          metadata: jsonValue({ beforeVersion: batch.version, afterVersion: updated.version, totalNetAmount: updated.totalNetAmount, employeeIds })
+        }
+      });
+      await tx.employeePayrollIdempotency.create({
+        data: { actorId: actor.id, operation, idempotencyKey, requestDigest: digest, response: jsonValue(result), payrollBatchId: batch.id }
+      });
+      return { result, replayed: false, branchId: batch.branchId, employeeIds };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30_000 });
+    if (!outcome.replayed) {
+      this.emit('employee-payroll:changed', {
+        batchId, branchId: outcome.branchId, employeeIds: outcome.employeeIds,
+        periodStart: outcome.result.periodStart, periodEnd: outcome.result.periodEnd, revision: outcome.result.version
+      });
+    }
+    return outcome.result;
+  }
+
+  async cancel(batchId: number, input: PayrollCancelInput, actor: PayrollActor): Promise<PayrollMutationResult> {
+    const outcome = await this.db.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM EmployeePayrollBatch WHERE id = ${batchId} FOR UPDATE`;
+      const batch = await tx.employeePayrollBatch.findUnique({
+        where: { id: batchId }, include: { lines: { select: { employeeId: true } } }
+      });
+      if (!batch) throw ApiError.notFound('Không tìm thấy bảng lương');
+      if (batch.status === 'CANCELLED') throw ApiError.conflict('Bảng lương đã bị hủy', 'PAYROLL_STATE_INVALID');
+      const successfulPayments = await tx.employeePayrollPayment.count({
+        where: { payrollBatchId: batch.id, status: 'SUCCESS' }
+      });
+      if (successfulPayments > 0) throw ApiError.conflict('Không thể hủy bảng lương đã phát sinh chi trả', 'PAYROLL_STATE_INVALID');
+      const updated = await tx.employeePayrollBatch.update({
+        where: { id: batch.id },
+        data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledByUserId: actor.id, cancelReason: input.reason, version: { increment: 1 } }
+      });
+      await tx.auditLog.create({
+        data: {
+          action: 'EMPLOYEE_PAYROLL_CANCELLED', targetType: 'EmployeePayrollBatch', targetId: batch.id,
+          actorId: actor.id, actorName: actor.name,
+          metadata: jsonValue({ reason: input.reason, previousStatus: batch.status, beforeVersion: batch.version, afterVersion: updated.version })
+        }
+      });
+      return { result: lifecycleResult(updated, batch.lines.length), branchId: batch.branchId, employeeIds: batch.lines.map(line => line.employeeId) };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30_000 });
+    this.emit('employee-payroll:changed', {
+      batchId, branchId: outcome.branchId, employeeIds: outcome.employeeIds,
+      periodStart: outcome.result.periodStart, periodEnd: outcome.result.periodEnd, revision: outcome.result.version
+    });
     return outcome.result;
   }
 }

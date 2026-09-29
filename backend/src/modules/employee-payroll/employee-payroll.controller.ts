@@ -2,10 +2,15 @@ import type { NextFunction, Request, Response } from 'express';
 import { EmployeePayrollQueryService } from './employee-payroll.query.service';
 import {
   parsePayrollBatchId,
+  parsePayrollAdjustmentInput,
+  parsePayrollCancelInput,
   parsePayrollCreateInput,
   parsePayrollExportQuery,
+  parsePayrollFinalizeInput,
   parsePayrollIdempotencyKey,
-  parsePayrollListQuery
+  parsePayrollListQuery,
+  parsePayrollReasonInput,
+  parsePayrollRouteId
 } from './employee-payroll.schemas';
 import {
   serializeEmployeePayrollCsv,
@@ -33,6 +38,57 @@ export class EmployeePayrollController {
       const batchId = parsePayrollBatchId(req.params.id);
       const idempotencyKey = parsePayrollIdempotencyKey(req.header('Idempotency-Key'));
       const result = await mutationService.recalculate(batchId, { id: req.user!.id, name: req.user!.name }, idempotencyKey);
+      res.json({ data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async addAdjustment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const batchId = parsePayrollBatchId(req.params.id);
+      const lineId = parsePayrollRouteId(req.params.lineId, 'Mã dòng lương không hợp lệ');
+      const result = await mutationService.addAdjustment(
+        batchId, lineId, parsePayrollAdjustmentInput(req.body), { id: req.user!.id, name: req.user!.name }
+      );
+      res.status(201).json({ data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async reverseAdjustment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const batchId = parsePayrollBatchId(req.params.id);
+      const lineId = parsePayrollRouteId(req.params.lineId, 'Mã dòng lương không hợp lệ');
+      const adjustmentId = parsePayrollRouteId(req.params.adjustmentId, 'Mã điều chỉnh lương không hợp lệ');
+      const result = await mutationService.reverseAdjustment(
+        batchId, lineId, adjustmentId, parsePayrollReasonInput(req.body), { id: req.user!.id, name: req.user!.name }
+      );
+      res.json({ data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async finalize(req: Request, res: Response, next: NextFunction) {
+    try {
+      parsePayrollFinalizeInput(req.body);
+      const batchId = parsePayrollBatchId(req.params.id);
+      const idempotencyKey = parsePayrollIdempotencyKey(req.header('Idempotency-Key'));
+      const result = await mutationService.finalize(batchId, { id: req.user!.id, name: req.user!.name }, idempotencyKey);
+      res.json({ data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async cancel(req: Request, res: Response, next: NextFunction) {
+    try {
+      const batchId = parsePayrollBatchId(req.params.id);
+      const result = await mutationService.cancel(
+        batchId, parsePayrollCancelInput(req.body), { id: req.user!.id, name: req.user!.name }
+      );
       res.json({ data: result });
     } catch (error) {
       next(error);

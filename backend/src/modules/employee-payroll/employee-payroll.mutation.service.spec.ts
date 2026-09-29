@@ -135,4 +135,64 @@ describe('EmployeePayrollMutationService', () => {
     expect(await service.recalculate(created.id, actor, 'recalculate-202609')).toEqual(recalculated);
     expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_PAYROLL_RECALCULATED', targetId: created.id } })).toBe(1);
   });
+
+  it('appends and reverses adjustments while recomputing line and batch totals atomically', async () => {
+    const created = await service.create(
+      { branchId, month: '2026-09', scope: 'CUSTOM', employeeIds: [workingId] }, actor, 'create-for-adjustment'
+    );
+    const line = await prismaTest.employeePayrollLine.findFirstOrThrow({ where: { payrollBatchId: created.id } });
+
+    const adjustment = await service.addAdjustment(created.id, line.id, {
+      type: 'BONUS', amount: 500_000, reason: 'Thưởng hiệu suất'
+    }, actor);
+    let stored = await prismaTest.employeePayrollBatch.findUniqueOrThrow({ where: { id: created.id }, include: { lines: true } });
+    expect(adjustment).toMatchObject({ type: 'BONUS', amount: 500_000, reversedAt: null });
+    expect(stored).toMatchObject({ totalAdjustmentAmount: 500_000, totalNetAmount: 12_500_000, totalRemainingAmount: 12_500_000 });
+    expect(stored.lines[0]).toMatchObject({ bonusAmount: 500_000, netAmount: 12_500_000, remainingAmount: 12_500_000 });
+
+    await service.reverseAdjustment(created.id, line.id, adjustment.id, { reason: 'Thưởng nhập nhầm' }, actor);
+    stored = await prismaTest.employeePayrollBatch.findUniqueOrThrow({ where: { id: created.id }, include: { lines: true } });
+    expect(stored).toMatchObject({ totalAdjustmentAmount: 0, totalNetAmount: 12_000_000, totalRemainingAmount: 12_000_000 });
+    expect(stored.lines[0]).toMatchObject({ bonusAmount: 0, netAmount: 12_000_000, remainingAmount: 12_000_000 });
+    await expect(service.reverseAdjustment(created.id, line.id, adjustment.id, { reason: 'Đảo lần nữa' }, actor))
+      .rejects.toMatchObject({ statusCode: 409, code: 'PAYROLL_STATE_INVALID' });
+  });
+
+  it('finalizes only blocker-free calculated batches and replays the same request identity', async () => {
+    const created = await service.create(
+      { branchId, month: '2026-09', scope: 'CUSTOM', employeeIds: [workingId] }, actor, 'create-for-finalize'
+    );
+    const finalized = await service.finalize(created.id, actor, 'finalize-stable-key');
+
+    expect(finalized).toMatchObject({ id: created.id, status: 'FINALIZED', version: 2 });
+    expect(await service.finalize(created.id, actor, 'finalize-stable-key')).toEqual(finalized);
+    expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_PAYROLL_FINALIZED', targetId: created.id } })).toBe(1);
+    await expect(service.finalize(created.id, actor, 'finalize-other-key'))
+      .rejects.toMatchObject({ statusCode: 409, code: 'PAYROLL_STATE_INVALID' });
+
+    await prismaTest.employeeCompensation.deleteMany({ where: { employeeId: resignedId } });
+    const draft = await service.create(
+      { branchId, month: '2026-08', scope: 'CUSTOM', employeeIds: [resignedId] }, actor, 'create-blocked-finalize'
+    );
+    expect(draft.status).toBe('DRAFT');
+    await expect(service.finalize(draft.id, actor, 'finalize-blocked-key'))
+      .rejects.toMatchObject({ statusCode: 409, code: 'PAYROLL_ATTENDANCE_UNRESOLVED' });
+  });
+
+  it('cancels calculated or finalized-unpaid batches with audit while preserving line history', async () => {
+    const calculated = await service.create(
+      { branchId, month: '2026-09', scope: 'CUSTOM', employeeIds: [workingId] }, actor, 'create-for-cancel'
+    );
+    const cancelled = await service.cancel(calculated.id, { reason: 'Tạo nhầm kỳ lương' }, actor);
+    expect(cancelled).toMatchObject({ id: calculated.id, status: 'CANCELLED', cancelReason: 'Tạo nhầm kỳ lương' });
+    expect(await prismaTest.employeePayrollLine.count({ where: { payrollBatchId: calculated.id } })).toBe(1);
+
+    const finalizedCandidate = await service.create(
+      { branchId, month: '2026-08', scope: 'CUSTOM', employeeIds: [workingId] }, actor, 'create-finalized-cancel'
+    );
+    await service.finalize(finalizedCandidate.id, actor, 'finalize-before-cancel');
+    const finalizedCancelled = await service.cancel(finalizedCandidate.id, { reason: 'Hủy bảng chưa chi trả' }, actor);
+    expect(finalizedCancelled.status).toBe('CANCELLED');
+    expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_PAYROLL_CANCELLED' } })).toBe(2);
+  });
 });

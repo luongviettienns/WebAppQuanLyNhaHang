@@ -31,7 +31,11 @@ describe('employee payroll authorization', () => {
 
   it.each([
     ['/api/employee-payrolls', { branchId: 1, month: '2026-09', scope: 'ALL' }],
-    ['/api/employee-payrolls/1/recalculate', {}]
+    ['/api/employee-payrolls/1/recalculate', {}],
+    ['/api/employee-payrolls/1/finalize', {}],
+    ['/api/employee-payrolls/1/cancel', { reason: 'Hủy bảng lương' }],
+    ['/api/employee-payrolls/1/lines/1/adjustments', { type: 'BONUS', amount: 1000, reason: 'Thưởng' }],
+    ['/api/employee-payrolls/1/lines/1/adjustments/1/reverse', { reason: 'Đảo điều chỉnh' }]
   ] as const)('rejects guests and non-Admin roles on POST %s', async (endpoint, body) => {
     expect((await request(app).post(endpoint).send(body)).status).toBe(401);
     expect((await request(app).post(endpoint).set('Authorization', `Bearer ${token('CASHIER')}`).send(body)).status).toBe(403);
