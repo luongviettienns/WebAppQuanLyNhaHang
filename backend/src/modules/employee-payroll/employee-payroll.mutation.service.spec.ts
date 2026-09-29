@@ -1,0 +1,138 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { prismaTest, truncateAllTables } from '../../../test/helpers/database';
+import { EmployeePayrollMutationService } from './employee-payroll.mutation.service';
+
+const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
+
+describe('EmployeePayrollMutationService', () => {
+  let actor: { id: number; name: string };
+  let branchId = 0;
+  let workingId = 0;
+  let resignedId = 0;
+  let emit: ReturnType<typeof vi.fn>;
+  let service: EmployeePayrollMutationService;
+
+  beforeEach(async () => {
+    await truncateAllTables();
+    const admin = await prismaTest.user.create({
+      data: { username: `payroll-mutation-${Date.now()}`, passwordHash: 'hash', name: 'Payroll Admin', role: 'ADMIN' }
+    });
+    actor = { id: admin.id, name: admin.name };
+    branchId = (await prismaTest.branch.findUniqueOrThrow({ where: { code: 'MAIN' } })).id;
+    const working = await prismaTest.employee.create({
+      data: {
+        code: 'NV-PM-001', attendanceCode: 'CC-PM-001', name: 'Nhân viên đang làm', phone: '0900000101',
+        startDate: day('2026-01-01'), bankAccountNumber: '111111111'
+      }
+    });
+    const resigned = await prismaTest.employee.create({
+      data: {
+        code: 'NV-PM-002', attendanceCode: 'CC-PM-002', name: 'Nhân viên đã nghỉ', phone: '0900000102',
+        status: 'RESIGNED', startDate: day('2026-01-01'), endDate: day('2026-09-15')
+      }
+    });
+    await prismaTest.employee.create({
+      data: {
+        code: 'NV-PM-003', attendanceCode: 'CC-PM-003', name: 'Nghỉ trước kỳ', phone: '0900000103',
+        status: 'RESIGNED', startDate: day('2025-01-01'), endDate: day('2026-08-31')
+      }
+    });
+    workingId = working.id;
+    resignedId = resigned.id;
+    await prismaTest.employeeCompensation.createMany({ data: [
+      { employeeId: working.id, payBasis: 'MONTHLY', baseRate: 12_000_000, effectiveFrom: day('2026-01-01'), createdByUserId: admin.id },
+      { employeeId: resigned.id, payBasis: 'MONTHLY', baseRate: 9_000_000, effectiveFrom: day('2026-01-01'), createdByUserId: admin.id }
+    ] });
+    emit = vi.fn();
+    service = new EmployeePayrollMutationService(prismaTest, emit);
+  });
+
+  it('atomically creates ALL scope, includes resigned-in-period staff, and generates snapshot identity', async () => {
+    const result = await service.create(
+      { branchId, month: '2026-09', scope: 'ALL', employeeIds: [] },
+      actor,
+      'create-all-202609'
+    );
+
+    expect(result).toMatchObject({ code: 'BL202609001', name: 'Bảng lương tháng 9/2026', status: 'CALCULATED' });
+    const stored = await prismaTest.employeePayrollBatch.findUniqueOrThrow({ where: { id: result.id }, include: { lines: true } });
+    expect(stored.lines.map(line => line.employeeId).sort((a, b) => a - b)).toEqual([workingId, resignedId].sort((a, b) => a - b));
+    expect(stored.lines.find(line => line.employeeId === workingId)).toMatchObject({ activeCalendarDays: 30, grossAmount: 12_000_000 });
+    expect(stored.lines.find(line => line.employeeId === resignedId)).toMatchObject({ activeCalendarDays: 15 });
+    expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_PAYROLL_CREATED', targetId: result.id } })).toBe(1);
+    expect(emit).toHaveBeenCalledTimes(1);
+    expect(emit).toHaveBeenCalledWith('employee-payroll:changed', expect.objectContaining({
+      batchId: result.id,
+      branchId,
+      employeeIds: [workingId, resignedId].sort((a, b) => a - b)
+    }));
+  });
+
+  it('rolls back the whole custom batch when one employee does not exist', async () => {
+    await expect(service.create(
+      { branchId, month: '2026-09', scope: 'CUSTOM', employeeIds: [workingId, 999_999] },
+      actor,
+      'create-invalid-employee'
+    )).rejects.toMatchObject({ statusCode: 404, code: 'EMPLOYEE_NOT_FOUND' });
+
+    expect(await prismaTest.employeePayrollBatch.count()).toBe(0);
+    expect(await prismaTest.employeePayrollLine.count()).toBe(0);
+    expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_PAYROLL_CREATED' } })).toBe(0);
+    expect(emit).not.toHaveBeenCalled();
+  });
+
+  it('persists a complete DRAFT snapshot when one included employee has a finalization blocker', async () => {
+    await prismaTest.employeeCompensation.deleteMany({ where: { employeeId: resignedId } });
+
+    const result = await service.create(
+      { branchId, month: '2026-09', scope: 'ALL', employeeIds: [] }, actor, 'create-draft-202609'
+    );
+    const stored = await prismaTest.employeePayrollBatch.findUniqueOrThrow({ where: { id: result.id }, include: { lines: true } });
+
+    expect(stored.status).toBe('DRAFT');
+    expect(stored.lines).toHaveLength(2);
+    expect(stored.lines.find(line => line.employeeId === resignedId)).toMatchObject({ calculationStatus: 'REVIEW_REQUIRED', grossAmount: 0 });
+  });
+
+  it('replays the same idempotency request and rejects reuse with a different digest', async () => {
+    const first = await service.create(
+      { branchId, month: '2026-09', scope: 'CUSTOM', employeeIds: [workingId] }, actor, 'stable-create-key'
+    );
+    const replay = await service.create(
+      { branchId, month: '2026-09', scope: 'CUSTOM', employeeIds: [workingId] }, actor, 'stable-create-key'
+    );
+
+    expect(replay).toEqual(first);
+    expect(await prismaTest.employeePayrollBatch.count()).toBe(1);
+    expect(emit).toHaveBeenCalledTimes(1);
+    await expect(service.create(
+      { branchId, month: '2026-08', scope: 'CUSTOM', employeeIds: [workingId] }, actor, 'stable-create-key'
+    )).rejects.toMatchObject({ statusCode: 409, code: 'PAYROLL_IDEMPOTENCY_KEY_REUSED' });
+  });
+
+  it('recalculates current sources atomically while preserving active adjustments', async () => {
+    const created = await service.create(
+      { branchId, month: '2026-09', scope: 'CUSTOM', employeeIds: [workingId] }, actor, 'create-for-recalc'
+    );
+    const line = await prismaTest.employeePayrollLine.findFirstOrThrow({ where: { payrollBatchId: created.id } });
+    await prismaTest.employeePayrollAdjustment.create({
+      data: { payrollLineId: line.id, type: 'BONUS', amount: 500_000, reason: 'Thưởng hiệu suất', createdByUserId: actor.id }
+    });
+    await prismaTest.employeeCompensation.create({
+      data: { employeeId: workingId, payBasis: 'MONTHLY', baseRate: 18_000_000, effectiveFrom: day('2026-09-16'), createdByUserId: actor.id }
+    });
+
+    const recalculated = await service.recalculate(created.id, actor, 'recalculate-202609');
+    const stored = await prismaTest.employeePayrollBatch.findUniqueOrThrow({
+      where: { id: created.id }, include: { lines: { include: { adjustments: true } } }
+    });
+
+    expect(recalculated).toMatchObject({ id: created.id, status: 'CALCULATED', version: 2, totalGrossAmount: 15_000_000, totalNetAmount: 15_500_000 });
+    expect(stored.lines[0]).toMatchObject({ grossAmount: 15_000_000, bonusAmount: 500_000, netAmount: 15_500_000, remainingAmount: 15_500_000 });
+    expect(stored.lines[0].adjustments).toHaveLength(1);
+    expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_PAYROLL_RECALCULATED', targetId: created.id } })).toBe(1);
+
+    expect(await service.recalculate(created.id, actor, 'recalculate-202609')).toEqual(recalculated);
+    expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_PAYROLL_RECALCULATED', targetId: created.id } })).toBe(1);
+  });
+});

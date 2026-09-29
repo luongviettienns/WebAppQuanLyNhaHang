@@ -28,4 +28,13 @@ describe('employee payroll authorization', () => {
       expect(response.status).toBe(403);
     }
   });
+
+  it.each([
+    ['/api/employee-payrolls', { branchId: 1, month: '2026-09', scope: 'ALL' }],
+    ['/api/employee-payrolls/1/recalculate', {}]
+  ] as const)('rejects guests and non-Admin roles on POST %s', async (endpoint, body) => {
+    expect((await request(app).post(endpoint).send(body)).status).toBe(401);
+    expect((await request(app).post(endpoint).set('Authorization', `Bearer ${token('CASHIER')}`).send(body)).status).toBe(403);
+    expect((await request(app).post(endpoint).set('Authorization', `Bearer ${token('KITCHEN')}`).send(body)).status).toBe(403);
+  });
 });
