@@ -1,12 +1,16 @@
 import { NextFunction, Request, Response } from 'express';
 import { EmployeeSchedulesService } from './employee-schedules.service';
+import { EmployeeScheduleTransferService } from './employee-schedule-transfer.service';
 import {
   parseCreateScheduleBatchInput,
   parseCreateWorkShiftInput,
   parseScheduleDeleteInput,
   parseScheduleMutationInput,
   parseScheduleRuleId,
-  parseScheduleWeekQuery
+  parseScheduleWeekQuery,
+  parseScheduleImportExportQuery,
+  parseScheduleImportFile,
+  parseScheduleImportRows
 } from './employee-schedules.schemas';
 
 export class EmployeeSchedulesController {
@@ -72,5 +76,36 @@ export class EmployeeSchedulesController {
     } catch (error) {
       next(error);
     }
+  }
+
+  static async exportWeek(req: Request, res: Response, next: NextFunction) {
+    try {
+      const query = parseScheduleImportExportQuery(req.query);
+      const buffer = await EmployeeScheduleTransferService.export(query.weekStart, query.format);
+      res.type(query.format === 'csv' ? 'text/csv; charset=utf-8' : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .attachment(`lich_lam_viec_${query.weekStart}.${query.format}`).send(buffer);
+    } catch (error) { next(error); }
+  }
+
+  static async importTemplate(_req: Request, res: Response, next: NextFunction) {
+    try {
+      res.type('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+        .attachment('mau_lich_lam_viec.xlsx').send(EmployeeScheduleTransferService.template());
+    } catch (error) { next(error); }
+  }
+
+  static async previewImport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const input = parseScheduleImportFile(req.body);
+      res.json({ data: await EmployeeScheduleTransferService.preview(input.fileName, input.fileBase64) });
+    } catch (error) { next(error); }
+  }
+
+  static async commitImport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const rows = parseScheduleImportRows(req.body);
+      const data = await EmployeeScheduleTransferService.commit(rows, { id: req.user!.id, name: req.user!.name });
+      res.status(201).json({ data });
+    } catch (error) { next(error); }
   }
 }
