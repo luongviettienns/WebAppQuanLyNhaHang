@@ -14,3 +14,5 @@ employeePayrollRouter.post('/:id/finalize', EmployeePayrollController.finalize);
 employeePayrollRouter.post('/:id/cancel', EmployeePayrollController.cancel);
 employeePayrollRouter.post('/:id/lines/:lineId/adjustments', EmployeePayrollController.addAdjustment);
 employeePayrollRouter.post('/:id/lines/:lineId/adjustments/:adjustmentId/reverse', EmployeePayrollController.reverseAdjustment);
+employeePayrollRouter.post('/:id/lines/:lineId/payments', EmployeePayrollController.recordPayment);
+employeePayrollRouter.post('/:id/lines/:lineId/payments/:paymentId/reverse', EmployeePayrollController.reversePayment);

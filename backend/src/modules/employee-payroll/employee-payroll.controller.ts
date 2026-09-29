@@ -9,6 +9,7 @@ import {
   parsePayrollFinalizeInput,
   parsePayrollIdempotencyKey,
   parsePayrollListQuery,
+  parsePayrollPaymentInput,
   parsePayrollReasonInput,
   parsePayrollRouteId
 } from './employee-payroll.schemas';
@@ -17,9 +18,11 @@ import {
   serializeEmployeePayrollWorkbook
 } from './employee-payroll.export';
 import { EmployeePayrollMutationService } from './employee-payroll.mutation.service';
+import { EmployeePayrollPaymentService } from './employee-payroll.payment.service';
 
 const queryService = new EmployeePayrollQueryService();
 const mutationService = new EmployeePayrollMutationService();
+const paymentService = new EmployeePayrollPaymentService();
 
 export class EmployeePayrollController {
   static async create(req: Request, res: Response, next: NextFunction) {
@@ -88,6 +91,37 @@ export class EmployeePayrollController {
       const batchId = parsePayrollBatchId(req.params.id);
       const result = await mutationService.cancel(
         batchId, parsePayrollCancelInput(req.body), { id: req.user!.id, name: req.user!.name }
+      );
+      res.json({ data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async recordPayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const batchId = parsePayrollBatchId(req.params.id);
+      const lineId = parsePayrollRouteId(req.params.lineId, 'Mã dòng lương không hợp lệ');
+      const idempotencyKey = parsePayrollIdempotencyKey(req.header('Idempotency-Key'));
+      const result = await paymentService.recordPayment(
+        batchId, lineId, parsePayrollPaymentInput(req.body),
+        { id: req.user!.id, name: req.user!.name }, idempotencyKey
+      );
+      res.status(201).json({ data: result });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async reversePayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const batchId = parsePayrollBatchId(req.params.id);
+      const lineId = parsePayrollRouteId(req.params.lineId, 'Mã dòng lương không hợp lệ');
+      const paymentId = parsePayrollRouteId(req.params.paymentId, 'Mã giao dịch chi trả không hợp lệ');
+      const idempotencyKey = parsePayrollIdempotencyKey(req.header('Idempotency-Key'));
+      const result = await paymentService.reversePayment(
+        batchId, lineId, paymentId, parsePayrollReasonInput(req.body),
+        { id: req.user!.id, name: req.user!.name }, idempotencyKey
       );
       res.json({ data: result });
     } catch (error) {
