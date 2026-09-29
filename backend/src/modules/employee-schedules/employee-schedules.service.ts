@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
+import { env } from '../../config/env';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { AuditService } from '../audit/audit.service';
@@ -11,7 +12,7 @@ import {
   type ScheduleException,
   type ScheduleRule
 } from './schedule-domain';
-import type { CreateScheduleBatchInput, CreateWorkShiftInput, ScheduleWeekQuery } from './employee-schedules.schemas';
+import type { CreateScheduleBatchInput, CreateWorkShiftInput, ScheduleDeleteInput, ScheduleMutationInput, ScheduleWeekQuery } from './employee-schedules.schemas';
 
 const dateFromIso = (value: string) => new Date(`${value}T00:00:00.000Z`);
 const isoDate = (value: Date | null) => value?.toISOString().slice(0, 10) ?? null;
@@ -47,8 +48,36 @@ function toScheduleRule(rule: {
   };
 }
 
-function emitScheduleChanged(employeeIds: number[] = [], changedFrom: string | null = null, changedThrough: string | null = null) {
+export function emitScheduleChanged(employeeIds: number[] = [], changedFrom: string | null = null, changedThrough: string | null = null) {
   emitToAll('employee-schedules:changed', { employeeIds, changedFrom, changedThrough, updatedAt: new Date().toISOString() });
+}
+
+export async function lockEmployeeRows(tx: Prisma.TransactionClient, employeeIds: number[]) {
+  const sortedIds = [...new Set(employeeIds)].sort((left, right) => left - right);
+  if (sortedIds.length) {
+    await tx.$queryRaw(Prisma.sql`SELECT id FROM Employee WHERE id IN (${Prisma.join(sortedIds)}) ORDER BY id FOR UPDATE`);
+  }
+}
+
+function todayInBusinessTimezone() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: env.BUSINESS_TIMEZONE,
+    year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date());
+  const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function weekStartForDate(value: string) {
+  const date = dateFromIso(value);
+  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  return date.toISOString().slice(0, 10);
+}
+
+function ensureNotPast(workDate: string) {
+  if (workDate < todayInBusinessTimezone()) {
+    throw ApiError.badRequest('Không thể sửa hoặc xóa lịch trong quá khứ', { workDate }, 'SCHEDULE_DATE_INVALID');
+  }
 }
 
 export class EmployeeSchedulesService {
@@ -195,7 +224,7 @@ export class EmployeeSchedulesService {
   static async createBatch(input: CreateScheduleBatchInput, actor: { id: number; name: string }) {
     const endDate = input.endDate;
     const created = await prisma.$transaction(async tx => {
-      await tx.$queryRaw(Prisma.sql`SELECT id FROM Employee WHERE id IN (${Prisma.join(input.employeeIds)}) ORDER BY id FOR UPDATE`);
+      await lockEmployeeRows(tx, input.employeeIds);
 
       const employees = await tx.employee.findMany({
         where: { id: { in: input.employeeIds } },
@@ -308,5 +337,217 @@ export class EmployeeSchedulesService {
 
     emitScheduleChanged(input.employeeIds, input.startDate, endDate);
     return { createdCount: created.length, rules: created };
+  }
+
+  static async mutateRule(ruleId: number, input: ScheduleMutationInput, actor: { id: number; name: string }) {
+    ensureNotPast(input.workDate);
+    const initial = await prisma.employeeScheduleRule.findUnique({ where: { id: ruleId }, select: { employeeId: true } });
+    if (!initial) throw ApiError.notFound('Không tìm thấy lịch làm việc', 'NOT_FOUND');
+
+    const result = await prisma.$transaction(async tx => {
+      await lockEmployeeRows(tx, [initial.employeeId]);
+      const rule = await tx.employeeScheduleRule.findUnique({
+        where: { id: ruleId },
+        include: { shift: { select: { code: true, name: true, startMinute: true, endMinute: true } }, exceptions: { select: { workDate: true, type: true } } }
+      });
+      if (!rule || rule.employeeId !== initial.employeeId) throw ApiError.notFound('Lịch làm việc không còn tồn tại');
+      if (rule.cancelledAt) throw ApiError.conflict('Lịch làm việc đã bị hủy', 'CONFLICT', { ruleId: String(ruleId) });
+
+      const normalizedRule = toScheduleRule(rule);
+      const workDateOccurrence = expandRulesForWeek({
+        weekStart: weekStartForDate(input.workDate),
+        rules: [normalizedRule],
+        exceptions: normalizedRule.exceptions?.map(exception => ({ scheduleRuleId: rule.id, workDate: exception.workDate, type: exception.type })) ?? []
+      }).some(occurrence => occurrence.workDate === input.workDate);
+      if (!workDateOccurrence) {
+        throw ApiError.badRequest('Ngày chọn không thuộc lịch lặp này', { ruleId: String(ruleId), workDate: input.workDate }, 'SCHEDULE_RECURRENCE_INVALID');
+      }
+
+      const employee = await tx.employee.findUnique({
+        where: { id: rule.employeeId },
+        select: { id: true, code: true, status: true, startDate: true, endDate: true }
+      });
+      if (!employee) throw ApiError.notFound('Không tìm thấy hồ sơ nhân viên', 'EMPLOYEE_NOT_FOUND', { employeeId: String(rule.employeeId) });
+      if (employee.status !== 'WORKING') {
+        throw ApiError.conflict('Nhân viên không còn làm việc', 'EMPLOYEE_NOT_WORKING', { employeeCode: employee.code, workDate: input.workDate });
+      }
+      if (employee.startDate && dateFromIso(input.workDate) < employee.startDate) {
+        throw ApiError.conflict('Ngày lịch nằm trước ngày bắt đầu làm việc', 'EMPLOYEE_NOT_WORKING', { employeeCode: employee.code, workDate: input.workDate });
+      }
+
+      const shifts = await tx.workShift.findMany({ where: { id: { in: input.shiftIds } } });
+      const shiftsById = new Map(shifts.map(shift => [shift.id, shift]));
+      for (const shiftId of input.shiftIds) {
+        const shift = shiftsById.get(shiftId);
+        if (!shift) throw ApiError.notFound('Không tìm thấy ca làm việc', 'SHIFT_NOT_FOUND', { shiftId: String(shiftId) });
+        if (!shift.isActive) throw ApiError.conflict('Ca làm việc đã ngừng hoạt động', 'SHIFT_INACTIVE', { shiftCode: shift.code });
+      }
+
+      const existingRulesRaw = await tx.employeeScheduleRule.findMany({
+        where: { employeeId: rule.employeeId },
+        include: { shift: { select: { code: true, name: true, startMinute: true, endMinute: true } }, exceptions: { select: { workDate: true, type: true } } }
+      });
+      const effectiveRules = existingRulesRaw.map(toScheduleRule);
+      const oldIndex = effectiveRules.findIndex(existing => existing.id === rule.id);
+      const oldRule = effectiveRules[oldIndex];
+      const now = new Date();
+      const isOneTimeNoop = rule.recurrenceType === 'ONCE' && input.workDate === oldRule.startDate && input.shiftIds.includes(rule.shiftId);
+      const createsException = input.scope === 'occurrence' && rule.recurrenceType === 'WEEKLY';
+      let closesAt: string | null = null;
+      let cancelsOldRule = false;
+
+      if (createsException) {
+        effectiveRules[oldIndex] = {
+          ...oldRule,
+          exceptions: [...(oldRule.exceptions ?? []), { workDate: input.workDate, type: 'CANCELLED' }]
+        };
+      } else if (!isOneTimeNoop) {
+        if (input.scope === 'following' && rule.recurrenceType === 'WEEKLY' && input.workDate > oldRule.startDate) {
+          closesAt = addDays(input.workDate, -1);
+          effectiveRules[oldIndex] = { ...oldRule, endDate: closesAt };
+        } else {
+          cancelsOldRule = true;
+          effectiveRules[oldIndex] = { ...oldRule, cancelledAt: now.toISOString() };
+        }
+      }
+
+      const nextRecurrenceType = input.scope === 'following' && rule.recurrenceType === 'WEEKLY' ? 'WEEKLY' : 'ONCE';
+      const nextEndDate = nextRecurrenceType === 'WEEKLY' ? isoDate(rule.endDate) : null;
+      const selectedWeekday = new Date(`${input.workDate}T00:00:00.000Z`).getUTCDay();
+      const nextDayOfWeek = nextRecurrenceType === 'WEEKLY' ? rule.dayOfWeek ?? (selectedWeekday === 0 ? 7 : selectedWeekday) : null;
+      if (employee.endDate && nextRecurrenceType === 'WEEKLY' && (!nextEndDate || dateFromIso(nextEndDate) > employee.endDate)) {
+        throw ApiError.conflict('Lịch vượt quá ngày làm việc cuối cùng của nhân viên', 'EMPLOYEE_NOT_WORKING', { employeeCode: employee.code, endDate: isoDate(employee.endDate)! });
+      }
+      if (employee.endDate && dateFromIso(input.workDate) > employee.endDate) {
+        throw ApiError.conflict('Ngày lịch sau ngày làm việc cuối cùng', 'EMPLOYEE_NOT_WORKING', { employeeCode: employee.code, workDate: input.workDate });
+      }
+
+      const candidates: ScheduleRule[] = [];
+      const shiftCodeById = new Map<number, string>();
+      for (const existing of existingRulesRaw) shiftCodeById.set(existing.shiftId, existing.shift.code);
+      for (const shift of shifts) shiftCodeById.set(shift.id, shift.code);
+      for (const shiftId of input.shiftIds) {
+        if (isOneTimeNoop && shiftId === rule.shiftId) continue;
+        const shift = shiftsById.get(shiftId)!;
+        const candidate: ScheduleRule = {
+          id: -(candidates.length + 1),
+          employeeId: rule.employeeId,
+          shiftId,
+          recurrenceType: nextRecurrenceType,
+          startDate: input.workDate,
+          endDate: nextEndDate,
+          dayOfWeek: nextDayOfWeek,
+          cancelledAt: null,
+          shift: { code: shift.code, name: shift.name, startMinute: shift.startMinute, endMinute: shift.endMinute },
+          exceptions: []
+        };
+        const conflict = findRuleConflict(candidate, [...effectiveRules, ...candidates]);
+        if (conflict) {
+          throw ApiError.conflict(
+            conflict.code === 'SCHEDULE_DUPLICATE' ? 'Nhân viên đã có lịch cho ca này' : 'Khung giờ ca bị chồng lấn',
+            conflict.code,
+            { employeeCode: employee.code, workDate: conflict.workDate, shiftCode: shift.code, conflictingShiftCode: shiftCodeById.get(conflict.conflictingShiftId) ?? '' }
+          );
+        }
+        candidates.push(candidate);
+      }
+
+      if (createsException) {
+        await tx.employeeScheduleException.create({ data: {
+          scheduleRuleId: rule.id, workDate: dateFromIso(input.workDate), type: 'CANCELLED', createdByUserId: actor.id
+        } });
+        await AuditService.logInTransaction(tx, {
+          action: 'EMPLOYEE_SCHEDULE_EXCEPTION_CREATED', targetType: 'EmployeeScheduleRule', targetId: rule.id,
+          actorId: actor.id, actorName: actor.name,
+          metadata: { employeeId: employee.id, employeeCode: employee.code, shiftCode: rule.shift.code, workDate: input.workDate, scope: input.scope }
+        });
+      } else if (!isOneTimeNoop) {
+        await tx.employeeScheduleRule.update({
+          where: { id: rule.id },
+          data: { ...(cancelsOldRule ? { cancelledAt: now, cancelledByUserId: actor.id } : { endDate: dateFromIso(closesAt!) }) }
+        });
+        await AuditService.logInTransaction(tx, {
+          action: 'EMPLOYEE_SCHEDULE_UPDATED', targetType: 'EmployeeScheduleRule', targetId: rule.id,
+          actorId: actor.id, actorName: actor.name,
+          metadata: { employeeId: employee.id, employeeCode: employee.code, shiftCode: rule.shift.code, workDate: input.workDate, scope: input.scope, updatedFields: [cancelsOldRule ? 'cancelledAt' : 'endDate'] }
+        });
+      }
+
+      const createdRules = [];
+      for (const candidate of candidates) {
+        const created = await tx.employeeScheduleRule.create({ data: {
+          employeeId: candidate.employeeId,
+          shiftId: candidate.shiftId,
+          recurrenceType: candidate.recurrenceType,
+          startDate: dateFromIso(candidate.startDate),
+          endDate: candidate.endDate ? dateFromIso(candidate.endDate) : null,
+          dayOfWeek: candidate.dayOfWeek,
+          createdByUserId: actor.id
+        } });
+        await AuditService.logInTransaction(tx, {
+          action: 'EMPLOYEE_SCHEDULE_CREATED', targetType: 'EmployeeScheduleRule', targetId: created.id,
+          actorId: actor.id, actorName: actor.name,
+          metadata: { employeeId: employee.id, employeeCode: employee.code, shiftCode: candidate.shift.code, workDate: input.workDate, scope: input.scope, recurrenceType: candidate.recurrenceType }
+        });
+        createdRules.push({ id: created.id, shiftId: created.shiftId, recurrenceType: created.recurrenceType });
+      }
+
+      return { employeeId: employee.id, createdRules, changedThrough: input.scope === 'occurrence' ? input.workDate : isoDate(rule.endDate) };
+    }, { timeout: 30000 });
+
+    emitScheduleChanged([result.employeeId], input.workDate, result.changedThrough);
+    return { updated: true, createdCount: result.createdRules.length, rules: result.createdRules };
+  }
+
+  static async deleteRule(ruleId: number, input: ScheduleDeleteInput, actor: { id: number; name: string }) {
+    ensureNotPast(input.workDate);
+    const initial = await prisma.employeeScheduleRule.findUnique({ where: { id: ruleId }, select: { employeeId: true } });
+    if (!initial) throw ApiError.notFound('Không tìm thấy lịch làm việc');
+
+    const result = await prisma.$transaction(async tx => {
+      await lockEmployeeRows(tx, [initial.employeeId]);
+      const rule = await tx.employeeScheduleRule.findUnique({
+        where: { id: ruleId },
+        include: { shift: { select: { code: true, name: true, startMinute: true, endMinute: true } }, exceptions: { select: { workDate: true, type: true } } }
+      });
+      if (!rule || rule.employeeId !== initial.employeeId) throw ApiError.notFound('Lịch làm việc không còn tồn tại');
+      if (rule.cancelledAt) throw ApiError.conflict('Lịch làm việc đã bị hủy', 'CONFLICT', { ruleId: String(ruleId) });
+
+      const normalizedRule = toScheduleRule(rule);
+      const targetExists = expandRulesForWeek({
+        weekStart: weekStartForDate(input.workDate),
+        rules: [normalizedRule],
+        exceptions: normalizedRule.exceptions?.map(exception => ({ scheduleRuleId: rule.id, workDate: exception.workDate, type: exception.type })) ?? []
+      }).some(occurrence => occurrence.workDate === input.workDate);
+      if (!targetExists) {
+        throw ApiError.badRequest('Ngày chọn không thuộc lịch lặp này', { ruleId: String(ruleId), workDate: input.workDate }, 'SCHEDULE_RECURRENCE_INVALID');
+      }
+
+      const employee = await tx.employee.findUnique({ where: { id: rule.employeeId }, select: { id: true, code: true } });
+      if (!employee) throw ApiError.notFound('Không tìm thấy hồ sơ nhân viên', 'EMPLOYEE_NOT_FOUND', { employeeId: String(rule.employeeId) });
+      const now = new Date();
+      const createsException = input.scope === 'occurrence' && rule.recurrenceType === 'WEEKLY';
+      const closeDate = input.scope === 'following' && rule.recurrenceType === 'WEEKLY' && input.workDate > isoDate(rule.startDate)! ? addDays(input.workDate, -1) : null;
+
+      if (createsException) {
+        await tx.employeeScheduleException.create({ data: {
+          scheduleRuleId: rule.id, workDate: dateFromIso(input.workDate), type: 'CANCELLED', createdByUserId: actor.id
+        } });
+      } else if (closeDate) {
+        await tx.employeeScheduleRule.update({ where: { id: rule.id }, data: { endDate: dateFromIso(closeDate) } });
+      } else {
+        await tx.employeeScheduleRule.update({ where: { id: rule.id }, data: { cancelledAt: now, cancelledByUserId: actor.id } });
+      }
+
+      await AuditService.logInTransaction(tx, {
+        action: createsException ? 'EMPLOYEE_SCHEDULE_EXCEPTION_CREATED' : 'EMPLOYEE_SCHEDULE_DELETED',
+        targetType: 'EmployeeScheduleRule', targetId: rule.id, actorId: actor.id, actorName: actor.name,
+        metadata: { employeeId: employee.id, employeeCode: employee.code, shiftCode: rule.shift.code, workDate: input.workDate, scope: input.scope, ...(closeDate ? { endDate: closeDate } : {}) }
+      });
+      return { employeeId: employee.id, changedThrough: input.scope === 'occurrence' ? input.workDate : isoDate(rule.endDate) };
+    }, { timeout: 30000 });
+
+    emitScheduleChanged([result.employeeId], input.workDate, result.changedThrough);
+    return { deleted: true };
   }
 }

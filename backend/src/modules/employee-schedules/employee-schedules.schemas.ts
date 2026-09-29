@@ -27,6 +27,16 @@ const createScheduleBatchSchema = z.object({
   endDate: z.string().nullable().optional()
 });
 
+const mutationBodySchema = z.object({
+  workDate: z.string(),
+  scope: z.enum(['occurrence', 'following']),
+  shiftIds: z.array(z.number().int().positive()).min(1).max(20)
+});
+const deletionQuerySchema = z.object({
+  workDate: z.string(),
+  scope: z.enum(['occurrence', 'following'])
+});
+
 export type ScheduleWeekQuery = z.infer<typeof weekQuerySchema>;
 export type CreateScheduleBatchInput = Omit<z.infer<typeof createScheduleBatchSchema>, 'employeeIds' | 'shiftIds'> & {
   employeeIds: number[];
@@ -35,6 +45,8 @@ export type CreateScheduleBatchInput = Omit<z.infer<typeof createScheduleBatchSc
   recurrenceType: 'ONCE' | 'WEEKLY';
   dayOfWeek: number | null;
 };
+export type ScheduleMutationInput = Omit<z.infer<typeof mutationBodySchema>, 'shiftIds'> & { shiftIds: number[] };
+export type ScheduleDeleteInput = z.infer<typeof deletionQuerySchema>;
 
 const mapDomainError = (error: unknown): never => {
   if (error instanceof ScheduleDomainError) throw ApiError.badRequest(error.message, undefined, error.code);
@@ -69,6 +81,26 @@ export function parseCreateScheduleBatchInput(value: unknown): CreateScheduleBat
   }
 
   return { ...parsed, employeeIds, shiftIds, endDate, recurrenceType, dayOfWeek };
+}
+
+function parseMutationDate<T extends { workDate: string }>(parsed: T): T {
+  if (!isValidScheduleDate(parsed.workDate)) {
+    throw ApiError.badRequest('Ngày lịch phải là ngày hợp lệ theo YYYY-MM-DD', { workDate: parsed.workDate }, 'SCHEDULE_DATE_INVALID');
+  }
+  return parsed;
+}
+
+export function parseScheduleMutationInput(value: unknown): ScheduleMutationInput {
+  const parsed = parseMutationDate(mutationBodySchema.parse(value));
+  return { ...parsed, shiftIds: [...new Set(parsed.shiftIds)].sort((left, right) => left - right) };
+}
+
+export function parseScheduleDeleteInput(value: unknown): ScheduleDeleteInput {
+  return parseMutationDate(deletionQuerySchema.parse(value));
+}
+
+export function parseScheduleRuleId(value: unknown): number {
+  return z.coerce.number().int().positive().parse(value);
 }
 
 export function parseCreateWorkShiftInput(value: unknown): CreateWorkShiftInput {

@@ -5,6 +5,7 @@ import { env } from '../../config/env';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { AuditService } from '../audit/audit.service';
+import { emitScheduleChanged, lockEmployeeRows } from '../employee-schedules/employee-schedules.service';
 import {
   DepartmentCreateInput,
   DepartmentUpdateInput,
@@ -44,6 +45,7 @@ const listSelect: Prisma.EmployeeSelect = {
 const normalizePhone = (value: string) => value.replace(/\D/g, '');
 const normalizeEmpty = (value: string | null | undefined) => value === '' || value === undefined ? null : value;
 const toDate = (value: string | null | undefined) => value ? new Date(`${value}T00:00:00.000Z`) : null;
+const formatDate = (value: Date | null | undefined) => value?.toISOString().slice(0, 10) ?? null;
 const maskNationalId = (value: string | null) => value ? `${'•'.repeat(Math.max(4, value.length - 4))}${value.slice(-4)}` : null;
 
 const toListItem = (employee: Prisma.EmployeeGetPayload<{ select: typeof listSelect }>): EmployeeListItem => ({
@@ -227,19 +229,64 @@ export class EmployeesService {
 
   static async updateStatus(id: number, input: EmployeeStatusInput, actorId: number, actorName: string) {
     try {
-      await prisma.$transaction(async tx => {
-        const current = await tx.employee.findUnique({ where: { id }, select: { id: true, status: true, startDate: true, endDate: true } });
+      const scheduleImpact = await prisma.$transaction(async tx => {
+        await lockEmployeeRows(tx, [id]);
+        const current = await tx.employee.findUnique({ where: { id }, select: { id: true, code: true, status: true, startDate: true, endDate: true } });
         if (!current) throw ApiError.notFound('Không tìm thấy hồ sơ nhân viên');
         const endDate = input.status === 'RESIGNED' ? (input.endDate ? toDate(input.endDate) : current.endDate ?? todayInBusinessTimezone()) : null;
         if (endDate && current.startDate && endDate < current.startDate) throw ApiError.badRequest('Ngày nghỉ việc không được trước ngày bắt đầu làm việc');
+
+        let scheduleChanged = false;
+        if (input.status === 'RESIGNED' && endDate) {
+          const lastWorkDate = endDate.toISOString().slice(0, 10);
+          const rules = await tx.employeeScheduleRule.findMany({
+            where: { employeeId: id, cancelledAt: null },
+            include: { shift: { select: { code: true } } }
+          });
+          for (const rule of rules) {
+            const ruleStartDate = formatDate(rule.startDate)!;
+            const ruleEndDate = formatDate(rule.endDate);
+            const futureRule = ruleStartDate > lastWorkDate;
+            const mustCancel = futureRule;
+            const mustCap = rule.recurrenceType === 'WEEKLY' && !mustCancel && (!ruleEndDate || ruleEndDate > lastWorkDate);
+            if (!mustCancel && !mustCap) continue;
+
+            await tx.employeeScheduleRule.update({
+              where: { id: rule.id },
+              data: mustCancel
+                ? { cancelledAt: new Date(), cancelledByUserId: actorId }
+                : { endDate }
+            });
+            await AuditService.logInTransaction(tx, {
+              action: 'EMPLOYEE_SCHEDULE_AUTO_CAPPED',
+              targetType: 'EmployeeScheduleRule',
+              targetId: rule.id,
+              actorId,
+              actorName,
+              metadata: {
+                employeeId: current.id,
+                employeeCode: current.code,
+                shiftCode: rule.shift.code,
+                previousEndDate: ruleEndDate,
+                endDate: mustCancel ? null : lastWorkDate,
+                cancelled: mustCancel,
+                changedFields: mustCancel ? ['cancelledAt'] : ['endDate']
+              }
+            });
+            scheduleChanged = true;
+          }
+        }
+
         await tx.employee.update({ where: { id }, data: { status: input.status, endDate } });
         await AuditService.logInTransaction(tx, {
           action: 'EMPLOYEE_STATUS_CHANGED', targetType: 'Employee', targetId: id, actorId, actorName,
           metadata: { status: input.status, changedFields: ['status', 'endDate'] }
         });
+        return { scheduleChanged, changedFrom: endDate?.toISOString().slice(0, 10) ?? null };
       });
       const result = await this.get(id);
       emitChanged([id]);
+      if (scheduleImpact.scheduleChanged) emitScheduleChanged([id], scheduleImpact.changedFrom, null);
       return result;
     } catch (error) {
       throwMutationError(error);

@@ -9,3 +9,5 @@ employeeSchedulesRouter.get('/week', EmployeeSchedulesController.getWeek);
 employeeSchedulesRouter.get('/shifts', EmployeeSchedulesController.listShifts);
 employeeSchedulesRouter.post('/', EmployeeSchedulesController.createBatch);
 employeeSchedulesRouter.post('/shifts', EmployeeSchedulesController.createShift);
+employeeSchedulesRouter.patch('/:ruleId', EmployeeSchedulesController.mutateRule);
+employeeSchedulesRouter.delete('/:ruleId', EmployeeSchedulesController.deleteRule);

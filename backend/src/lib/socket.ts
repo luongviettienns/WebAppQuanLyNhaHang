@@ -2,7 +2,7 @@ import { Server as SocketIOServer } from 'socket.io';
 
 let ioInstance: SocketIOServer | null = null;
 
-export function setSocketIO(io: SocketIOServer) {
+export function setSocketIO(io: SocketIOServer | null) {
   ioInstance = io;
 }
 
