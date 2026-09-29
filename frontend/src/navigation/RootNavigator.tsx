@@ -6,14 +6,19 @@ import { LoginScreen } from '../features/auth/LoginScreen';
 import { TableOrderScreen } from '../features/customer/TableOrderScreen';
 import { RoleTabs } from './RoleTabs';
 import { ReservationBookingScreen } from '../features/customer/ReservationBookingScreen';
+import { EmployeeAttendanceKioskScreen } from '../features/attendance-kiosk/EmployeeAttendanceKioskScreen';
 
 export const RootNavigator: React.FC = () => {
   const { user, isRestoringSession } = useAuth();
   const { theme } = useTheme();
 
   // Tu dong phat hien QR token/so ban khi khach quet ma QR
-  const [guestQrContext] = useState<{ tableNumber: number | null; qrCodeToken: string | null; reservationAccessToken: string | null; bookingAccessToken: string | null; bookingRoute: boolean }>(() => {
+  const [guestQrContext] = useState<{ tableNumber: number | null; qrCodeToken: string | null; reservationAccessToken: string | null; bookingAccessToken: string | null; bookingRoute: boolean; kioskRoute: boolean }>(() => {
     if (typeof window !== 'undefined' && window.location) {
+      const pathname = window.location.pathname.replace(/\/+$/, '');
+      if (pathname === '/kiosk-cham-cong') {
+        return { tableNumber: null, qrCodeToken: null, reservationAccessToken: null, bookingAccessToken: null, bookingRoute: false, kioskRoute: true };
+      }
       const searchParams = new URLSearchParams(window.location.search);
       const rawToken = searchParams.get('token') || searchParams.get('qr') || searchParams.get('tableToken');
       const bookingAccessToken = searchParams.get('bookingToken');
@@ -37,11 +42,14 @@ export const RootNavigator: React.FC = () => {
         qrCodeToken: validToken,
         reservationAccessToken,
         bookingAccessToken,
-        bookingRoute
+        bookingRoute,
+        kioskRoute: false
       };
     }
-    return { tableNumber: null, qrCodeToken: null, reservationAccessToken: null, bookingAccessToken: null, bookingRoute: false };
+    return { tableNumber: null, qrCodeToken: null, reservationAccessToken: null, bookingAccessToken: null, bookingRoute: false, kioskRoute: false };
   });
+
+  if (guestQrContext.kioskRoute) return <EmployeeAttendanceKioskScreen />;
 
   if (!user && (guestQrContext.bookingRoute || guestQrContext.bookingAccessToken)) {
     return <ReservationBookingScreen accessToken={guestQrContext.bookingAccessToken || undefined} />;

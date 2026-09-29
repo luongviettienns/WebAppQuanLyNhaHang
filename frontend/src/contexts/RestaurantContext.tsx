@@ -35,6 +35,7 @@ import { useAuth } from './AuthContext';
 import { getApiBaseUrl, getSocketBaseUrl, onServerConfigChanged } from '../api/config';
 import { IdempotencyKeyStore } from '../lib/idempotency';
 import { subscribeToEmployeeScheduleInvalidation } from '../lib/employeeScheduleRealtime';
+import { subscribeToEmployeeAttendanceInvalidation, type AttendanceRealtimeSocket } from '../lib/employeeAttendanceRealtime';
 import { bulkUpdateMenuItemsApi } from '../api/menuBulk';
 import {
   bulkUpdatePriceListApi,
@@ -122,6 +123,7 @@ interface RestaurantContextType {
   customersRevision: number;
   employeesRevision: number;
   employeeSchedulesRevision: number;
+  employeeAttendanceRevision: number;
   reservationsRevision: number;
   orderPaymentsRevision: number;
 
@@ -217,6 +219,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [customersRevision, setCustomersRevision] = useState(0);
   const [employeesRevision, setEmployeesRevision] = useState(0);
   const [employeeSchedulesRevision, setEmployeeSchedulesRevision] = useState(0);
+  const [employeeAttendanceRevision, setEmployeeAttendanceRevision] = useState(0);
   const [reservationsRevision, setReservationsRevision] = useState(0);
   const [orderPaymentsRevision, setOrderPaymentsRevision] = useState(0);
 
@@ -522,6 +525,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       socket,
       () => setEmployeeSchedulesRevision(revision => revision + 1)
     );
+    const unsubscribeEmployeeAttendanceInvalidation = subscribeToEmployeeAttendanceInvalidation(
+      socket as unknown as AttendanceRealtimeSocket,
+      () => setEmployeeAttendanceRevision(revision => revision + 1)
+    );
 
     socket.on('connect', () => {
       console.log('⚡ Socket connected to Crispy Bite Server:', socketUrl);
@@ -726,6 +733,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
     return () => {
       unsubscribeEmployeeScheduleInvalidation();
+      unsubscribeEmployeeAttendanceInvalidation();
       socket.disconnect();
     };
   }, [token, fetchTables, fetchKDSOrders, fetchPriceList, fetchMenu, user?.role]);
@@ -1298,6 +1306,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         customersRevision,
         employeesRevision,
         employeeSchedulesRevision,
+        employeeAttendanceRevision,
         reservationsRevision,
         orderPaymentsRevision,
         kdsOrders,
