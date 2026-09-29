@@ -20,6 +20,7 @@ import { employeesRouter } from './modules/employees/employees.routes';
 import { employeeSchedulesRouter } from './modules/employee-schedules/employee-schedules.routes';
 import { employeeAttendanceRouter } from './modules/employee-attendance/employee-attendance.routes';
 import { attendanceKioskRouter } from './modules/employee-attendance/attendance-kiosk.routes';
+import { employeePayrollRouter } from './modules/employee-payroll/employee-payroll.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
 import { getUploadsDir } from './lib/uploads';
@@ -107,6 +108,9 @@ app.use('/api/employee-schedules', employeeSchedulesRouter);
 // Admin attendance operations use the full Admin session; kiosk punches use only their scoped credential.
 app.use('/api/employee-attendance', employeeAttendanceRouter);
 app.use('/api/attendance-kiosk', attendanceKioskRouter);
+
+// Employee payroll read/write workspace (Admin only).
+app.use('/api/employee-payrolls', employeePayrollRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);
