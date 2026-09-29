@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { fetchEmployeesApi, type EmployeeListItemDto } from '../../api/employeeManagement';
 import {
   addEmployeePayrollAdjustmentApi,
@@ -19,6 +19,7 @@ import {
   type PayrollPaymentInput
 } from '../../api/employeePayroll';
 import { useAuth } from '../../contexts/AuthContext';
+import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { EmployeePayrollCreateModal } from './EmployeePayrollCreateModal';
 import { EmployeePayrollDetail } from './EmployeePayrollDetail';
@@ -43,6 +44,7 @@ function downloadBlob(blob: Blob, fileName: string) {
 
 export const EmployeePayrollScreen: React.FC = () => {
   const { token } = useAuth();
+  const { employeePayrollRevision, employeesRevision, employeeAttendanceRevision } = useRestaurant();
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
   const compact = width < 820;
@@ -63,6 +65,7 @@ export const EmployeePayrollScreen: React.FC = () => {
   const [detail, setDetail] = useState<EmployeePayrollDetailDto | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const requestId = useRef(0);
+  const revisionsRef = useRef({ employeePayrollRevision, employeesRevision, employeeAttendanceRevision });
 
   useEffect(() => {
     const timer = setTimeout(() => { setSearch(queryText.trim()); setPage(1); }, 250);
@@ -99,6 +102,34 @@ export const EmployeePayrollScreen: React.FC = () => {
     await load();
     if (expandedId !== null) await loadDetail(expandedId);
   }, [expandedId, load, loadDetail]);
+
+  useEffect(() => {
+    const previous = revisionsRef.current;
+    const payrollChanged = previous.employeePayrollRevision !== employeePayrollRevision;
+    const sourceChanged = previous.employeesRevision !== employeesRevision
+      || previous.employeeAttendanceRevision !== employeeAttendanceRevision;
+    revisionsRef.current = { employeePayrollRevision, employeesRevision, employeeAttendanceRevision };
+    if (!payrollChanged && !sourceChanged) return;
+    void load();
+    if (expandedId !== null && (payrollChanged || (sourceChanged && detail?.status !== 'FINALIZED'))) {
+      void loadDetail(expandedId);
+    }
+  }, [detail?.status, employeeAttendanceRevision, employeePayrollRevision, employeesRevision, expandedId, load, loadDetail]);
+
+  useEffect(() => {
+    const refreshWhenFocused = () => {
+      if (Platform.OS === 'web' && typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
+      void refresh();
+    };
+    if (Platform.OS === 'web' && typeof document !== 'undefined') document.addEventListener('visibilitychange', refreshWhenFocused);
+    const subscription = Platform.OS === 'web' ? null : AppState.addEventListener('change', state => {
+      if (state === 'active') refreshWhenFocused();
+    });
+    return () => {
+      if (Platform.OS === 'web' && typeof document !== 'undefined') document.removeEventListener('visibilitychange', refreshWhenFocused);
+      subscription?.remove();
+    };
+  }, [refresh]);
 
   const toggleStatus = (status: PayrollBatchStatus) => {
     setStatuses(current => current.includes(status) ? current.filter(item => item !== status) : [status]);

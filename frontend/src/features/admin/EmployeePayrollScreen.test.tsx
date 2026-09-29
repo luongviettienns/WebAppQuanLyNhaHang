@@ -2,18 +2,20 @@ import React from 'react';
 import { act, create } from 'react-test-renderer';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { native, getWidth, setWidth } = vi.hoisted(() => {
+const { native, getWidth, setWidth, revisions } = vi.hoisted(() => {
   let width = 1280;
+  const revisionState = { payroll: 0, employees: 0, attendance: 0 };
   const component = (name: string) => { const C = (props: any) => React.createElement(name, props, props.children); C.displayName = name; return C; };
-  return { native: component, getWidth: () => width, setWidth: (next: number) => { width = next; } };
+  return { native: component, getWidth: () => width, setWidth: (next: number) => { width = next; }, revisions: revisionState };
 });
 
 vi.mock('react-native', () => ({
-  ActivityIndicator: native('ActivityIndicator'), Modal: native('Modal'), Platform: { OS: 'web' }, Pressable: native('Pressable'),
+  ActivityIndicator: native('ActivityIndicator'), AppState: { addEventListener: () => ({ remove: vi.fn() }) }, Modal: native('Modal'), Platform: { OS: 'web' }, Pressable: native('Pressable'),
   ScrollView: native('ScrollView'), StyleSheet: { create: (s: any) => s }, Text: native('Text'), TextInput: native('TextInput'), View: native('View'),
   useWindowDimensions: () => ({ width: getWidth(), height: 800 })
 }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ token: 'admin-token' }) }));
+vi.mock('../../contexts/RestaurantContext', () => ({ useRestaurant: () => ({ employeePayrollRevision: revisions.payroll, employeesRevision: revisions.employees, employeeAttendanceRevision: revisions.attendance }) }));
 vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ theme: { surfaceBase: '#fff', surfaceCanvas: '#f5f7fa', surfaceRaised: '#fff', surfaceSunken: '#f4f6f8', textPrimary: '#172033', textSecondary: '#667085', textInverse: '#fff', borderSubtle: '#dfe7f1', primary: '#0b74e5', interactiveSecondary: '#eaf3ff', warning: '#a86100', danger: '#b42318', success: '#15803d' } }) }));
 vi.mock('../../api/employeePayroll', () => ({
   fetchEmployeePayrollsApi: vi.fn(), fetchEmployeePayrollDetailApi: vi.fn(), createEmployeePayrollApi: vi.fn(),
@@ -39,7 +41,7 @@ const detail = { ...list.items[0], branch: { id: 1, code: 'MAIN', name: 'Trung t
 
 describe('EmployeePayrollScreen', () => {
   beforeEach(() => {
-    vi.clearAllMocks(); setWidth(1280);
+    vi.clearAllMocks(); setWidth(1280); revisions.payroll = 0; revisions.employees = 0; revisions.attendance = 0;
     vi.mocked(fetchEmployeePayrollsApi).mockResolvedValue(list);
     vi.mocked(fetchEmployeePayrollDetailApi).mockResolvedValue(detail);
     vi.mocked(downloadEmployeePayrollApi).mockResolvedValue(new Blob(['payroll']));
@@ -90,5 +92,25 @@ describe('EmployeePayrollScreen', () => {
     await act(async () => { screen.root.findByProps({ testID: 'payroll-export' }).props.onPress(); await Promise.resolve(); });
     expect(downloadEmployeePayrollApi).toHaveBeenCalledWith('admin-token', 1, 'xlsx');
     vi.useRealTimers();
+  });
+
+  it('refetches from invalidation revisions while preserving an open create modal', async () => {
+    let screen: any;
+    await act(async () => { screen = create(<EmployeePayrollScreen />); await Promise.resolve(); });
+    await act(async () => screen.root.findByProps({ testID: 'payroll-create-open' }).props.onPress());
+    const initialCalls = vi.mocked(fetchEmployeePayrollsApi).mock.calls.length;
+    revisions.payroll += 1;
+    await act(async () => { screen.update(<EmployeePayrollScreen />); await Promise.resolve(); });
+    expect(vi.mocked(fetchEmployeePayrollsApi).mock.calls.length).toBeGreaterThan(initialCalls);
+    expect(screen.root.findByProps({ testID: 'payroll-create-modal' }).props.visible).toBe(true);
+
+    await act(async () => { screen.root.findByProps({ testID: 'payroll-row-1' }).props.onPress(); await Promise.resolve(); });
+    const detailCallsBeforeSourceRevision = vi.mocked(fetchEmployeePayrollDetailApi).mock.calls.length;
+    vi.mocked(fetchEmployeePayrollDetailApi).mockResolvedValue({ ...detail, sourceStale: true });
+    revisions.attendance += 1;
+    await act(async () => { screen.update(<EmployeePayrollScreen />); await Promise.resolve(); });
+    expect(vi.mocked(fetchEmployeePayrollDetailApi).mock.calls.length).toBeGreaterThan(detailCallsBeforeSourceRevision);
+    expect(screen.root.findByProps({ testID: 'payroll-detail' }).props.detail.sourceStale).toBe(true);
+    expect(screen.root.findByProps({ testID: 'payroll-create-modal' }).props.visible).toBe(true);
   });
 });

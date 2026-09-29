@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { CalendarDays, Clock3, Users } from 'lucide-react-native';
+import { Banknote, CalendarDays, Clock3, Users } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon } from '../../ui';
 import { EmployeeManagementScreen } from './EmployeeManagementScreen';
 import { EmployeeScheduleScreen } from './EmployeeScheduleScreen';
 import { EmployeeAttendanceScreen } from './EmployeeAttendanceScreen';
+import { EmployeePayrollScreen } from './EmployeePayrollScreen';
 
-type EmployeeWorkspaceSection = 'directory' | 'schedule' | 'attendance';
+type EmployeeWorkspaceSection = 'directory' | 'schedule' | 'attendance' | 'payroll';
 
 export const EmployeeWorkspaceScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -45,9 +46,25 @@ export const EmployeeWorkspaceScreen: React.FC = () => {
         <AppIcon icon={Clock3} color={section === 'attendance' ? theme.primary : theme.textSecondary} size={18} />
         <Text style={[styles.tabText, { color: section === 'attendance' ? theme.textPrimary : theme.textSecondary }]}>Bảng chấm công</Text>
       </Pressable>
+      <Pressable
+        testID="employee-workspace-payroll"
+        accessibilityRole="tab"
+        accessibilityState={{ selected: section === 'payroll' }}
+        onPress={() => setSection('payroll')}
+        style={[styles.tab, section === 'payroll' && { backgroundColor: theme.interactiveSecondary, borderBottomColor: theme.primary }]}
+      >
+        <AppIcon icon={Banknote} color={section === 'payroll' ? theme.primary : theme.textSecondary} size={18} />
+        <Text style={[styles.tabText, { color: section === 'payroll' ? theme.textPrimary : theme.textSecondary }]}>Bảng lương</Text>
+      </Pressable>
     </View>
     <View style={styles.content}>
-      {section === 'directory' ? <EmployeeManagementScreen /> : section === 'schedule' ? <EmployeeScheduleScreen /> : <EmployeeAttendanceScreen />}
+      {section === 'directory'
+        ? <EmployeeManagementScreen />
+        : section === 'schedule'
+          ? <EmployeeScheduleScreen />
+          : section === 'attendance'
+            ? <EmployeeAttendanceScreen />
+            : <EmployeePayrollScreen />}
     </View>
   </View>;
 };
