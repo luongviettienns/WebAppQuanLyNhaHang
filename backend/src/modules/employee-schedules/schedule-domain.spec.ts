@@ -121,6 +121,19 @@ describe('schedule time and conflict domain', () => {
     expect(findRuleConflict(candidate, [existing])).toBeNull();
   });
 
+  it('terminates when open-ended weekly rules have no overlapping hours', () => {
+    const existing = rule({ recurrenceType: 'WEEKLY', dayOfWeek: 1 });
+    const candidate = rule({
+      id: 2,
+      recurrenceType: 'WEEKLY',
+      dayOfWeek: 1,
+      shiftId: 2,
+      shift: { code: 'AFTERNOON', name: 'Ca chiều', startMinute: 720, endMinute: 960 }
+    });
+
+    expect(findRuleConflict(candidate, [existing])).toBeNull();
+  });
+
   it('detects a one-time occurrence that collides with an open-ended weekly rule', () => {
     const weekly = rule({ recurrenceType: 'WEEKLY', dayOfWeek: 1 });
     const once = rule({ id: 2, startDate: '2026-10-05', shiftId: 2 });

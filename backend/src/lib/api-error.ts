@@ -59,8 +59,8 @@ export class ApiError extends Error {
     return new ApiError(403, code, message);
   }
 
-  static notFound(message = 'Tai nguyen yeu cau khong ton tai', code: ErrorCode = 'NOT_FOUND') {
-    return new ApiError(404, code, message);
+  static notFound(message = 'Tai nguyen yeu cau khong ton tai', code: ErrorCode = 'NOT_FOUND', details?: Record<string, string>) {
+    return new ApiError(404, code, message, details);
   }
 
   static conflict(message: string, code: ErrorCode = 'CONFLICT', details?: Record<string, string>) {

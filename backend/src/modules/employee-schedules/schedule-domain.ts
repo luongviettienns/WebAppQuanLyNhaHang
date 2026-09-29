@@ -293,14 +293,15 @@ export function findRuleConflict(candidate: ScheduleRule, existingRules: Schedul
   for (const existing of existingRules) {
     if (candidate.employeeId !== existing.employeeId || candidate.cancelledAt || existing.cancelledAt) continue;
 
+    const sameShift = candidate.shiftId === existing.shiftId;
+    const overlaps = candidate.shift.startMinute < existing.shift.endMinute
+      && existing.shift.startMinute < candidate.shift.endMinute;
+    if (!sameShift && !overlaps) continue;
+
     const candidateExceptions = new Set(candidate.exceptions?.map(exception => exception.workDate) ?? []);
     const existingExceptions = new Set(existing.exceptions?.map(exception => exception.workDate) ?? []);
     for (const workDate of sharedOccurrenceDates(candidate, existing)) {
       if (candidateExceptions.has(workDate) || existingExceptions.has(workDate)) continue;
-      const sameShift = candidate.shiftId === existing.shiftId;
-      const overlaps = candidate.shift.startMinute < existing.shift.endMinute
-        && existing.shift.startMinute < candidate.shift.endMinute;
-      if (!sameShift && !overlaps) continue;
       return {
         code: sameShift ? 'SCHEDULE_DUPLICATE' : 'SCHEDULE_OVERLAP',
         workDate,
