@@ -31,6 +31,38 @@ enum EmployeePayBasis {
   PER_SHIFT
 }
 
+enum PayrollFrequency {
+  MONTHLY
+}
+
+enum PayrollBatchStatus {
+  DRAFT
+  CALCULATED
+  FINALIZED
+  CANCELLED
+}
+
+enum PayrollCalculationStatus {
+  READY
+  REVIEW_REQUIRED
+}
+
+enum PayrollAdjustmentType {
+  BONUS
+  DEDUCTION
+}
+
+enum PayrollPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+enum PayrollPaymentStatus {
+  SUCCESS
+  REVERSED
+}
+
 enum ScheduleRecurrenceType {
   ONCE
   WEEKLY
@@ -208,6 +240,15 @@ model User {
   createdAttendanceKioskSessions    AttendanceKioskSession[]        @relation("AttendanceKioskSessionCreator")
   createdAttendanceDispositions     EmployeeAttendanceDisposition[] @relation("AttendanceDispositionCreator")
   revokedAttendanceDispositions     EmployeeAttendanceDisposition[] @relation("AttendanceDispositionRevoker")
+  createdPayrollBatches             EmployeePayrollBatch[]          @relation("EmployeePayrollBatchCreator")
+  calculatedPayrollBatches          EmployeePayrollBatch[]          @relation("EmployeePayrollBatchCalculator")
+  finalizedPayrollBatches           EmployeePayrollBatch[]          @relation("EmployeePayrollBatchFinalizer")
+  cancelledPayrollBatches           EmployeePayrollBatch[]          @relation("EmployeePayrollBatchCanceller")
+  createdPayrollAdjustments         EmployeePayrollAdjustment[]     @relation("EmployeePayrollAdjustmentCreator")
+  reversedPayrollAdjustments        EmployeePayrollAdjustment[]     @relation("EmployeePayrollAdjustmentReverser")
+  createdPayrollPayments            EmployeePayrollPayment[]        @relation("EmployeePayrollPaymentCreator")
+  reversedPayrollPayments           EmployeePayrollPayment[]        @relation("EmployeePayrollPaymentReverser")
+  payrollIdempotencies              EmployeePayrollIdempotency[]
 }
 
 model Branch {
@@ -224,6 +265,7 @@ model Branch {
   attendanceSessions        EmployeeAttendanceSession[]     @relation("AttendanceBranch")
   plannedAttendanceSessions EmployeeAttendanceSession[]     @relation("AttendancePlannedBranch")
   attendanceDispositions    EmployeeAttendanceDisposition[]
+  payrollBatches            EmployeePayrollBatch[]
 
   @@index([isActive, isDefault])
 }
@@ -283,6 +325,8 @@ model Employee {
   scheduleRules          EmployeeScheduleRule[]
   attendanceSessions     EmployeeAttendanceSession[]
   attendanceDispositions EmployeeAttendanceDisposition[]
+  payrollLines           EmployeePayrollLine[]
+  payrollPayments        EmployeePayrollPayment[]
 
   @@index([status, createdAt])
   @@index([name])
@@ -305,6 +349,153 @@ model EmployeeCompensation {
 
   @@unique([employeeId, effectiveFrom])
   @@index([employeeId, effectiveFrom])
+}
+
+model EmployeePayrollBatch {
+  id                    Int                @id @default(autoincrement())
+  code                  String             @unique @db.VarChar(32)
+  name                  String             @db.VarChar(160)
+  branchId              Int                @default(1)
+  frequency             PayrollFrequency   @default(MONTHLY)
+  periodStart           DateTime           @db.Date
+  periodEnd             DateTime           @db.Date
+  status                PayrollBatchStatus @default(DRAFT)
+  totalGrossAmount      Int                @default(0)
+  totalAdjustmentAmount Int                @default(0)
+  totalNetAmount        Int                @default(0)
+  totalPaidAmount       Int                @default(0)
+  totalRemainingAmount  Int                @default(0)
+  createdByUserId       Int
+  calculatedByUserId    Int?
+  calculatedAt          DateTime?
+  finalizedByUserId     Int?
+  finalizedAt           DateTime?
+  cancelledByUserId     Int?
+  cancelledAt           DateTime?
+  cancelReason          String?            @db.VarChar(500)
+  version               Int                @default(1)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  branch        Branch                       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy     User                         @relation("EmployeePayrollBatchCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  calculatedBy  User?                        @relation("EmployeePayrollBatchCalculator", fields: [calculatedByUserId], references: [id], onDelete: Restrict)
+  finalizedBy   User?                        @relation("EmployeePayrollBatchFinalizer", fields: [finalizedByUserId], references: [id], onDelete: Restrict)
+  cancelledBy   User?                        @relation("EmployeePayrollBatchCanceller", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+  lines         EmployeePayrollLine[]
+  payments      EmployeePayrollPayment[]
+  idempotencies EmployeePayrollIdempotency[]
+
+  @@index([branchId, periodStart, periodEnd, status])
+  @@index([status, createdAt])
+}
+
+model EmployeePayrollLine {
+  id                  Int                      @id @default(autoincrement())
+  payrollBatchId      Int
+  employeeId          Int
+  employeeCode        String                   @db.VarChar(32)
+  employeeName        String                   @db.VarChar(160)
+  departmentName      String?                  @db.VarChar(120)
+  jobTitleName        String?                  @db.VarChar(120)
+  bankName            String?                  @db.VarChar(120)
+  bankAccountNumber   String?                  @db.VarChar(80)
+  bankAccountName     String?                  @db.VarChar(120)
+  employmentStartDate DateTime?                @db.Date
+  employmentEndDate   DateTime?                @db.Date
+  activeCalendarDays  Int                      @default(0)
+  periodCalendarDays  Int                      @default(0)
+  scheduledShifts     Int                      @default(0)
+  completedSessions   Int                      @default(0)
+  actualMinutes       Int                      @default(0)
+  confirmedAbsences   Int                      @default(0)
+  missingCheckouts    Int                      @default(0)
+  reviewRequiredCount Int                      @default(0)
+  grossAmount         Int                      @default(0)
+  bonusAmount         Int                      @default(0)
+  deductionAmount     Int                      @default(0)
+  netAmount           Int                      @default(0)
+  paidAmount          Int                      @default(0)
+  remainingAmount     Int                      @default(0)
+  calculationStatus   PayrollCalculationStatus @default(READY)
+  warningCodes        Json
+  sourceSnapshot      Json
+  calculatedAt        DateTime
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  payrollBatch EmployeePayrollBatch        @relation(fields: [payrollBatchId], references: [id], onDelete: Restrict)
+  employee     Employee                    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  adjustments  EmployeePayrollAdjustment[]
+  payments     EmployeePayrollPayment[]
+
+  @@unique([payrollBatchId, employeeId], map: "EmployeePayrollLine_batch_employee_key")
+  @@index([employeeId, calculatedAt])
+  @@index([payrollBatchId, calculationStatus])
+}
+
+model EmployeePayrollAdjustment {
+  id               Int                   @id @default(autoincrement())
+  payrollLineId    Int
+  type             PayrollAdjustmentType
+  amount           Int
+  reason           String                @db.VarChar(500)
+  createdByUserId  Int
+  createdAt        DateTime              @default(now())
+  reversedAt       DateTime?
+  reversedByUserId Int?
+  reverseReason    String?               @db.VarChar(500)
+
+  payrollLine EmployeePayrollLine @relation(fields: [payrollLineId], references: [id], onDelete: Restrict)
+  createdBy   User                @relation("EmployeePayrollAdjustmentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  reversedBy  User?               @relation("EmployeePayrollAdjustmentReverser", fields: [reversedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([payrollLineId, reversedAt, createdAt])
+}
+
+model EmployeePayrollPayment {
+  id                Int                  @id @default(autoincrement())
+  payrollBatchId    Int
+  payrollLineId     Int
+  employeeId        Int
+  amount            Int
+  method            PayrollPaymentMethod
+  externalReference String?              @db.VarChar(120)
+  note              String?              @db.VarChar(500)
+  status            PayrollPaymentStatus @default(SUCCESS)
+  paidAt            DateTime
+  createdByUserId   Int
+  createdAt         DateTime             @default(now())
+  reversedAt        DateTime?
+  reversedByUserId  Int?
+  reverseReason     String?              @db.VarChar(500)
+
+  payrollBatch EmployeePayrollBatch @relation(fields: [payrollBatchId], references: [id], onDelete: Restrict)
+  payrollLine  EmployeePayrollLine  @relation(fields: [payrollLineId], references: [id], onDelete: Restrict)
+  employee     Employee             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy    User                 @relation("EmployeePayrollPaymentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  reversedBy   User?                @relation("EmployeePayrollPaymentReverser", fields: [reversedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([payrollLineId, status, paidAt])
+  @@index([payrollBatchId, status, paidAt])
+  @@index([employeeId, paidAt])
+}
+
+model EmployeePayrollIdempotency {
+  id             Int      @id @default(autoincrement())
+  actorId        Int
+  operation      String   @db.VarChar(80)
+  idempotencyKey String   @db.VarChar(128)
+  requestDigest  String   @db.Char(64)
+  response       Json
+  payrollBatchId Int?
+  createdAt      DateTime @default(now())
+
+  actor        User                  @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  payrollBatch EmployeePayrollBatch? @relation(fields: [payrollBatchId], references: [id], onDelete: Restrict)
+
+  @@unique([actorId, operation, idempotencyKey], map: "EmployeePayrollIdempotency_actor_operation_key")
+  @@index([payrollBatchId])
 }
 
 model WorkShift {
