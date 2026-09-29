@@ -1,0 +1,50 @@
+import React, { useState } from 'react';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { CalendarDays, Users } from 'lucide-react-native';
+import { useTheme } from '../../contexts/ThemeContext';
+import { radii, spacing, typography } from '../../theme';
+import { AppIcon } from '../../ui';
+import { EmployeeManagementScreen } from './EmployeeManagementScreen';
+import { EmployeeScheduleScreen } from './EmployeeScheduleScreen';
+
+type EmployeeWorkspaceSection = 'directory' | 'schedule';
+
+export const EmployeeWorkspaceScreen: React.FC = () => {
+  const { theme } = useTheme();
+  const [section, setSection] = useState<EmployeeWorkspaceSection>('directory');
+  return <View style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
+    <View accessibilityRole="tablist" style={[styles.subnav, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
+      <Pressable
+        testID="employee-workspace-directory"
+        accessibilityRole="tab"
+        accessibilityState={{ selected: section === 'directory' }}
+        onPress={() => setSection('directory')}
+        style={[styles.tab, section === 'directory' && { backgroundColor: theme.interactiveSecondary, borderBottomColor: theme.primary }]}
+      >
+        <AppIcon icon={Users} color={section === 'directory' ? theme.primary : theme.textSecondary} size={18} />
+        <Text style={[styles.tabText, { color: section === 'directory' ? theme.textPrimary : theme.textSecondary }]}>Danh sách nhân viên</Text>
+      </Pressable>
+      <Pressable
+        testID="employee-workspace-schedule"
+        accessibilityRole="tab"
+        accessibilityState={{ selected: section === 'schedule' }}
+        onPress={() => setSection('schedule')}
+        style={[styles.tab, section === 'schedule' && { backgroundColor: theme.interactiveSecondary, borderBottomColor: theme.primary }]}
+      >
+        <AppIcon icon={CalendarDays} color={section === 'schedule' ? theme.primary : theme.textSecondary} size={18} />
+        <Text style={[styles.tabText, { color: section === 'schedule' ? theme.textPrimary : theme.textSecondary }]}>Lịch làm việc</Text>
+      </Pressable>
+    </View>
+    <View style={styles.content}>
+      {section === 'directory' ? <EmployeeManagementScreen /> : <EmployeeScheduleScreen />}
+    </View>
+  </View>;
+};
+
+const styles = StyleSheet.create({
+  container: { flex: 1, minHeight: 0 },
+  subnav: { alignItems: 'stretch', borderBottomWidth: 1, flexDirection: 'row', paddingHorizontal: spacing.lg },
+  tab: { alignItems: 'center', borderBottomColor: 'transparent', borderBottomWidth: 3, borderTopLeftRadius: radii.sm, borderTopRightRadius: radii.sm, flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', minHeight: 52, paddingHorizontal: spacing.lg },
+  tabText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  content: { flex: 1, minHeight: 0 }
+});

@@ -33,7 +33,7 @@ import { PriceListScreen } from '../features/admin/PriceListScreen';
 import { OrdersScreen } from '../features/orders/OrdersScreen';
 import { CustomerManagementScreen } from '../features/admin/CustomerManagementScreen';
 import { ReservationManagementScreen } from '../features/admin/ReservationManagementScreen';
-import { EmployeeManagementScreen } from '../features/admin/EmployeeManagementScreen';
+import { EmployeeWorkspaceScreen } from '../features/admin/EmployeeWorkspaceScreen';
 
 type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'pricing' | 'inventory' | 'orders' | 'vouchers' | 'audit' | 'customers' | 'reservations' | 'employees';
 
@@ -62,7 +62,7 @@ const tabsByRole = {
     { key: 'orders', label: 'Đơn hàng', icon: ClipboardList, component: OrdersScreen },
     { key: 'vouchers', label: 'Ưu đãi', icon: Tag, component: VoucherManagementScreen },
     { key: 'customers', label: 'Khách hàng', icon: UserRound, component: CustomerManagementScreen },
-    { key: 'employees', label: 'Nhân viên', icon: UserRound, component: EmployeeManagementScreen },
+    { key: 'employees', label: 'Nhân viên', icon: UserRound, component: EmployeeWorkspaceScreen },
     { key: 'reservations', label: 'Đặt bàn', icon: ClipboardList, component: ReservationManagementScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
     { key: 'audit', label: 'Nhật ký', icon: ClipboardList, component: AuditLogScreen }

@@ -7,7 +7,9 @@ import {
   formatCompensationProjection,
   formatScheduleVnd,
   formatShiftTime,
+  getBusinessDate,
   getMondayWeekStart,
+  isScheduleDateInPast,
   toScheduleCellModel
 } from './employeeScheduleViewModel';
 
@@ -35,6 +37,13 @@ describe('employee schedule view model', () => {
     expect(days.map(day => day.label)).toEqual(['Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy', 'Chủ nhật']);
     expect(days.filter(day => day.isToday).map(day => day.date)).toEqual(['2026-09-29']);
     expect(days.filter(day => day.isWeekend).map(day => day.date)).toEqual(['2026-10-03', '2026-10-04']);
+  });
+
+  it('uses Vietnam business time when marking a date around UTC midnight', () => {
+    const justAfterMidnightInVietnam = new Date('2026-09-28T17:30:00.000Z');
+    expect(getBusinessDate(justAfterMidnightInVietnam)).toBe('2026-09-29');
+    expect(isScheduleDateInPast('2026-09-28', '2026-09-29')).toBe(true);
+    expect(isScheduleDateInPast('2026-09-29', '2026-09-29')).toBe(false);
   });
 
   it('renders recurrence, shift duration and compensation projection states without inventing monthly wages', () => {

@@ -34,6 +34,7 @@ import { fetchLowStockAlertsApi } from '../api/inventory';
 import { useAuth } from './AuthContext';
 import { getApiBaseUrl, getSocketBaseUrl, onServerConfigChanged } from '../api/config';
 import { IdempotencyKeyStore } from '../lib/idempotency';
+import { subscribeToEmployeeScheduleInvalidation } from '../lib/employeeScheduleRealtime';
 import { bulkUpdateMenuItemsApi } from '../api/menuBulk';
 import {
   bulkUpdatePriceListApi,
@@ -120,6 +121,7 @@ interface RestaurantContextType {
   tablesRevision: number;
   customersRevision: number;
   employeesRevision: number;
+  employeeSchedulesRevision: number;
   reservationsRevision: number;
   orderPaymentsRevision: number;
 
@@ -214,6 +216,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [tablesRevision, setTablesRevision] = useState(0);
   const [customersRevision, setCustomersRevision] = useState(0);
   const [employeesRevision, setEmployeesRevision] = useState(0);
+  const [employeeSchedulesRevision, setEmployeeSchedulesRevision] = useState(0);
   const [reservationsRevision, setReservationsRevision] = useState(0);
   const [orderPaymentsRevision, setOrderPaymentsRevision] = useState(0);
 
@@ -515,6 +518,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       autoConnect: true,
       auth: token ? { token } : undefined
     });
+    const unsubscribeEmployeeScheduleInvalidation = subscribeToEmployeeScheduleInvalidation(
+      socket,
+      () => setEmployeeSchedulesRevision(revision => revision + 1)
+    );
 
     socket.on('connect', () => {
       console.log('⚡ Socket connected to Crispy Bite Server:', socketUrl);
@@ -718,6 +725,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     });
 
     return () => {
+      unsubscribeEmployeeScheduleInvalidation();
       socket.disconnect();
     };
   }, [token, fetchTables, fetchKDSOrders, fetchPriceList, fetchMenu, user?.role]);
@@ -1289,6 +1297,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         tablesRevision,
         customersRevision,
         employeesRevision,
+        employeeSchedulesRevision,
         reservationsRevision,
         orderPaymentsRevision,
         kdsOrders,

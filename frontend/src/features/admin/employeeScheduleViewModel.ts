@@ -6,6 +6,7 @@ import type {
 
 const WEEKDAY_LABELS = ['Chủ nhật', 'Thứ hai', 'Thứ ba', 'Thứ tư', 'Thứ năm', 'Thứ sáu', 'Thứ bảy'] as const;
 const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const BUSINESS_TIME_ZONE = 'Asia/Ho_Chi_Minh';
 
 function dateFromParts(value: string): Date {
   const match = ISO_DATE.exec(value);
@@ -22,6 +23,18 @@ function dateFromParts(value: string): Date {
 }
 
 function dateToIso(date: Date): string { return date.toISOString().slice(0, 10); }
+
+export function getBusinessDate(now: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: BUSINESS_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(now);
+  const values = new Map(parts.map(part => [part.type, part.value]));
+  return `${values.get('year')}-${values.get('month')}-${values.get('day')}`;
+}
+
+export function isScheduleDateInPast(workDate: string, today: string): boolean {
+  return dateToIso(dateFromParts(workDate)) < dateToIso(dateFromParts(today));
+}
 
 function addDays(value: string, count: number): string {
   const date = dateFromParts(value);
