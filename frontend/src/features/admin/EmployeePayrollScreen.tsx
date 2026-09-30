@@ -11,6 +11,8 @@ import {
   finalizeEmployeePayrollApi,
   recalculateEmployeePayrollApi,
   recordEmployeePayrollPaymentApi,
+  reverseEmployeePayrollAdjustmentApi,
+  reverseEmployeePayrollPaymentApi,
   type CreateEmployeePayrollInput,
   type EmployeePayrollDetailDto,
   type EmployeePayrollListDto,
@@ -62,6 +64,7 @@ export const EmployeePayrollScreen: React.FC = () => {
   const [employeePage, setEmployeePage] = useState(1);
   const [employeeHasMore, setEmployeeHasMore] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [detail, setDetail] = useState<EmployeePayrollDetailDto | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const requestId = useRef(0);
@@ -154,10 +157,12 @@ export const EmployeePayrollScreen: React.FC = () => {
   };
 
   const exportExpanded = async () => {
-    if (expandedId === null) return;
+    const exportId = selectedId ?? expandedId;
+    if (exportId === null) return;
     try {
-      const blob = await downloadEmployeePayrollApi(token, expandedId, 'xlsx');
-      downloadBlob(blob, `${detail?.code ?? 'bang-luong'}.xlsx`);
+      const blob = await downloadEmployeePayrollApi(token, exportId, 'xlsx');
+      const selectedCode = data?.items.find(item => item.id === exportId)?.code;
+      downloadBlob(blob, `${selectedCode ?? (detail?.id === exportId ? detail.code : 'bang-luong')}.xlsx`);
     } catch (caught) { setError(caught instanceof Error ? caught.message : 'Không thể xuất bảng lương.'); }
   };
 
@@ -169,7 +174,7 @@ export const EmployeePayrollScreen: React.FC = () => {
         {compact && <Pressable testID="payroll-filters-toggle" onPress={() => setFiltersOpen(value => !value)} style={styles.secondaryButton}><Text style={styles.secondaryText}>Bộ lọc</Text></Pressable>}
         <View style={styles.toolbarActions}>
           <Pressable testID="payroll-create-open" onPress={openCreate} style={styles.primaryButton}><Text style={styles.primaryText}>+ Bảng tính lương</Text></Pressable>
-          <Pressable testID="payroll-export" disabled={expandedId === null} onPress={() => void exportExpanded()} style={[styles.secondaryButton, expandedId === null && styles.disabled]}><Text style={styles.secondaryText}>Xuất file</Text></Pressable>
+          <Pressable testID="payroll-export" disabled={selectedId === null && expandedId === null} onPress={() => void exportExpanded()} style={[styles.secondaryButton, selectedId === null && expandedId === null && styles.disabled]}><Text style={styles.secondaryText}>Xuất file</Text></Pressable>
         </View>
       </View>
 
@@ -194,12 +199,14 @@ export const EmployeePayrollScreen: React.FC = () => {
             <ScrollView horizontal showsHorizontalScrollIndicator>
               <View style={styles.table}>
                 <View style={[styles.row, styles.headerRow]}>
+                  <Text style={styles.selectCell}>Chọn</Text>
                   <Text style={[styles.cell, styles.codeCell]}>Mã</Text><Text style={[styles.cell, styles.nameCell]}>Tên</Text>
                   <Text style={styles.cell}>Kỳ hạn trả</Text><Text style={[styles.cell, styles.periodCell]}>Kỳ làm việc</Text>
                   <Text style={styles.moneyCell}>Tổng lương</Text><Text style={styles.moneyCell}>Đã trả nhân viên</Text>
                   <Text style={styles.moneyCell}>Còn cần trả</Text><Text style={styles.cell}>Trạng thái</Text>
                 </View>
                 <View style={[styles.row, styles.summaryRow]}>
+                  <Text style={styles.selectCell} />
                   <Text style={[styles.cell, styles.codeCell]} /><Text style={[styles.cell, styles.nameCell]}>Tổng theo bộ lọc</Text>
                   <Text style={styles.cell} /><Text style={[styles.cell, styles.periodCell]} />
                   <Text style={styles.moneyCell}>{formatPayrollVnd(data?.summary.totalNetAmount ?? 0)}</Text>
@@ -209,6 +216,9 @@ export const EmployeePayrollScreen: React.FC = () => {
                 {data?.items.map(item => (
                   <View key={item.id}>
                     <Pressable testID={`payroll-row-${item.id}`} onPress={() => void openRow(item.id)} style={[styles.row, expandedId === item.id && styles.selectedRow]}>
+                      <Pressable testID={`payroll-select-${item.id}`} accessibilityRole="checkbox" accessibilityState={{ checked: selectedId === item.id }} onPress={(event?: { stopPropagation?: () => void }) => { event?.stopPropagation?.(); setSelectedId(current => current === item.id ? null : item.id); }} style={[styles.rowCheckbox, selectedId === item.id && styles.rowCheckboxSelected]}>
+                        <Text style={styles.checkmark}>{selectedId === item.id ? '✓' : ''}</Text>
+                      </Pressable>
                       <Text style={[styles.cell, styles.codeCell]}>{item.code}</Text><Text style={[styles.cell, styles.nameCell]}>{item.name}</Text>
                       <Text style={styles.cell}>Hàng tháng</Text><Text style={[styles.cell, styles.periodCell]}>{periodLabel(item)}</Text>
                       <Text style={styles.moneyCell}>{formatPayrollVnd(item.totalNetAmount)}</Text><Text style={styles.moneyCell}>{formatPayrollVnd(item.totalPaidAmount)}</Text>
@@ -223,7 +233,9 @@ export const EmployeePayrollScreen: React.FC = () => {
                         onFinalize={async () => { await finalizeEmployeePayrollApi(token, item.id, idempotencyKey('payroll-finalize')); }}
                         onCancel={async reason => { await cancelEmployeePayrollApi(token, item.id, { reason }); }}
                         onAdjust={async (lineId, input) => { await addEmployeePayrollAdjustmentApi(token, item.id, lineId, input); }}
+                        onReverseAdjustment={async (lineId, adjustmentId, reason) => { await reverseEmployeePayrollAdjustmentApi(token, item.id, lineId, adjustmentId, { reason }); }}
                         onPay={async (lineId, input: PayrollPaymentInput) => { await recordEmployeePayrollPaymentApi(token, item.id, lineId, input, idempotencyKey('payroll-payment')); }}
+                        onReversePayment={async (lineId, paymentId, reason) => { await reverseEmployeePayrollPaymentApi(token, item.id, lineId, paymentId, { reason }, idempotencyKey('payroll-payment-reverse')); }}
                       />
                     )}
                   </View>
@@ -267,6 +279,7 @@ const createStyles = (theme: any) => StyleSheet.create({
   main: { flex: 1, minWidth: 0, backgroundColor: theme.surfaceBase, borderRadius: 8, overflow: 'hidden' }, table: { minWidth: 1320 }, row: { minHeight: 58, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderColor: theme.borderSubtle },
   headerRow: { minHeight: 42, backgroundColor: '#eaf3ff' }, summaryRow: { minHeight: 44, backgroundColor: theme.surfaceSunken }, selectedRow: { backgroundColor: theme.interactiveSecondary },
   cell: { width: 135, paddingHorizontal: 10, color: theme.textPrimary }, codeCell: { width: 120 }, nameCell: { width: 220 }, periodCell: { width: 205 }, moneyCell: { width: 160, paddingHorizontal: 10, color: theme.textPrimary, textAlign: 'right' },
+  selectCell: { width: 54, paddingHorizontal: 8, color: theme.textPrimary, textAlign: 'center' }, rowCheckbox: { width: 18, height: 18, marginHorizontal: 18, borderWidth: 1, borderColor: theme.borderSubtle, borderRadius: 4, alignItems: 'center', justifyContent: 'center' }, rowCheckboxSelected: { backgroundColor: theme.primary, borderColor: theme.primary },
   empty: { minHeight: 220, alignItems: 'center', justifyContent: 'center' }, emptyTitle: { color: theme.textPrimary, fontSize: 16, fontWeight: '700' },
   pagination: { minHeight: 52, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 10, padding: 10 }, pageButton: { paddingHorizontal: 10, paddingVertical: 7, borderWidth: 1, borderColor: theme.borderSubtle, borderRadius: 6 },
   bodyText: { color: theme.textPrimary }, meta: { color: theme.textSecondary, fontSize: 12 }, error: { color: theme.danger, padding: 10 }

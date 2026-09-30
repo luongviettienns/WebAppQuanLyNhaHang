@@ -29,7 +29,7 @@ import { EmployeeAttendanceKioskSessionsModal } from './EmployeeAttendanceKioskS
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 const activeSession = { id: 23, branchId: 1, branchCode: 'MAIN', deviceName: 'Kiosk quầy', createdAt: '2026-09-29T01:00:00Z',
-  expiresAt: '2026-09-30T01:00:00Z', revokedAt: null, lastUsedAt: null };
+  expiresAt: '2099-09-30T01:00:00Z', revokedAt: null, lastUsedAt: null };
 
 describe('EmployeeAttendanceKioskSessionsModal', () => {
   beforeEach(() => {

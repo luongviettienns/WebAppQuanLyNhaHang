@@ -3,7 +3,6 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
-import { businessDateAt } from '../employee-attendance/attendance-domain';
 import { calculatePayrollLine, getPayrollMonthBounds } from './employee-payroll.calculation';
 import type { PayrollAdjustmentInput, PayrollCancelInput, PayrollCreateInput, PayrollReasonInput } from './employee-payroll.schemas';
 
@@ -540,7 +539,13 @@ export class EmployeePayrollMutationService {
         data: { payrollLineId: line.id, type: input.type, amount: input.amount, reason: input.reason, createdByUserId: actor.id }
       });
       const totals = await recomputeFinancialTotals(tx, batch.id);
-      const { lines: _lines, ...financialTotals } = totals;
+      const financialTotals = {
+        totalGrossAmount: totals.totalGrossAmount,
+        totalAdjustmentAmount: totals.totalAdjustmentAmount,
+        totalNetAmount: totals.totalNetAmount,
+        totalPaidAmount: totals.totalPaidAmount,
+        totalRemainingAmount: totals.totalRemainingAmount
+      };
       const updated = await tx.employeePayrollBatch.update({
         where: { id: batch.id },
         data: { ...financialTotals, version: { increment: 1 } }
@@ -581,7 +586,13 @@ export class EmployeePayrollMutationService {
         data: { reversedAt: new Date(), reversedByUserId: actor.id, reverseReason: input.reason }
       });
       const totals = await recomputeFinancialTotals(tx, batch.id);
-      const { lines: _lines, ...financialTotals } = totals;
+      const financialTotals = {
+        totalGrossAmount: totals.totalGrossAmount,
+        totalAdjustmentAmount: totals.totalAdjustmentAmount,
+        totalNetAmount: totals.totalNetAmount,
+        totalPaidAmount: totals.totalPaidAmount,
+        totalRemainingAmount: totals.totalRemainingAmount
+      };
       const updated = await tx.employeePayrollBatch.update({
         where: { id: batch.id }, data: { ...financialTotals, version: { increment: 1 } }
       });

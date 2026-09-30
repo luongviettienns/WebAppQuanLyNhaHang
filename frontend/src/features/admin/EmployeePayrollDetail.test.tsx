@@ -50,4 +50,37 @@ describe('EmployeePayrollDetail', () => {
     await act(async () => finalized.root.findByProps({ testID: 'payroll-line-10' }).props.onPress());
     expect(finalized.root.findByProps({ testID: 'payroll-line-pay-10' })).toBeDefined();
   });
+
+  it('shows frozen sources and append-only histories with reasoned reversal actions', async () => {
+    const calculatedDetail = detail('CALCULATED');
+    calculatedDetail.lines[0].sourceSnapshot = {
+      compensationTerms: [{ id: 1, payBasis: 'MONTHLY', baseRate: 12_000_000, effectiveFrom: '2026-09-01' }],
+      attendanceSessions: [{ id: 91, businessDate: '2026-09-02', checkInAt: '2026-09-02T01:00:00.000Z', checkOutAt: '2026-09-02T05:00:00.000Z' }]
+    };
+    calculatedDetail.lines[0].adjustments = [{ id: 71, type: 'BONUS', amount: 500_000, reason: 'Thưởng tốt', createdAt: '', reversedAt: null, reverseReason: null }];
+    const reverseAdjustment = vi.fn().mockResolvedValue(undefined);
+    let calculated: any;
+    await act(async () => { calculated = create(<EmployeePayrollDetail detail={calculatedDetail} onChanged={async () => {}} onReverseAdjustment={reverseAdjustment} />); });
+    await act(async () => calculated.root.findByProps({ testID: 'payroll-line-10' }).props.onPress());
+    const calculatedText = JSON.stringify(calculated.toJSON());
+    expect(calculatedText).toContain('Nguồn tính lương đã đóng băng');
+    expect(calculatedText).toContain('12.000.000');
+    expect(calculatedText).toContain('Thưởng tốt');
+    await act(async () => calculated.root.findByProps({ testID: 'payroll-adjustment-reverse-71' }).props.onPress());
+    await act(async () => calculated.root.findByProps({ testID: 'payroll-reverse-reason' }).props.onChangeText('Ghi nhận nhầm'));
+    await act(async () => { calculated.root.findByProps({ testID: 'payroll-reverse-confirm' }).props.onPress(); await Promise.resolve(); });
+    expect(reverseAdjustment).toHaveBeenCalledWith(10, 71, 'Ghi nhận nhầm');
+
+    const finalizedDetail = detail('FINALIZED');
+    finalizedDetail.totalPaidAmount = 2_000_000;
+    finalizedDetail.lines[0].paidAmount = 2_000_000;
+    finalizedDetail.lines[0].remainingAmount = 10_000_000;
+    finalizedDetail.lines[0].payments = [{ id: 81, amount: 2_000_000, method: 'BANK_TRANSFER', status: 'SUCCESS', externalReference: 'FT001', note: null, paidAt: '2026-09-30T02:00:00.000Z', reversedAt: null, reverseReason: null }];
+    const reversePayment = vi.fn().mockResolvedValue(undefined);
+    let finalized: any;
+    await act(async () => { finalized = create(<EmployeePayrollDetail detail={finalizedDetail} onChanged={async () => {}} onReversePayment={reversePayment} />); });
+    await act(async () => finalized.root.findByProps({ testID: 'payroll-line-10' }).props.onPress());
+    expect(JSON.stringify(finalized.toJSON())).toContain('FT001');
+    expect(finalized.root.findByProps({ testID: 'payroll-payment-reverse-81' })).toBeDefined();
+  });
 });

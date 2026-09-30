@@ -18,7 +18,9 @@ interface EmployeePayrollDetailProps {
   onFinalize?: () => Promise<void>;
   onCancel?: (reason: string) => Promise<void>;
   onAdjust?: (lineId: number, input: PayrollAdjustmentInput) => Promise<void>;
+  onReverseAdjustment?: (lineId: number, adjustmentId: number, reason: string) => Promise<void>;
   onPay?: (lineId: number, input: PayrollPaymentInput) => Promise<void>;
+  onReversePayment?: (lineId: number, paymentId: number, reason: string) => Promise<void>;
 }
 
 const newIdempotentClickGuard = () => ({ current: false });
@@ -30,7 +32,9 @@ export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
   onFinalize,
   onCancel,
   onAdjust,
-  onPay
+  onReverseAdjustment,
+  onPay,
+  onReversePayment
 }) => {
   const { theme } = useTheme();
   const styles = useMemo(() => createStyles(theme), [theme]);
@@ -38,20 +42,26 @@ export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
   const [expandedLineId, setExpandedLineId] = useState<number | null>(null);
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const [adjustmentType, setAdjustmentType] = useState<'BONUS' | 'DEDUCTION'>('BONUS');
+  const [paymentMethod, setPaymentMethod] = useState<PayrollPaymentInput['method']>('BANK_TRANSFER');
+  const [reverseTarget, setReverseTarget] = useState<{ kind: 'adjustment' | 'payment'; lineId: number; id: number } | null>(null);
+  const [reverseReason, setReverseReason] = useState('');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(newIdempotentClickGuard()).current;
 
   const run = async (action?: () => Promise<void>) => {
-    if (!action || pendingRef.current) return;
+    if (!action || pendingRef.current) return false;
     pendingRef.current = true;
     setPending(true);
     setError('');
     try {
       await action();
       await onChanged();
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Không thể xử lý bảng lương');
+      return false;
     } finally {
       pendingRef.current = false;
       setPending(false);
@@ -59,6 +69,15 @@ export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
   };
 
   const parsedAmount = Number(amount.replace(/[^0-9]/g, ''));
+
+  const submitReverse = async () => {
+    if (!reverseTarget || reverseReason.trim().length < 3) return;
+    const action = reverseTarget.kind === 'adjustment'
+      ? () => onReverseAdjustment?.(reverseTarget.lineId, reverseTarget.id, reverseReason.trim()) ?? Promise.resolve()
+      : () => onReversePayment?.(reverseTarget.lineId, reverseTarget.id, reverseReason.trim()) ?? Promise.resolve();
+    const changed = await run(action);
+    if (changed) { setReverseTarget(null); setReverseReason(''); }
+  };
 
   return (
     <View style={styles.container}>
@@ -124,6 +143,12 @@ export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
           </View>
           {model.lines.map(line => {
             const expanded = expandedLineId === line.id;
+            const compensationTerms = Array.isArray(line.raw.sourceSnapshot.compensationTerms)
+              ? line.raw.sourceSnapshot.compensationTerms as Array<{ id?: number; payBasis?: string; baseRate?: number; effectiveFrom?: string }>
+              : [];
+            const attendanceSessions = Array.isArray(line.raw.sourceSnapshot.attendanceSessions)
+              ? line.raw.sourceSnapshot.attendanceSessions as Array<{ id?: number; businessDate?: string; checkInAt?: string; checkOutAt?: string | null }>
+              : [];
             return (
               <View key={line.id}>
                 <Pressable
@@ -162,6 +187,23 @@ export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
                       </View>
                     </View>
 
+                    <View style={styles.historyBlock}>
+                      <Text style={styles.sectionTitle}>Nguồn tính lương đã đóng băng</Text>
+                      {compensationTerms.length === 0
+                        ? <Text style={styles.meta}>Không có thiết lập lương hiệu lực.</Text>
+                        : compensationTerms.map((term, index) => (
+                          <Text key={term.id ?? index} style={styles.historyText}>
+                            {`${term.payBasis ?? 'Không xác định'} · ${formatPayrollVnd(term.baseRate ?? 0)} · hiệu lực ${term.effectiveFrom ?? '—'}`}
+                          </Text>
+                        ))}
+                      <Text style={styles.meta}>{`Phiên chấm công trong snapshot: ${attendanceSessions.length}`}</Text>
+                      {attendanceSessions.map((session, index) => (
+                        <Text key={session.id ?? index} style={styles.historyText}>
+                          {`#${session.id ?? '—'} · ${session.businessDate ?? '—'} · ${session.checkInAt ?? '—'} → ${session.checkOutAt ?? 'Thiếu giờ ra'}`}
+                        </Text>
+                      ))}
+                    </View>
+
                     {line.warnings.blockers.length > 0 && (
                       <View style={styles.warningBlock}>
                         <Text style={styles.warningTitle}>Cần xử lý</Text>
@@ -175,16 +217,61 @@ export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
                       </View>
                     )}
 
+                    <View style={styles.historyBlock}>
+                      <Text style={styles.sectionTitle}>Lịch sử điều chỉnh</Text>
+                      {line.raw.adjustments.length === 0 ? <Text style={styles.meta}>Chưa có điều chỉnh.</Text> : line.raw.adjustments.map(adjustment => (
+                        <View key={adjustment.id} style={styles.historyRow}>
+                          <View style={styles.historyCopy}>
+                            <Text style={styles.historyText}>{`${adjustment.type === 'BONUS' ? 'Thưởng' : 'Khấu trừ'} · ${formatPayrollVnd(adjustment.amount)} · ${adjustment.reason}`}</Text>
+                            <Text style={styles.meta}>{adjustment.reversedAt ? `Đã đảo: ${adjustment.reverseReason ?? '—'}` : 'Đang áp dụng'}</Text>
+                          </View>
+                          {!adjustment.reversedAt && (detail.status === 'DRAFT' || detail.status === 'CALCULATED') && onReverseAdjustment && (
+                            <Pressable testID={`payroll-adjustment-reverse-${adjustment.id}`} onPress={() => { setReverseTarget({ kind: 'adjustment', lineId: line.id, id: adjustment.id }); setReverseReason(''); }} style={styles.linkButton}>
+                              <Text style={styles.dangerText}>Đảo điều chỉnh</Text>
+                            </Pressable>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+
+                    <View style={styles.historyBlock}>
+                      <Text style={styles.sectionTitle}>Lịch sử trả lương</Text>
+                      {line.raw.payments.length === 0 ? <Text style={styles.meta}>Chưa có khoản trả lương.</Text> : line.raw.payments.map(payment => (
+                        <View key={payment.id} style={styles.historyRow}>
+                          <View style={styles.historyCopy}>
+                            <Text style={styles.historyText}>{`${formatPayrollVnd(payment.amount)} · ${payment.method}${payment.externalReference ? ` · ${payment.externalReference}` : ''}`}</Text>
+                            <Text style={styles.meta}>{payment.status === 'REVERSED' ? `Đã đảo: ${payment.reverseReason ?? '—'}` : `Đã ghi nhận ${payment.paidAt}`}</Text>
+                          </View>
+                          {payment.status === 'SUCCESS' && detail.status === 'FINALIZED' && onReversePayment && (
+                            <Pressable testID={`payroll-payment-reverse-${payment.id}`} onPress={() => { setReverseTarget({ kind: 'payment', lineId: line.id, id: payment.id }); setReverseReason(''); }} style={styles.linkButton}>
+                              <Text style={styles.dangerText}>Đảo khoản trả</Text>
+                            </Pressable>
+                          )}
+                        </View>
+                      ))}
+                    </View>
+
+                    {reverseTarget?.lineId === line.id && (
+                      <View style={styles.formRow}>
+                        <TextInput testID="payroll-reverse-reason" value={reverseReason} onChangeText={setReverseReason} placeholder="Lý do đảo bắt buộc" style={styles.inputWide} />
+                        <Pressable testID="payroll-reverse-confirm" disabled={pending || reverseReason.trim().length < 3} onPress={() => void submitReverse()} style={styles.dangerButton}>
+                          <Text style={styles.dangerText}>Xác nhận đảo</Text>
+                        </Pressable>
+                      </View>
+                    )}
+
                     {(detail.status === 'DRAFT' || detail.status === 'CALCULATED') && onAdjust && (
                       <View style={styles.formRow}>
                         <TextInput value={amount} onChangeText={setAmount} placeholder="Số tiền điều chỉnh" style={styles.input} keyboardType="numeric" />
                         <TextInput value={reason} onChangeText={setReason} placeholder="Lý do bắt buộc" style={styles.inputWide} />
+                        <Pressable testID="payroll-adjustment-type-bonus" onPress={() => setAdjustmentType('BONUS')} style={[styles.choiceButton, adjustmentType === 'BONUS' && styles.choiceButtonSelected]}><Text style={styles.secondaryButtonText}>Thưởng</Text></Pressable>
+                        <Pressable testID="payroll-adjustment-type-deduction" onPress={() => setAdjustmentType('DEDUCTION')} style={[styles.choiceButton, adjustmentType === 'DEDUCTION' && styles.choiceButtonSelected]}><Text style={styles.secondaryButtonText}>Khấu trừ</Text></Pressable>
                         <Pressable
                           disabled={pending || parsedAmount <= 0 || reason.trim().length < 3}
-                          onPress={() => run(() => onAdjust(line.id, { type: 'BONUS', amount: parsedAmount, reason: reason.trim() }))}
+                          onPress={() => run(() => onAdjust(line.id, { type: adjustmentType, amount: parsedAmount, reason: reason.trim() }))}
                           style={styles.secondaryButton}
                         >
-                          <Text style={styles.secondaryButtonText}>Thêm thưởng</Text>
+                          <Text style={styles.secondaryButtonText}>Thêm điều chỉnh</Text>
                         </Pressable>
                       </View>
                     )}
@@ -192,10 +279,15 @@ export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
                     {detail.status === 'FINALIZED' && (
                       <View style={styles.formRow}>
                         <TextInput value={amount} onChangeText={setAmount} placeholder={`Tối đa ${formatPayrollVnd(line.raw.remainingAmount)}`} style={styles.input} keyboardType="numeric" />
+                        {(['CASH', 'BANK_TRANSFER', 'OTHER'] as const).map(method => (
+                          <Pressable key={method} testID={`payroll-payment-method-${method.toLowerCase()}`} onPress={() => setPaymentMethod(method)} style={[styles.choiceButton, paymentMethod === method && styles.choiceButtonSelected]}>
+                            <Text style={styles.secondaryButtonText}>{method === 'CASH' ? 'Tiền mặt' : method === 'BANK_TRANSFER' ? 'Chuyển khoản' : 'Khác'}</Text>
+                          </Pressable>
+                        ))}
                         <Pressable
                           testID={`payroll-line-pay-${line.id}`}
                           disabled={pending || !onPay || parsedAmount <= 0 || parsedAmount > line.raw.remainingAmount}
-                          onPress={() => run(() => onPay?.(line.id, { amount: parsedAmount, method: 'BANK_TRANSFER' }) ?? Promise.resolve())}
+                          onPress={() => run(() => onPay?.(line.id, { amount: parsedAmount, method: paymentMethod }) ?? Promise.resolve())}
                           style={styles.primaryButton}
                         >
                           <Text style={styles.primaryButtonText}>Ghi nhận trả lương</Text>
@@ -240,9 +332,13 @@ const createStyles = (theme: any) => StyleSheet.create({
   factLabel: { color: theme.textSecondary, fontSize: 12 }, factValue: { color: theme.textPrimary, fontWeight: '600', marginTop: 4 },
   warningBlock: { padding: 10, borderLeftWidth: 3, borderColor: theme.danger, backgroundColor: '#fff1f0' }, warningTitle: { fontWeight: '700', color: theme.danger }, warningText: { color: theme.textPrimary, marginTop: 3 },
   infoBlock: { padding: 10, borderLeftWidth: 3, borderColor: theme.primary, backgroundColor: theme.interactiveSecondary }, infoTitle: { fontWeight: '700', color: theme.primary }, infoText: { color: theme.textPrimary, marginTop: 3 },
+  historyBlock: { padding: 12, gap: 7, backgroundColor: theme.surfaceRaised, borderWidth: 1, borderColor: theme.borderSubtle, borderRadius: 7 },
+  sectionTitle: { color: theme.textPrimary, fontWeight: '700' }, historyRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 5 },
+  historyCopy: { flex: 1, gap: 2 }, historyText: { color: theme.textPrimary, fontSize: 13 }, linkButton: { paddingHorizontal: 9, paddingVertical: 6 },
   formRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }, input: { width: 190, padding: 10, borderWidth: 1, borderColor: theme.borderSubtle, borderRadius: 7, color: theme.textPrimary, backgroundColor: theme.surfaceRaised },
   inputWide: { minWidth: 240, flexGrow: 1, padding: 10, borderWidth: 1, borderColor: theme.borderSubtle, borderRadius: 7, color: theme.textPrimary, backgroundColor: theme.surfaceRaised },
   primaryButton: { paddingHorizontal: 14, paddingVertical: 10, backgroundColor: theme.primary, borderRadius: 7 }, primaryButtonText: { color: theme.textInverse, fontWeight: '600' },
   secondaryButton: { paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.primary, borderRadius: 7 }, secondaryButtonText: { color: theme.primary, fontWeight: '600' },
+  choiceButton: { paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: theme.borderSubtle, borderRadius: 999 }, choiceButtonSelected: { borderColor: theme.primary, backgroundColor: theme.interactiveSecondary },
   cancelRow: { flexDirection: 'row', gap: 8 }, dangerButton: { paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: theme.danger, borderRadius: 7 }, dangerText: { color: theme.danger, fontWeight: '600' }, error: { color: theme.danger }
 });

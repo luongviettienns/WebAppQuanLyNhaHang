@@ -20,7 +20,8 @@ vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ theme: { surf
 vi.mock('../../api/employeePayroll', () => ({
   fetchEmployeePayrollsApi: vi.fn(), fetchEmployeePayrollDetailApi: vi.fn(), createEmployeePayrollApi: vi.fn(),
   recalculateEmployeePayrollApi: vi.fn(), finalizeEmployeePayrollApi: vi.fn(), cancelEmployeePayrollApi: vi.fn(),
-  addEmployeePayrollAdjustmentApi: vi.fn(), recordEmployeePayrollPaymentApi: vi.fn(), downloadEmployeePayrollApi: vi.fn()
+  addEmployeePayrollAdjustmentApi: vi.fn(), reverseEmployeePayrollAdjustmentApi: vi.fn(), recordEmployeePayrollPaymentApi: vi.fn(),
+  reverseEmployeePayrollPaymentApi: vi.fn(), downloadEmployeePayrollApi: vi.fn()
 }));
 vi.mock('../../api/employeeManagement', () => ({ fetchEmployeesApi: vi.fn() }));
 vi.mock('./EmployeePayrollCreateModal', () => ({ EmployeePayrollCreateModal: (props: any) => React.createElement('Modal', { testID: 'payroll-create-modal', ...props }) }));
@@ -77,6 +78,15 @@ describe('EmployeePayrollScreen', () => {
     expect(screen.root.findByProps({ testID: 'payroll-create-modal' }).props.visible).toBe(false);
     await act(async () => screen.root.findByProps({ testID: 'payroll-create-open' }).props.onPress());
     expect(screen.root.findByProps({ testID: 'payroll-create-modal' }).props.visible).toBe(true);
+  });
+
+  it('exports an explicitly selected payroll without requiring row expansion', async () => {
+    let screen: any;
+    await act(async () => { screen = create(<EmployeePayrollScreen />); await Promise.resolve(); });
+    await act(async () => screen.root.findByProps({ testID: 'payroll-select-1' }).props.onPress());
+    await act(async () => { screen.root.findByProps({ testID: 'payroll-export' }).props.onPress(); await Promise.resolve(); });
+    expect(downloadEmployeePayrollApi).toHaveBeenCalledWith('admin-token', 1, 'xlsx');
+    expect(fetchEmployeePayrollDetailApi).not.toHaveBeenCalled();
   });
 
   it('debounces search and exports the explicitly expanded payroll', async () => {
