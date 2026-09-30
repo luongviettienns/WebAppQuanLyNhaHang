@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { CalendarDays, Clock3, Settings, WalletCards } from 'lucide-react-native';
 import { fetchEmployeeSettingsApi, type EmployeeSettingsDestination, type EmployeeSettingsWorkspaceDto } from '../../api/employeeSettings';
@@ -24,19 +24,22 @@ export const EmployeeSettingsScreen: React.FC<{ onNavigate: (destination: Employ
   const { token } = useAuth(); const { theme } = useTheme(); const { width } = useWindowDimensions(); const compact = width < 820;
   const { employeeSettingsRevision } = useRestaurant();
   const [section, setSection] = useState<Section>('initialization'); const [workspace, setWorkspace] = useState<EmployeeSettingsWorkspaceDto | null>(null);
+  const workspaceRef = useRef<EmployeeSettingsWorkspaceDto | null>(null);
   const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [refreshNotice, setRefreshNotice] = useState('');
   const styles = useMemo(() => createStyles(), []);
   const load = useCallback(async (background = false) => {
     if (!background) setLoading(true); setError('');
     try {
       const next = await fetchEmployeeSettingsApi(token, 1);
-      if (background && workspace && JSON.stringify(next.revisions) !== JSON.stringify(workspace.revisions)) setRefreshNotice('Thiết lập đã được cập nhật. Bản nháp đang mở vẫn được giữ lại.');
+      const current = workspaceRef.current;
+      if (background && current && JSON.stringify(next.revisions) !== JSON.stringify(current.revisions)) setRefreshNotice('Thiết lập đã được cập nhật. Bản nháp đang mở vẫn được giữ lại.');
+      workspaceRef.current = next;
       setWorkspace(next);
     } catch (failure) { setError((failure as Error).message || 'Không thể tải thiết lập nhân viên.'); }
     finally { if (!background) setLoading(false); }
-  }, [token, workspace]);
-  useEffect(() => { void load(); }, [token]); // load only when authenticated identity changes
-  useEffect(() => { if (employeeSettingsRevision > 0) void load(true); }, [employeeSettingsRevision]);
+  }, [token]);
+  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (employeeSettingsRevision > 0) void load(true); }, [employeeSettingsRevision, load]);
 
   if (loading) return <View style={styles.center}><ActivityIndicator color={theme.primary} /><Text style={{ color: theme.textSecondary }}>Đang tải thiết lập…</Text></View>;
   if (!workspace) return <View style={styles.center}><InlineAlert message={error || 'Không thể tải thiết lập nhân viên.'} actionLabel="Thử lại" onAction={() => void load()} /></View>;

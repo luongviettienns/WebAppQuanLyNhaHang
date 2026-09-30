@@ -202,10 +202,16 @@ describe('employee management screen', () => {
     let screen: any;
     await act(async () => { screen = create(<EmployeeManagementScreen />); await Promise.resolve(); });
     await act(async () => { screen.root.findByProps({ testID: 'employee-add' }).props.onPress(); await Promise.resolve(); });
-    await act(async () => { screen.root.findByProps({ testID: 'employee-avatar' }).props.onPress(); await Promise.resolve(); });
+    await act(async () => {
+      screen.root.findByProps({ testID: 'employee-avatar' }).props.onPress();
+      await vi.waitFor(() => expect(JSON.stringify(screen.toJSON())).toContain('tối đa 2 MiB'));
+    });
     expect(uploadEmployeeAvatarApi).not.toHaveBeenCalled();
     expect(JSON.stringify(screen.toJSON())).toContain('tối đa 2 MiB');
-    await act(async () => { screen.root.findByProps({ testID: 'employee-avatar' }).props.onPress(); await Promise.resolve(); });
+    await act(async () => {
+      screen.root.findByProps({ testID: 'employee-avatar' }).props.onPress();
+      await vi.waitFor(() => expect(uploadEmployeeAvatarApi).toHaveBeenCalled());
+    });
     expect(uploadEmployeeAvatarApi).toHaveBeenCalledWith('admin-token', 'data:image/png;base64,iVBORw0KGgo=', 'avatar.png');
     await act(async () => screen.unmount());
   });
