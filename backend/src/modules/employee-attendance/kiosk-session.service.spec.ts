@@ -28,7 +28,8 @@ describe('employee attendance kiosk admin service', () => {
   it('returns a new secret once while persisting only its hash and server-calculated expiry', async () => {
     const store = makeStore();
     const now = new Date('2026-09-29T10:00:00.000Z');
-    const service = new EmployeeAttendanceKioskAdminService(store, () => now);
+    const invalidateChecklist = vi.fn();
+    const service = new EmployeeAttendanceKioskAdminService(store, () => now, invalidateChecklist);
 
     const result = await service.create({ branchId: 1, expiresInMinutes: 60, deviceName: 'Quầy lễ tân' }, { id: 4 });
 
@@ -42,6 +43,12 @@ describe('employee attendance kiosk admin service', () => {
       expiresAt: new Date('2026-09-29T11:00:00.000Z')
     }));
     expect(JSON.stringify(await service.list(1))).not.toContain(result.secret);
+    expect(invalidateChecklist).toHaveBeenCalledWith(expect.objectContaining({
+      branchId: 1,
+      action: 'KIOSK_SESSION_CREATED',
+      kioskSessionId: publicSession.id
+    }));
+    expect(JSON.stringify(invalidateChecklist.mock.calls)).not.toContain(result.secret);
   });
 
   it('rejects invalid durations and requires a session ID to revoke', async () => {
@@ -60,5 +67,19 @@ describe('employee attendance kiosk admin service', () => {
     const service = new EmployeeAttendanceKioskAdminService(store);
 
     await expect(service.revoke(900, { id: 4 })).rejects.toMatchObject({ code: 'NOT_FOUND' });
+  });
+
+  it('invalidates the branch checklist after a kiosk session is revoked', async () => {
+    const store = makeStore();
+    const invalidateChecklist = vi.fn();
+    const service = new EmployeeAttendanceKioskAdminService(store, () => new Date('2026-09-29T10:30:00.000Z'), invalidateChecklist);
+
+    await service.revoke(publicSession.id, { id: 4 });
+
+    expect(invalidateChecklist).toHaveBeenCalledWith(expect.objectContaining({
+      branchId: 1,
+      action: 'KIOSK_SESSION_REVOKED',
+      kioskSessionId: publicSession.id
+    }));
   });
 });

@@ -30,6 +30,13 @@ export interface AttendanceWeekSessionDto {
   plannedShiftName: string | null;
   plannedStartMinute: number | null;
   plannedEndMinute: number | null;
+  policySnapshot: {
+    attendancePolicyVersionId: number | null;
+    standardDayMinutes: number;
+    lateThresholdMinutes: number;
+    earlyLeaveThresholdMinutes: number;
+    allowUnscheduledAttendance: boolean;
+  };
   classification: AttendanceClassification;
 }
 
@@ -91,6 +98,11 @@ interface AttendanceSessionRecord {
   plannedShiftName: string | null;
   plannedStartMinute: number | null;
   plannedEndMinute: number | null;
+  attendancePolicyVersionId: number | null;
+  standardDayMinutesSnapshot: number;
+  lateThresholdMinutesSnapshot: number;
+  earlyLeaveThresholdMinutesSnapshot: number;
+  allowUnscheduledAttendanceSnapshot: boolean;
   employee: EmployeeRecord;
 }
 
@@ -185,7 +197,9 @@ function sessionClassification(
         linkStatus: session.scheduleLinkStatus,
         plannedWorkDate: session.plannedWorkDate ? isoDate(session.plannedWorkDate) : null,
         plannedStartMinute: session.plannedStartMinute,
-        plannedEndMinute: session.plannedEndMinute
+        plannedEndMinute: session.plannedEndMinute,
+        lateThresholdMinutesSnapshot: session.lateThresholdMinutesSnapshot,
+        earlyLeaveThresholdMinutesSnapshot: session.earlyLeaveThresholdMinutesSnapshot
       },
       now
     }).classification!;
@@ -207,6 +221,13 @@ function toSessionDto(session: AttendanceSessionRecord, occurrence: AttendanceOc
     plannedShiftName: session.plannedShiftName,
     plannedStartMinute: session.plannedStartMinute,
     plannedEndMinute: session.plannedEndMinute,
+    policySnapshot: {
+      attendancePolicyVersionId: session.attendancePolicyVersionId,
+      standardDayMinutes: session.standardDayMinutesSnapshot,
+      lateThresholdMinutes: session.lateThresholdMinutesSnapshot,
+      earlyLeaveThresholdMinutes: session.earlyLeaveThresholdMinutesSnapshot,
+      allowUnscheduledAttendance: session.allowUnscheduledAttendanceSnapshot
+    },
     classification: sessionClassification(session, occurrence, now)
   };
 }
@@ -349,7 +370,9 @@ export class EmployeeAttendanceService {
           linkStatus: primarySession.scheduleLinkStatus,
           plannedWorkDate: primarySession.plannedWorkDate ? isoDate(primarySession.plannedWorkDate) : null,
           plannedStartMinute: primarySession.plannedStartMinute,
-          plannedEndMinute: primarySession.plannedEndMinute
+          plannedEndMinute: primarySession.plannedEndMinute,
+          lateThresholdMinutesSnapshot: primarySession.lateThresholdMinutesSnapshot,
+          earlyLeaveThresholdMinutesSnapshot: primarySession.earlyLeaveThresholdMinutesSnapshot
         } : null,
         disposition: disposition?.type ?? null,
         now

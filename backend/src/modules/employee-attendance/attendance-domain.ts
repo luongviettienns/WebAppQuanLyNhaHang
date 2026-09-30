@@ -275,6 +275,8 @@ export function classifyAttendanceSession(input: {
   checkOutAt?: Date | null;
   plannedStartAt?: Date | null;
   plannedEndAt?: Date | null;
+  lateThresholdMinutes?: number;
+  earlyLeaveThresholdMinutes?: number;
   now: Date;
   linkStatus?: AttendanceLinkStatus;
 }): AttendanceClassification {
@@ -283,26 +285,30 @@ export function classifyAttendanceSession(input: {
   const plannedEndAt = input.plannedEndAt ?? null;
   const linkStatus = input.linkStatus ?? (plannedStartAt && plannedEndAt ? 'SCHEDULED' : 'UNSCHEDULED');
   const isScheduled = linkStatus === 'SCHEDULED' && plannedStartAt !== null && plannedEndAt !== null;
+  const lateThresholdMinutes = input.lateThresholdMinutes ?? 0;
+  const earlyLeaveThresholdMinutes = input.earlyLeaveThresholdMinutes ?? 0;
+  const checkInDeltaMinutes = isScheduled ? deltaMinutes(input.checkInAt, plannedStartAt) : null;
+  const checkOutDeltaMinutes = checkOutAt && isScheduled ? deltaMinutes(checkOutAt, plannedEndAt) : null;
   const sessionStatus: AttendanceSessionStatus = checkOutAt
     ? 'COMPLETED'
     : isScheduled && input.now.getTime() > plannedEndAt!.getTime() ? 'MISSING_CHECK_OUT' : 'OPEN';
   const checkInTiming: AttendanceTiming = !isScheduled
     ? 'N/A'
-    : input.checkInAt.getTime() < plannedStartAt!.getTime() ? 'EARLY'
-      : input.checkInAt.getTime() === plannedStartAt!.getTime() ? 'ON_TIME' : 'LATE';
+    : checkInDeltaMinutes! < 0 ? 'EARLY'
+      : checkInDeltaMinutes! <= lateThresholdMinutes ? 'ON_TIME' : 'LATE';
   const checkOutTiming: AttendanceCheckoutTiming = !checkOutAt || !isScheduled
     ? 'N/A'
-    : checkOutAt.getTime() < plannedEndAt!.getTime() ? 'LEFT_EARLY'
-      : checkOutAt.getTime() === plannedEndAt!.getTime() ? 'ON_TIME' : 'AFTER_SHIFT';
+    : checkOutDeltaMinutes! < -earlyLeaveThresholdMinutes ? 'LEFT_EARLY'
+      : checkOutDeltaMinutes! <= 0 ? 'ON_TIME' : 'AFTER_SHIFT';
 
   return {
     sessionStatus,
     linkStatus,
     checkInTiming,
     checkInAfterShiftEnd: isScheduled ? input.checkInAt.getTime() >= plannedEndAt!.getTime() : null,
-    checkInDeltaMinutes: isScheduled ? deltaMinutes(input.checkInAt, plannedStartAt) : null,
+    checkInDeltaMinutes,
     checkOutTiming,
-    checkOutDeltaMinutes: checkOutAt && isScheduled ? deltaMinutes(checkOutAt, plannedEndAt) : null,
+    checkOutDeltaMinutes,
     checkInAt: input.checkInAt,
     checkOutAt
   };
@@ -321,6 +327,8 @@ export function projectOccurrenceAttendance(input: {
     plannedWorkDate?: string | null;
     plannedStartMinute?: number | null;
     plannedEndMinute?: number | null;
+    lateThresholdMinutesSnapshot?: number | null;
+    earlyLeaveThresholdMinutesSnapshot?: number | null;
   } | null;
   disposition?: 'ABSENT' | null;
   now: Date;
@@ -350,6 +358,8 @@ export function projectOccurrenceAttendance(input: {
       checkOutAt: input.session.checkOutAt,
       plannedStartAt: localDateMinuteToInstant(snapshotDate, snapshotStartMinute, timeZone),
       plannedEndAt: localDateMinuteToInstant(snapshotDate, snapshotEndMinute, timeZone),
+      lateThresholdMinutes: input.session.lateThresholdMinutesSnapshot ?? 0,
+      earlyLeaveThresholdMinutes: input.session.earlyLeaveThresholdMinutesSnapshot ?? 0,
       now: input.now,
       linkStatus: input.session.linkStatus
     })

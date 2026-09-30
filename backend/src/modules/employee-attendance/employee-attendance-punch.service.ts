@@ -2,6 +2,7 @@ import { Prisma, type PrismaClient } from '@prisma/client';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { lockEmployeeRows } from '../employee-schedules/employee-schedules.service';
+import { getEffectiveAttendancePolicy } from '../employee-settings/employee-settings.policy-reader';
 import {
   businessDateAt,
   expandAttendanceOccurrences,
@@ -266,6 +267,10 @@ export class EmployeeAttendancePunchService {
     }
 
     const workDate = businessDateAt(now);
+    const attendancePolicy = await getEffectiveAttendancePolicy(tx, kioskRecord.branchId, workDate);
+    if (!attendancePolicy) {
+      throw ApiError.internal('Chi nhánh chưa có chính sách chấm công hiệu lực.');
+    }
     const occurrences = await getOccurrences(tx, employeeId, kioskRecord.branchId, workDate);
     const baseDecision = resolveCheckInSchedule({
       occurrences, serverNow: now, employeeId, branchId: kioskRecord.branchId, scheduleDate: workDate
@@ -274,6 +279,9 @@ export class EmployeeAttendancePunchService {
     if (input.scheduleRuleId !== undefined && input.scheduleDate !== undefined) {
       selection = { type: 'SCHEDULED', scheduleRuleId: input.scheduleRuleId, scheduleDate: input.scheduleDate };
     } else if (input.outsideScheduleConfirmation === true) {
+      if (!attendancePolicy.allowUnscheduledAttendance) {
+        throw ApiError.conflict('Chi nhánh yêu cầu nhân viên chấm công theo lịch đã xếp.', 'ATTENDANCE_SCHEDULE_REQUIRED');
+      }
       if (occurrences.length > 1 || baseDecision.status === 'AUTO_LINKED') {
         throw ApiError.badRequest('Lựa chọn ngoài lịch không còn khả dụng.', undefined, 'SCHEDULE_NOT_AVAILABLE');
       }
@@ -284,8 +292,16 @@ export class EmployeeAttendancePunchService {
       ? resolveCheckInSchedule({ occurrences, serverNow: now, selection, employeeId, branchId: kioskRecord.branchId, scheduleDate: workDate })
       : baseDecision;
     if (decision.status === 'OUTSIDE_CONFIRMATION_REQUIRED') {
+      if (!attendancePolicy.allowUnscheduledAttendance) {
+        throw ApiError.conflict('Chi nhánh yêu cầu nhân viên chấm công theo lịch đã xếp.', 'ATTENDANCE_SCHEDULE_REQUIRED');
+      }
       return {
-        response: { selectionRequired: true, code: 'OUTSIDE_SCHEDULE_CONFIRMATION_REQUIRED', choices: [], allowOutsideSchedule: true },
+        response: {
+          selectionRequired: true,
+          code: 'OUTSIDE_SCHEDULE_CONFIRMATION_REQUIRED',
+          choices: [],
+          allowOutsideSchedule: attendancePolicy.allowUnscheduledAttendance
+        },
         replayed: false
       };
     }
@@ -302,6 +318,7 @@ export class EmployeeAttendancePunchService {
             plannedEndMinute: occurrence.plannedEndMinute
           })),
           allowOutsideSchedule: decision.status === 'SINGLE_SHIFT_CONFIRMATION_REQUIRED'
+            && attendancePolicy.allowUnscheduledAttendance
         },
         replayed: false
       };
@@ -322,7 +339,12 @@ export class EmployeeAttendancePunchService {
         plannedWorkDate: occurrence ? fromIsoDate(occurrence.scheduleDate) : null,
         plannedShiftName: occurrence?.shiftName ?? null,
         plannedStartMinute: occurrence?.plannedStartMinute ?? null,
-        plannedEndMinute: occurrence?.plannedEndMinute ?? null
+        plannedEndMinute: occurrence?.plannedEndMinute ?? null,
+        attendancePolicyVersionId: attendancePolicy.id,
+        standardDayMinutesSnapshot: attendancePolicy.standardDayMinutes,
+        lateThresholdMinutesSnapshot: attendancePolicy.lateThresholdMinutes,
+        earlyLeaveThresholdMinutesSnapshot: attendancePolicy.earlyLeaveThresholdMinutes,
+        allowUnscheduledAttendanceSnapshot: attendancePolicy.allowUnscheduledAttendance
       }
     });
     await tx.attendanceKioskSession.update({ where: { id: kiosk.id }, data: { lastUsedAt: now } });

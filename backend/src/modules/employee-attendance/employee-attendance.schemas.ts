@@ -71,6 +71,7 @@ const adminAttendanceSessionUpdateSchema = z.object({
   checkOutAt: offsetDateTime.optional(),
   scheduleRuleId: positiveId.nullable().optional(),
   scheduleDate: isoDate.nullable().optional(),
+  attendancePolicyVersionId: positiveId.optional(),
   reason
 }).strict().superRefine((value, context) => {
   const ruleSpecified = value.scheduleRuleId !== undefined;
@@ -78,7 +79,8 @@ const adminAttendanceSessionUpdateSchema = z.object({
   if (ruleSpecified !== dateSpecified || (ruleSpecified && ((value.scheduleRuleId === null) !== (value.scheduleDate === null)))) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'Cần chọn đầy đủ quy tắc/ngày lịch hoặc bỏ liên kết cả hai', path: ['scheduleDate'] });
   }
-  if (value.checkInAt === undefined && value.checkOutAt === undefined && !ruleSpecified) {
+  if (value.checkInAt === undefined && value.checkOutAt === undefined && !ruleSpecified
+    && value.attendancePolicyVersionId === undefined) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'Cần có ít nhất một thay đổi chấm công', path: [] });
   }
   if (value.checkInAt && value.checkOutAt && Date.parse(value.checkOutAt) < Date.parse(value.checkInAt)) {

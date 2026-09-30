@@ -87,6 +87,9 @@ describe('employee attendance request schemas', () => {
     expect(parseAdminAttendanceSessionUpdateInput({
       checkInAt: '2026-09-29T08:05:00+07:00', reason: 'Sửa giờ vào'
     })).toMatchObject({ reason: 'Sửa giờ vào' });
+    expect(parseAdminAttendanceSessionUpdateInput({
+      attendancePolicyVersionId: 12, reason: 'Áp dụng đúng chính sách tại ngày chấm công'
+    })).toMatchObject({ attendancePolicyVersionId: 12 });
     expect(() => parseAdminAttendanceSessionUpdateInput({ checkOutAt: null, reason: 'Xóa giờ ra' })).toThrowError();
     expect(() => parseAdminAttendanceSessionUpdateInput({ scheduleRuleId: 11, reason: 'Đổi liên kết' })).toThrowError();
     expect(() => parseAdminAttendanceSessionUpdateInput({ checkInAt: '2026-09-29T08:00:00+07:00' })).toThrowError();

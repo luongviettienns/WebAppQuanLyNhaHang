@@ -154,6 +154,22 @@ describe('actual attendance classification', () => {
   });
 
   it.each([
+    ['five minutes after start', '2026-09-29T01:05:00.000Z', 'ON_TIME', 5],
+    ['six minutes after start', '2026-09-29T01:06:00.000Z', 'LATE', 6]
+  ] as const)('applies the frozen late threshold at %s while preserving the raw delta', (_label, instant, timing, delta) => {
+    const result = classifyAttendanceSession({
+      checkInAt: new Date(instant),
+      plannedStartAt,
+      plannedEndAt,
+      lateThresholdMinutes: 5,
+      now: new Date('2026-09-29T06:00:00.000Z')
+    });
+
+    expect(result.checkInTiming).toBe(timing);
+    expect(result.checkInDeltaMinutes).toBe(delta);
+  });
+
+  it.each([
     ['one minute early', '2026-09-29T04:59:00.000Z', 'LEFT_EARLY', -1],
     ['at shift end', '2026-09-29T05:00:00.000Z', 'ON_TIME', 0],
     ['two minutes after end', '2026-09-29T05:02:00.000Z', 'AFTER_SHIFT', 2]
@@ -165,6 +181,23 @@ describe('actual attendance classification', () => {
     expect(result.checkOutTiming).toBe(timing);
     expect(result.checkOutDeltaMinutes).toBe(delta);
     expect(result.checkOutAt?.toISOString()).toBe(instant);
+  });
+
+  it.each([
+    ['five minutes before end', '2026-09-29T04:55:00.000Z', 'ON_TIME', -5],
+    ['six minutes before end', '2026-09-29T04:54:00.000Z', 'LEFT_EARLY', -6]
+  ] as const)('applies the frozen early-leave threshold at %s while preserving the raw delta', (_label, instant, timing, delta) => {
+    const result = classifyAttendanceSession({
+      checkInAt: plannedStartAt,
+      checkOutAt: new Date(instant),
+      plannedStartAt,
+      plannedEndAt,
+      earlyLeaveThresholdMinutes: 5,
+      now: new Date('2026-09-29T06:00:00.000Z')
+    });
+
+    expect(result.checkOutTiming).toBe(timing);
+    expect(result.checkOutDeltaMinutes).toBe(delta);
   });
 
   it('marks an open scheduled session missing checkout only after planned end', () => {

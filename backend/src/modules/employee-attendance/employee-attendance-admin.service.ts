@@ -3,6 +3,7 @@ import { ApiError } from '../../lib/api-error';
 import { AuditService, type LogAuditInput } from '../audit/audit.service';
 import { lockEmployeeRows } from '../employee-schedules/employee-schedules.service';
 import { emitToAll } from '../../lib/socket';
+import { getEffectiveAttendancePolicy } from '../employee-settings/employee-settings.policy-reader';
 import { businessDateAt, expandAttendanceOccurrences, getBusinessWeekBounds, type AttendanceOccurrence, type AttendanceScheduleException, type AttendanceScheduleRule } from './attendance-domain';
 import type {
   AdminAttendanceSessionUpdateInput,
@@ -38,8 +39,23 @@ export interface AttendanceAdminSession {
   plannedShiftName: string | null;
   plannedStartMinute: number | null;
   plannedEndMinute: number | null;
+  attendancePolicyVersionId?: number | null;
+  standardDayMinutesSnapshot?: number;
+  lateThresholdMinutesSnapshot?: number;
+  earlyLeaveThresholdMinutesSnapshot?: number;
+  allowUnscheduledAttendanceSnapshot?: boolean;
   createdAt?: Date;
   updatedAt?: Date;
+}
+
+export interface AttendanceAdminPolicy {
+  id: number;
+  branchId: number;
+  effectiveFrom: Date;
+  standardDayMinutes: number;
+  lateThresholdMinutes: number;
+  earlyLeaveThresholdMinutes: number;
+  allowUnscheduledAttendance: boolean;
 }
 
 export interface AttendanceAdminDisposition {
@@ -62,6 +78,8 @@ export interface AttendanceAdminTransaction {
   getBranch(branchId: number): Promise<{ id: number } | null>;
   getOccurrenceOwner(scheduleRuleId: number, branchId: number, workDate: string): Promise<{ employeeId: number } | null>;
   getOccurrence(employeeId: number, branchId: number, scheduleRuleId: number, workDate: string): Promise<AttendanceOccurrence | null>;
+  getEffectiveAttendancePolicy(branchId: number, workDate: string): Promise<AttendanceAdminPolicy | null>;
+  getAttendancePolicyVersion(policyVersionId: number, branchId: number): Promise<AttendanceAdminPolicy | null>;
   findOpenSession(employeeId: number, exceptSessionId?: number): Promise<{ id: number } | null>;
   findSession(sessionId: number): Promise<AttendanceAdminSession | null>;
   findSessionForOccurrence(employeeId: number, branchId: number, scheduleRuleId: number, workDate: string): Promise<AttendanceAdminSession | null>;
@@ -109,7 +127,22 @@ function serializeSession(session: AttendanceAdminSession | null) {
     scheduleLinkStatus: session.scheduleLinkStatus, plannedBranchId: session.plannedBranchId,
     plannedWorkDate: session.plannedWorkDate ? isoDate(session.plannedWorkDate) : null,
     plannedShiftName: session.plannedShiftName, plannedStartMinute: session.plannedStartMinute,
-    plannedEndMinute: session.plannedEndMinute
+    plannedEndMinute: session.plannedEndMinute,
+    attendancePolicyVersionId: session.attendancePolicyVersionId ?? null,
+    standardDayMinutesSnapshot: session.standardDayMinutesSnapshot ?? 480,
+    lateThresholdMinutesSnapshot: session.lateThresholdMinutesSnapshot ?? 0,
+    earlyLeaveThresholdMinutesSnapshot: session.earlyLeaveThresholdMinutesSnapshot ?? 0,
+    allowUnscheduledAttendanceSnapshot: session.allowUnscheduledAttendanceSnapshot ?? true
+  };
+}
+
+function policySnapshotPatch(policy: AttendanceAdminPolicy) {
+  return {
+    attendancePolicyVersionId: policy.id,
+    standardDayMinutesSnapshot: policy.standardDayMinutes,
+    lateThresholdMinutesSnapshot: policy.lateThresholdMinutes,
+    earlyLeaveThresholdMinutesSnapshot: policy.earlyLeaveThresholdMinutes,
+    allowUnscheduledAttendanceSnapshot: policy.allowUnscheduledAttendance
   };
 }
 
@@ -201,12 +234,16 @@ export class EmployeeAttendanceAdminService {
       if (occurrence && await tx.findSessionForOccurrence(input.employeeId, input.branchId, occurrence.scheduleRuleId, occurrence.scheduleDate)) {
         throw ApiError.conflict('Occurrence này đã có phiên chấm công.', 'ATTENDANCE_OCCURRENCE_ALREADY_RECORDED');
       }
+      const workDate = businessDateAt(checkInAt);
+      const attendancePolicy = await tx.getEffectiveAttendancePolicy(input.branchId, workDate);
+      if (!attendancePolicy) throw ApiError.internal('Chi nhánh chưa có chính sách chấm công hiệu lực.');
       const data = {
         employeeId: input.employeeId, branchId: input.branchId,
         checkInAt, checkOutAt, checkInSource: 'ADMIN_MANUAL' as const,
         checkOutSource: checkOutAt ? 'ADMIN_MANUAL' as const : null,
         checkInKioskSessionId: null, checkOutKioskSessionId: null,
-        ...snapshotPatch(occurrence)
+        ...snapshotPatch(occurrence),
+        ...policySnapshotPatch(attendancePolicy)
       };
       const created = await tx.createSession(data);
       await tx.audit(mutationAudit('EMPLOYEE_ATTENDANCE_MANUAL_CREATED', actor, 'EmployeeAttendanceSession', created.id, input.reason, null, serializeSession(created)));
@@ -252,11 +289,18 @@ export class EmployeeAttendanceAdminService {
         }
         linkPatch = snapshotPatch(occurrence);
       }
+      let policyPatch: Record<string, unknown> = {};
+      if (input.attendancePolicyVersionId !== undefined) {
+        const policy = await tx.getAttendancePolicyVersion(input.attendancePolicyVersionId, current.branchId);
+        if (!policy) throw ApiError.conflict('Phiên bản chính sách chấm công không thuộc chi nhánh này.', 'EMPLOYEE_SETTINGS_VALUE_INVALID');
+        policyPatch = policySnapshotPatch(policy);
+      }
       const update = {
         checkInAt, checkOutAt,
         ...(input.checkInAt !== undefined ? { checkInSource: 'ADMIN_MANUAL' as const, checkInKioskSessionId: null } : {}),
         ...(input.checkOutAt !== undefined ? { checkOutSource: 'ADMIN_MANUAL' as const, checkOutKioskSessionId: null } : {}),
-        ...linkPatch
+        ...linkPatch,
+        ...policyPatch
       };
       const saved = await tx.updateSession(current.id, update);
       await tx.audit(mutationAudit('EMPLOYEE_ATTENDANCE_SESSION_UPDATED', actor, 'EmployeeAttendanceSession', saved.id, input.reason, serializeSession(current), serializeSession(saved)));
@@ -360,6 +404,16 @@ class PrismaAttendanceAdminTransaction implements AttendanceAdminTransaction {
     }));
     return expandAttendanceOccurrences({ weekStart: weekBounds.weekStart, rules: [attendanceRule], exceptions, branchId, employeeId })
       .find(occurrence => occurrence.scheduleRuleId === scheduleRuleId && occurrence.scheduleDate === workDate) ?? null;
+  }
+
+  async getEffectiveAttendancePolicy(branchId: number, workDate: string) {
+    return getEffectiveAttendancePolicy(this.tx, branchId, workDate) as Promise<AttendanceAdminPolicy | null>;
+  }
+
+  async getAttendancePolicyVersion(policyVersionId: number, branchId: number) {
+    return this.tx.branchAttendancePolicyVersion.findFirst({
+      where: { id: policyVersionId, branchId }
+    }) as Promise<AttendanceAdminPolicy | null>;
   }
 
   async findOpenSession(employeeId: number, exceptSessionId?: number) {

@@ -5,6 +5,13 @@ import { createAttendancePunchDigest } from './attendance-idempotency';
 const now = new Date('2026-09-29T10:07:00.000Z');
 const kiosk = { id: 8, branchId: 3 };
 const employee = { id: 21, name: 'Nguyễn Minh Anh', status: 'WORKING' as const };
+const attendancePolicy = {
+  id: 77,
+  standardDayMinutes: 480,
+  lateThresholdMinutes: 5,
+  earlyLeaveThresholdMinutes: 7,
+  allowUnscheduledAttendance: true
+};
 
 function buildClient(options: {
   employeeLookup?: { id: number; name: string; status: 'WORKING' | 'RESIGNED' } | null;
@@ -26,6 +33,9 @@ function buildClient(options: {
     },
     employeeScheduleRule: {
       findMany: vi.fn().mockResolvedValue([])
+    },
+    branchAttendancePolicyVersion: {
+      findFirst: vi.fn().mockResolvedValue(attendancePolicy)
     },
     employeeAttendanceSession: {
       findMany: vi.fn().mockResolvedValue([]),
@@ -95,7 +105,12 @@ describe('transactional kiosk attendance punches', () => {
       data: expect.objectContaining({
         employeeId: employee.id, branchId: kiosk.branchId, checkInAt: now, checkInSource: 'KIOSK',
         checkInKioskSessionId: kiosk.id, scheduleRuleId: shiftRule.id, scheduleDate: shiftRule.startDate,
-        plannedBranchId: kiosk.branchId, plannedShiftName: 'Ca chiều', plannedStartMinute: 960, plannedEndMinute: 1080
+        plannedBranchId: kiosk.branchId, plannedShiftName: 'Ca chiều', plannedStartMinute: 960, plannedEndMinute: 1080,
+        attendancePolicyVersionId: attendancePolicy.id,
+        standardDayMinutesSnapshot: attendancePolicy.standardDayMinutes,
+        lateThresholdMinutesSnapshot: attendancePolicy.lateThresholdMinutes,
+        earlyLeaveThresholdMinutesSnapshot: attendancePolicy.earlyLeaveThresholdMinutes,
+        allowUnscheduledAttendanceSnapshot: attendancePolicy.allowUnscheduledAttendance
       })
     }));
     expect(JSON.stringify(tx.attendanceKioskIdempotency.create.mock.calls[0][0])).not.toContain('secret-code');
@@ -129,6 +144,21 @@ describe('transactional kiosk attendance punches', () => {
     const result = await service.punch({ attendanceCode: 'secret-code', action: 'CHECK_IN', idempotencyKey: 'punch-key-0004' }, kiosk);
 
     expect(result).toMatchObject({ selectionRequired: true, code: 'OUTSIDE_SCHEDULE_CONFIRMATION_REQUIRED' });
+    expect(tx.employeeAttendanceSession.create).not.toHaveBeenCalled();
+    expect(tx.attendanceKioskIdempotency.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an unscheduled check-in when the effective policy requires a schedule', async () => {
+    const { client, tx } = buildClient({ transaction: {
+      branchAttendancePolicyVersion: {
+        findFirst: vi.fn().mockResolvedValue({ ...attendancePolicy, id: 78, allowUnscheduledAttendance: false })
+      }
+    } });
+    const service = new EmployeeAttendancePunchService(client, () => now);
+
+    await expect(service.punch({
+      attendanceCode: 'secret-code', action: 'CHECK_IN', idempotencyKey: 'punch-key-policy-0001'
+    }, kiosk)).rejects.toMatchObject({ code: 'ATTENDANCE_SCHEDULE_REQUIRED' });
     expect(tx.employeeAttendanceSession.create).not.toHaveBeenCalled();
     expect(tx.attendanceKioskIdempotency.create).not.toHaveBeenCalled();
   });
@@ -198,6 +228,7 @@ describe('transactional kiosk attendance punches', () => {
       where: { id: openSession.id, checkOutAt: null },
       data: { checkOutAt: now, checkOutSource: 'KIOSK', checkOutKioskSessionId: kiosk.id }
     }));
+    expect(tx.branchAttendancePolicyVersion.findFirst).not.toHaveBeenCalled();
     expect(tx.employeeAttendanceSession.create).not.toHaveBeenCalled();
   });
 

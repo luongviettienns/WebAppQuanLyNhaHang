@@ -2,6 +2,7 @@ import type { PrismaClient } from '@prisma/client';
 import { ApiError } from '../../lib/api-error';
 import { AuditService } from '../audit/audit.service';
 import { issueKioskSecret } from './kiosk-credentials';
+import { emitToAll } from '../../lib/socket';
 
 export interface KioskSessionPublicDto {
   id: number;
@@ -38,7 +39,18 @@ export interface CreateKioskSessionServiceInput {
 export class EmployeeAttendanceKioskAdminService {
   constructor(
     private readonly store: AttendanceKioskAdminStore,
-    private readonly serverNow: () => Date = () => new Date()
+    private readonly serverNow: () => Date = () => new Date(),
+    private readonly invalidateChecklist: (payload: {
+      branchId: number;
+      action: 'KIOSK_SESSION_CREATED' | 'KIOSK_SESSION_REVOKED';
+      kioskSessionId: number;
+      updatedAt: string;
+    }) => void = payload => emitToAll('employee-settings:changed', {
+      branchId: payload.branchId,
+      settingsArea: 'checklist',
+      eventRevision: `checklist:${payload.action}:${payload.kioskSessionId}`,
+      updatedAt: payload.updatedAt
+    })
   ) {}
 
   async create(input: CreateKioskSessionServiceInput, actor: { id: number }) {
@@ -58,6 +70,12 @@ export class EmployeeAttendanceKioskAdminService {
       createdAt,
       expiresAt
     });
+    this.invalidateChecklist({
+      branchId: session.branchId,
+      action: 'KIOSK_SESSION_CREATED',
+      kioskSessionId: session.id,
+      updatedAt: createdAt.toISOString()
+    });
     return { session, secret: issued.secret };
   }
 
@@ -68,8 +86,15 @@ export class EmployeeAttendanceKioskAdminService {
 
   async revoke(id: number, actor: { id: number }) {
     if (!Number.isSafeInteger(id) || id <= 0) throw ApiError.badRequest('Mã phiên kiosk không hợp lệ.');
-    const session = await this.store.revoke(id, actor.id, this.serverNow());
+    const revokedAt = this.serverNow();
+    const session = await this.store.revoke(id, actor.id, revokedAt);
     if (!session) throw ApiError.notFound('Không tìm thấy phiên kiosk.');
+    this.invalidateChecklist({
+      branchId: session.branchId,
+      action: 'KIOSK_SESSION_REVOKED',
+      kioskSessionId: session.id,
+      updatedAt: revokedAt.toISOString()
+    });
     return session;
   }
 }

@@ -15,6 +15,15 @@ const openSession = {
   plannedShiftName: 'Ca sáng', plannedStartMinute: 480, plannedEndMinute: 720
 };
 const actor = { id: 7, name: 'Admin' };
+const attendancePolicy = {
+  id: 71,
+  branchId: 1,
+  effectiveFrom: new Date('2026-01-01T00:00:00.000Z'),
+  standardDayMinutes: 480,
+  lateThresholdMinutes: 5,
+  earlyLeaveThresholdMinutes: 7,
+  allowUnscheduledAttendance: true
+};
 
 function makeAdminStore(overrides: Record<string, unknown> = {}) {
   const calls: string[] = [];
@@ -24,6 +33,8 @@ function makeAdminStore(overrides: Record<string, unknown> = {}) {
     getBranch: vi.fn(async () => ({ id: 1, isActive: true })),
     getOccurrenceOwner: vi.fn(async () => ({ employeeId: 4 })),
     getOccurrence: vi.fn(async () => occurrence),
+    getEffectiveAttendancePolicy: vi.fn(async () => attendancePolicy),
+    getAttendancePolicyVersion: vi.fn(async () => attendancePolicy),
     findOpenSession: vi.fn(async () => null),
     findSession: vi.fn(async () => openSession),
     findSessionForOccurrence: vi.fn(async () => null),
@@ -65,8 +76,14 @@ describe('Admin attendance mutations', () => {
     expect(tx.createSession).toHaveBeenCalledWith(expect.objectContaining({
       employeeId: 4, branchId: 1, checkInAt: new Date('2026-09-29T01:07:00.000Z'),
       checkInSource: 'ADMIN_MANUAL', scheduleRuleId: 11, scheduleDate: new Date('2026-09-29T00:00:00.000Z'),
-      plannedShiftName: 'Ca sáng', plannedStartMinute: 480, plannedEndMinute: 720
+      plannedShiftName: 'Ca sáng', plannedStartMinute: 480, plannedEndMinute: 720,
+      attendancePolicyVersionId: attendancePolicy.id,
+      standardDayMinutesSnapshot: attendancePolicy.standardDayMinutes,
+      lateThresholdMinutesSnapshot: attendancePolicy.lateThresholdMinutes,
+      earlyLeaveThresholdMinutesSnapshot: attendancePolicy.earlyLeaveThresholdMinutes,
+      allowUnscheduledAttendanceSnapshot: attendancePolicy.allowUnscheduledAttendance
     }));
+    expect(tx.getEffectiveAttendancePolicy).toHaveBeenCalledWith(1, '2026-09-29');
     expect(tx.audit).toHaveBeenCalledWith(expect.objectContaining({
       action: 'EMPLOYEE_ATTENDANCE_MANUAL_CREATED', targetType: 'EmployeeAttendanceSession', actorId: actor.id,
       metadata: expect.objectContaining({ reason: 'Kiosk mất kết nối', before: null, after: expect.objectContaining({ checkInAt: '2026-09-29T01:07:00.000Z' }) })
@@ -137,6 +154,39 @@ describe('Admin attendance mutations', () => {
       scheduleRuleId: null, scheduleDate: null, scheduleLinkStatus: 'UNSCHEDULED',
       plannedBranchId: null, plannedWorkDate: null, plannedShiftName: null,
       plannedStartMinute: null, plannedEndMinute: null
+    }));
+  });
+
+  it('copies a selected attendance policy version during a reasoned Admin correction and audits the snapshot change', async () => {
+    const replacementPolicy = {
+      ...attendancePolicy,
+      id: 72,
+      effectiveFrom: new Date('2026-09-15T00:00:00.000Z'),
+      lateThresholdMinutes: 10,
+      earlyLeaveThresholdMinutes: 8,
+      allowUnscheduledAttendance: false
+    };
+    const { store, tx } = makeAdminStore({
+      getAttendancePolicyVersion: vi.fn(async () => replacementPolicy)
+    });
+    const service = new EmployeeAttendanceAdminService(store, () => now, vi.fn());
+
+    await service.updateSession(30, {
+      attendancePolicyVersionId: replacementPolicy.id,
+      reason: 'Áp dụng đúng chính sách tại ngày chấm công'
+    }, actor);
+
+    expect(tx.getAttendancePolicyVersion).toHaveBeenCalledWith(replacementPolicy.id, openSession.branchId);
+    expect(tx.updateSession).toHaveBeenCalledWith(30, expect.objectContaining({
+      attendancePolicyVersionId: replacementPolicy.id,
+      standardDayMinutesSnapshot: replacementPolicy.standardDayMinutes,
+      lateThresholdMinutesSnapshot: replacementPolicy.lateThresholdMinutes,
+      earlyLeaveThresholdMinutesSnapshot: replacementPolicy.earlyLeaveThresholdMinutes,
+      allowUnscheduledAttendanceSnapshot: replacementPolicy.allowUnscheduledAttendance
+    }));
+    expect(tx.audit).toHaveBeenCalledWith(expect.objectContaining({
+      action: 'EMPLOYEE_ATTENDANCE_SESSION_UPDATED',
+      metadata: expect.objectContaining({ reason: 'Áp dụng đúng chính sách tại ngày chấm công' })
     }));
   });
 

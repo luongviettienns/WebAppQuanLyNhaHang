@@ -70,15 +70,39 @@ describe('employee attendance schema API', () => {
       data: { branchId, tokenHash: 'c'.repeat(64), createdByUserId: adminId, expiresAt: new Date('2026-09-30T00:00:00.000Z') }
     });
     const actualCheckIn = new Date('2026-09-29T01:07:00.000Z');
+    const policy = await prismaTest.branchAttendancePolicyVersion.create({
+      data: {
+        branchId,
+        effectiveFrom: day('2026-01-01'),
+        revision: 1,
+        standardDayMinutes: 450,
+        lateThresholdMinutes: 5,
+        earlyLeaveThresholdMinutes: 7,
+        allowUnscheduledAttendance: false,
+        createdByUserId: adminId
+      }
+    });
     const session = await prismaTest.employeeAttendanceSession.create({
       data: {
         employeeId, branchId, scheduleRuleId, scheduleDate: day('2026-09-29'), checkInAt: actualCheckIn,
         checkInSource: 'KIOSK', checkInKioskSessionId: kiosk.id, scheduleLinkStatus: 'SCHEDULED', plannedBranchId: branchId,
-        plannedWorkDate: day('2026-09-29'), plannedShiftName: 'Ca sáng', plannedStartMinute: 480, plannedEndMinute: 720
+        plannedWorkDate: day('2026-09-29'), plannedShiftName: 'Ca sáng', plannedStartMinute: 480, plannedEndMinute: 720,
+        attendancePolicyVersionId: policy.id,
+        standardDayMinutesSnapshot: policy.standardDayMinutes,
+        lateThresholdMinutesSnapshot: policy.lateThresholdMinutes,
+        earlyLeaveThresholdMinutesSnapshot: policy.earlyLeaveThresholdMinutes,
+        allowUnscheduledAttendanceSnapshot: policy.allowUnscheduledAttendance
       }
     });
     expect(session.checkInAt.toISOString()).toBe(actualCheckIn.toISOString());
     expect(session.plannedStartMinute).toBe(480);
+    expect(session).toMatchObject({
+      attendancePolicyVersionId: policy.id,
+      standardDayMinutesSnapshot: 450,
+      lateThresholdMinutesSnapshot: 5,
+      earlyLeaveThresholdMinutesSnapshot: 7,
+      allowUnscheduledAttendanceSnapshot: false
+    });
 
     const disposition = {
       branchId, employeeId, scheduleRuleId, workDate: day('2026-09-29'), reason: 'Đã xác nhận vắng mặt', actorId: adminId
