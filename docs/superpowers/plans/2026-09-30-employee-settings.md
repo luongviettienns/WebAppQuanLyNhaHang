@@ -14,21 +14,23 @@
 
 - Business date luôn dùng `Asia/Ho_Chi_Minh`.
 - Policy theo `branchId`, tạo phiên bản theo `effectiveFrom`; MVP không tạo phiên bản trong quá khứ và không update/delete policy lịch sử.
+- Baseline `1970-01-01` là ngoại lệ chỉ dành cho migration/backfill và phải được tạo cho mọi branch đã tồn tại; runtime API không được dùng ngoại lệ này.
 - Attendance actual và schedule snapshot không bị policy sửa; check-out dùng snapshot của check-in.
 - Payroll `FINALIZED` bất biến; batch mở chỉ nhận policy mới khi Admin chủ động recalculate.
 - Workweek/holiday chỉ cảnh báo và snapshot metadata; không tự sửa lịch, tạo absence, cộng hệ số hoặc khấu trừ.
 - Kiosk mã chấm công vẫn là nguồn tự chấm công chính; không tự tạo actual attendance.
-- Route settings chỉ dành cho Admin; mutation, audit và revision update cùng transaction; realtime chỉ sau commit.
+- Route settings chỉ dành cho Admin. Do MVP chưa có grant user–branch, server chỉ cho phép branch `MAIN`; branch khác trả `403 BRANCH_ACCESS_DENIED`. Mutation, audit và revision update cùng transaction; realtime chỉ sau commit.
 - Capability chưa hỗ trợ không được persist và phải disabled ở UI.
 - Migration cộng thêm, không reset/truncate/seed; chạy trên `TEST_DATABASE_URL` trước khi backup và migrate DEV.
 - Không thêm dependency mới nếu chức năng đã được hỗ trợ bởi Prisma, Zod, Socket.IO và UI primitives hiện có.
 
 ## Review Focus
 
-- Phiên bản policy có cùng `effectiveFrom` dưới hai request đồng thời: người dùng phải nhận đúng một commit và một lỗi conflict, không có hai revision giống nhau. Task 3 thêm integration test cạnh tranh.
+- Revision được tách theo bốn area attendance/payroll/workweek/holiday. Hai mutation cùng area và cùng expected revision chỉ có một commit; hai area khác nhau không xung đột. Task 3 thêm integration tests cạnh tranh.
 - Check-in sát ranh giới threshold và check-out sau khi policy đổi: actual/delta phải giữ nguyên, classification dùng snapshot cũ. Task 4 thêm boundary và lifecycle tests.
-- Weekly schedule bắt đầu vào ngày ngoài workweek hoặc holiday rồi được resubmit sau cảnh báo: chỉ tạo đúng một batch, không nhân đôi do confirmation retry. Task 5 thêm service/API tests.
-- Payroll mở được recalculate sau settings change nhưng finalized payroll không đổi: Task 6 thêm snapshot immutability tests.
+- Weekly schedule phải cảnh báo theo mọi occurrence thực sự bị ảnh hưởng, kể cả ngày giữa kỳ; resubmit/retry cùng `Idempotency-Key` chỉ tạo đúng một batch. Task 5 thêm domain/service/API tests cho create và import.
+- Payroll mở chỉ stale khi projection settings đúng branch/kỳ và các revision thực sự được dùng thay đổi; policy tương lai và holiday ngoài kỳ không gây stale, finalized payroll không đổi. Task 6 thêm scope và snapshot immutability tests.
+- Holiday đã bắt đầu/đã qua khóa date range và archive; chỉ cho sửa name/note có reason. Schedule/payroll lịch sử đọc snapshot, không bị catalog hiện tại ghi đè. Task 3, 5 và 6 thêm tests.
 - UI nhận event realtime trong lúc form đang mở hoặc gặp revision conflict: dữ liệu authority phải refetch nhưng draft chưa submit không bị ghi đè im lặng. Task 7 và 8 thêm tests.
 
 ---
@@ -103,11 +105,11 @@ git commit -m "feat(employee-settings): add versioned policy domain"
 
 **Interfaces:**
 - Consumes: policy types/ranges from Task 1 and existing `Branch`, `User`, `EmployeeAttendanceSession` relations.
-- Produces: Prisma delegates `branchAttendancePolicyVersion`, `branchPayrollPolicyVersion`, `branchWorkweekPolicyVersion`, `branchHolidayPeriod`; attendance snapshot columns.
+- Produces: Prisma delegates `branchAttendancePolicyVersion`, `branchPayrollPolicyVersion`, `branchWorkweekPolicyVersion`, `branchHolidayPeriod`, `branchEmployeeSettingsRevision`, `employeeScheduleIdempotency`; attendance snapshot columns và `EmployeeScheduleRule.calendarWarningSnapshot`.
 
 - [ ] **Step 1: Viết schema contract test RED**
 
-Assert model names, unique `(branchId, effectiveFrom)` và `(branchId, revision)`, restrictive foreign keys, holiday archive fields and five attendance snapshot fields. Assert migration contains additive DDL, baseline `1970-01-01` per existing branch and no `DROP/TRUNCATE`.
+Assert model names, per-area revision counters, unique `(branchId, effectiveFrom)` và `(branchId, revision)`, idempotency unique `(actorId, operation, idempotencyKey)`, restrictive foreign keys, holiday archive fields, `calendarWarningSnapshot` và five attendance snapshot fields. Assert migration contains additive DDL, baseline `1970-01-01` plus revision row for every existing branch and no `DROP/TRUNCATE`.
 
 - [ ] **Step 2: Chạy schema test RED**
 
@@ -125,7 +127,7 @@ EmployeePayrollFrequency = MONTHLY
 EmployeePayrollHourlySource = ACTUAL_ATTENDANCE
 ```
 
-Attendance snapshot defaults cho backfill: 480, 0, 0, true; relation policy ID nullable để tương thích dữ liệu cũ nhưng migration gán baseline ID khi có branch phù hợp.
+Attendance snapshot defaults cho backfill: 480, 0, 0, true; relation policy ID nullable để tương thích dữ liệu cũ nhưng migration gán baseline ID khi có branch phù hợp. `1970-01-01` chỉ được xuất hiện trong migration/backfill; schema/API runtime không mở đường tạo policy quá khứ.
 
 - [ ] **Step 4: Generate Prisma và chạy migration TEST**
 
@@ -135,7 +137,7 @@ Expected: test guard xác nhận DB chuyên dụng, migration deploy thành côn
 
 - [ ] **Step 5: Viết/running integration test cho baseline/backfill**
 
-Test xác minh database đã migrate có đúng một baseline mỗi loại cho branch `MAIN`; tạo một attendance session dùng defaults mới và xác nhận actual timestamp/schedule snapshot được lưu nguyên vẹn. Contract test ở Step 1 chịu trách nhiệm xác minh câu lệnh SQL backfill dữ liệu tiền migration.
+Migration harness đưa TEST DB tới migration ngay trước target, tạo ít nhất hai branch rồi mới deploy target migration. Test xác minh mỗi branch có đúng một revision row và một baseline cho từng loại, không chỉ `MAIN`; tạo một attendance session dùng defaults mới và xác nhận actual timestamp/schedule snapshot được lưu nguyên vẹn. Contract test ở Step 1 xác minh câu lệnh SQL backfill dữ liệu tiền migration và runtime parser vẫn reject effective date quá khứ.
 
 Run: `npm test --workspace=backend -- test/employee-settings/employee-settings-schema.api.spec.ts`
 
@@ -174,11 +176,11 @@ git commit -m "feat(employee-settings): add policy persistence foundation"
   - `getEffectivePayrollPolicy(client, branchId, businessDate)`
   - `getEffectiveWorkweekPolicy(client, branchId, businessDate)`
   - `getHolidayPeriods(client, branchId, from, through)`
-  - `/api/employee-settings` Admin API và `employee-settings:changed` payload.
+  - `/api/employee-settings` Admin API, four per-area revisions và `employee-settings:changed` payload.
 
 - [ ] **Step 1: Viết schema tests RED**
 
-Assert strict payloads, current/future ISO dates, ranges, `expectedRevision`, unsupported fields rejection và error codes.
+Assert strict payloads, current/future ISO dates, ranges, policy `expectedAreaRevision`, holiday `expectedHolidayRevision`/`expectedRowRevision`, unsupported fields rejection và error codes. Assert migration-only baseline date is rejected by runtime parsers.
 
 - [ ] **Step 2: Chạy schemas test RED**
 
@@ -208,12 +210,15 @@ Cover:
 ```ts
 it('returns effective policies, truthful capabilities and a derived five-step checklist')
 it('allows Admin and rejects Cashier, Kitchen and kiosk credentials')
+it('allows settings only for MAIN and rejects another branch server-side')
 it('creates a future policy with audit then emits only after commit')
 it('rolls back policy and audit on validation/storage failure')
-it('serializes two writes with the same expected revision')
+it('serializes two writes in one area with the same expected area revision')
+it('allows concurrent writes in different settings areas')
 it('rejects past and duplicate effective dates')
 it('creates, updates and archives holidays without hard delete')
 it('rejects overlapping holidays including concurrent requests')
+it('locks date and archive for started holidays but allows audited name or note correction')
 ```
 
 - [ ] **Step 5: Chạy API tests RED**
@@ -224,7 +229,7 @@ Expected: 404/module missing failures.
 
 - [ ] **Step 6: Cài đặt query, mutation, controller và routes**
 
-`EmployeeSettingsQueryService.getWorkspace(branchId, now)` trả effective policy, history, active holidays, checklist, capabilities và revisions. Mutation lock `Branch` row `FOR UPDATE`, so sánh expected revision, ghi AuditLog cùng transaction, rồi gọi `emitToAll('employee-settings:changed', payload)` sau commit.
+`EmployeeSettingsQueryService.getWorkspace(branchId, now)` trả effective policy, history, active holidays, checklist, capabilities và bốn area revisions. Controller resolve branch bằng server rule `MAIN`, không tin quyền branch từ client. Mutation lock `BranchEmployeeSettingsRevision` row `FOR UPDATE`, chỉ so sánh/tăng counter đúng area, ghi version/holiday + AuditLog cùng transaction, rồi gọi `emitToAll('employee-settings:changed', payload)` sau commit. Holiday update/archive còn compare-and-set `expectedRowRevision`; started/past holiday không được đổi date range hoặc archive, correction name/note bắt buộc reason.
 
 - [ ] **Step 7: Chạy Task 3 GREEN**
 
@@ -312,6 +317,7 @@ git commit -m "feat(attendance): snapshot effective attendance policies"
 - Modify: `backend/src/modules/employee-schedules/schedule-domain.ts`
 - Modify: `backend/src/modules/employee-schedules/schedule-domain.spec.ts`
 - Modify: `backend/src/modules/employee-schedules/employee-schedules.schemas.ts`
+- Modify: `backend/src/modules/employee-schedules/employee-schedules.controller.ts`
 - Modify: `backend/src/modules/employee-schedules/employee-schedules.service.ts`
 - Modify: `backend/src/modules/employee-schedules/employee-schedule-transfer.service.ts`
 - Modify: `backend/test/employee-schedules/employee-schedule-week.api.spec.ts`
@@ -321,11 +327,11 @@ git commit -m "feat(attendance): snapshot effective attendance policies"
 
 **Interfaces:**
 - Consumes: workweek/holiday readers từ Task 3.
-- Produces: `ScheduleCalendarDay`, `ScheduleCalendarWarning`, `buildScheduleCalendarMetadata()`; week API `calendarDays`; create input `calendarWarningAcknowledged`.
+- Produces: `ScheduleCalendarDay`, `ScheduleCalendarWarning`, `buildScheduleCalendarMetadata()`, `findScheduleOccurrenceWarnings()`; week API `calendarDays`; create/import confirmation handshake và idempotent commit.
 
 - [ ] **Step 1: Viết domain tests RED**
 
-Assert mỗi ngày tuần được đánh dấu working/non-working và chứa holiday labels; start date ngoài workweek/holiday tạo stable warning; ngày bình thường không cảnh báo.
+Assert mỗi ngày tuần được đánh dấu working/non-working và chứa holiday labels. Cover `ONCE`, bounded `WEEKLY` có occurrence bị ảnh hưởng ở giữa kỳ, nhiều policy interval, holiday ở occurrence sau start date, và open-ended `WEEKLY` không enumerate vô hạn nhưng vẫn trả đúng source/revision, sample và `unbounded`.
 
 - [ ] **Step 2: Chạy domain test RED**
 
@@ -342,16 +348,22 @@ buildScheduleCalendarMetadata(input: {
   holidays: HolidayProjection[];
 }): ScheduleCalendarDay[]
 
-findScheduleCalendarWarnings(startDate: string, calendar: ScheduleCalendarDay[]): ScheduleCalendarWarning[]
+findScheduleOccurrenceWarnings(input: {
+  rule: ScheduleRuleDraft;
+  workweekVersions: WorkweekPolicyProjection[];
+  holidays: HolidayProjection[];
+}): ScheduleCalendarWarning[]
 ```
+
+`ONCE` xét occurrence duy nhất. `WEEKLY` bounded xét toàn bộ occurrence thực tế trong khoảng. `WEEKLY` open-ended xét mọi occurrence thuộc holiday đã biết và occurrence đầu tiên trong từng workweek interval mà weekday bị tắt; interval cuối bị tắt trả `affectedCount=null` và `unbounded=true`. Mỗi warning có `kind`, `firstAffectedDate`, `affectedCount`, tối đa 20 `sampleDates`, `unbounded` và source ID/revision.
 
 - [ ] **Step 4: Viết API tests RED cho warning handshake**
 
-First POST không acknowledgement trả 409 `SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED` và không ghi rule/audit; resubmit true tạo đúng batch một lần. Week API trả 7 calendar days. Import preview đánh dấu warning theo từng row; commit chưa acknowledge reject toàn batch và commit đã acknowledge tạo đúng một lần. Existing overlap/atomic behavior giữ nguyên.
+Week API trả 7 calendar days. First POST không acknowledgement trả 409 `SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED`, không ghi rule/audit và không claim idempotency key. Confirmed POST với cùng `Idempotency-Key` tạo rule/audit/idempotency record trong một transaction; retry cùng key + digest replay response, key cũ + digest khác trả 409 `IDEMPOTENCY_KEY_REUSED`. Import preview đánh dấu warning theo từng occurrence/row; commit áp dụng cùng handshake/idempotency cho toàn batch. Existing overlap/atomic behavior giữ nguyên.
 
 - [ ] **Step 5: Tích hợp service/schema**
 
-`CreateScheduleBatchInput` và import commit input thêm `calendarWarningAcknowledged: boolean = false`. Đọc workweek/holiday trong transaction trước create. Import preview trả warning codes theo row; commit dùng cùng validation và không bỏ qua warning.
+`CreateScheduleBatchInput` và import commit input thêm `calendarWarningAcknowledged: boolean = false`; controller yêu cầu header `Idempotency-Key` cho commit. Đọc workweek/holiday trong transaction trước create, tính canonical request digest không phụ thuộc thứ tự object keys. Warning-only response không claim key. Confirmed transaction kiểm tra/insert `EmployeeScheduleIdempotency`, tạo toàn bộ schedule + audit và lưu `calendarWarningSnapshot` trên rule; duplicate-key race phải replay hoặc conflict theo digest. Import preview trả warning summary theo row; commit dùng cùng validation và không bỏ qua warning.
 
 - [ ] **Step 6: Chạy schedule regression GREEN**
 
@@ -380,7 +392,7 @@ git commit -m "feat(schedules): surface workweek and holiday warnings"
 
 **Interfaces:**
 - Consumes: payroll/workweek/holiday readers Task 3 và attendance snapshot Task 4.
-- Produces: `PayrollSettingsSnapshot` trong `sourceSnapshot.settings`; open-batch stale detection khi policy/holiday thay đổi.
+- Produces: `PayrollSettingsSnapshot` trong `sourceSnapshot.settings`; `buildPayrollSettingsProjection(branchId, periodStart, periodEnd, sourceSessions)` và scoped stale detection cho batch mở.
 
 - [ ] **Step 1: Viết calculation tests RED**
 
@@ -410,11 +422,11 @@ Không sửa formula.
 
 - [ ] **Step 4: Viết mutation/query tests RED**
 
-Assert create/recalculate đọc metadata hiện hành; finalized batch giữ JSON cũ sau policy change; open batch `sourceStale=true`; finalized không báo stale do settings mới.
+Assert create/recalculate đọc metadata theo đúng branch/kỳ. Batch mở stale khi policy interval giao kỳ, attendance policy revision thực sự được source session dùng, workweek interval giao kỳ hoặc holiday giao kỳ thay đổi. Policy có `effectiveFrom > periodEnd`, holiday hoàn toàn ngoài kỳ và thay đổi area không thuộc projection không làm stale. Finalized batch giữ JSON cũ và không báo stale; holiday correction/catalog change không ghi đè snapshot đã lưu.
 
 - [ ] **Step 5: Tích hợp mutation/query**
 
-Đọc settings một lần cho period/branch trong transaction tính batch, truyền immutable projection cho từng line. Query stale-source thêm timestamps của policy/holiday chỉ cho `DRAFT|CALCULATED`.
+Đọc settings một lần cho period/branch trong transaction tính batch, truyền normalized immutable projection cho từng line. Projection sắp xếp ổn định và chỉ chứa: payroll policy interval dùng trong kỳ; attendance policy ID/revision của source sessions; workweek versions có effective interval giao kỳ; holiday có date range giao kỳ với ID/revision/archive/name/range. Query `sourceStale` chỉ cho `DRAFT|CALCULATED` bằng cách dựng lại cùng projection và deep-compare canonical value; không so `updatedAt` toàn cục. `FINALIZED` luôn trả snapshot đã khóa và `sourceStale=false`.
 
 - [ ] **Step 6: Chạy payroll regression GREEN**
 
@@ -445,7 +457,7 @@ git commit -m "feat(payroll): snapshot employee settings metadata"
 
 - [ ] **Step 1: Viết API tests RED**
 
-Assert query encoding, auth, strict mutation bodies, 409 details và holiday create/update/archive paths.
+Assert query encoding, auth, strict mutation bodies, four area revisions, `BRANCH_ACCESS_DENIED`, 409 conflict details và holiday create/update/archive payloads với collection + row revision.
 
 - [ ] **Step 2: Chạy API tests RED**
 
@@ -521,7 +533,7 @@ Use `useWindowDimensions`, theme tokens, `ScrollView` và existing `AppIcon`; kh
 
 - [ ] **Step 4: Viết attendance/payroll panel tests RED**
 
-Assert supported fields submit version with expected revision/effective date; unsupported toggles disabled and absent from request; payroll fixed values/read-only banner and CTAs.
+Assert supported fields submit version with đúng `expectedAreaRevision`/effective date; attendance và payroll draft dùng counter độc lập; unsupported toggles disabled and absent from request; payroll fixed values/read-only banner and CTAs.
 
 - [ ] **Step 5: Cài đặt Attendance/Payroll panels và version modal**
 
@@ -529,11 +541,11 @@ Form validation mirrors backend ranges; backend remains authority. Conflict 409 
 
 - [ ] **Step 6: Viết calendar/holiday tests RED**
 
-Assert at least one weekday, workweek version submit, holiday create/edit/archive, overlap error, read-only history and mobile card/list rendering.
+Assert at least one weekday, workweek version submit, holiday create/edit/archive gửi đúng holiday collection/row revisions, overlap error, started/past holiday khóa date/archive nhưng cho correction name/note có reason, snapshot/history read-only và mobile card/list rendering.
 
 - [ ] **Step 7: Cài đặt Calendar panel và Holiday modal**
 
-Archive requires reason; no delete control. Use accessible switch/checkbox/modal states.
+Archive/correction requires reason; no delete control. UI dựa trên business date/capability từ server để khóa started/past holiday nhưng backend vẫn là authority. Use accessible switch/checkbox/modal states.
 
 - [ ] **Step 8: Chạy Task 8 GREEN**
 
@@ -587,11 +599,11 @@ Export `EmployeeWorkspaceSection`; giữ state ở workspace và truyền `onNav
 
 - [ ] **Step 4: Viết schedule warning UI tests RED**
 
-Assert week markers cho non-working/holiday; first save nhận confirmation-required mở dialog; confirm resubmits `calendarWarningAcknowledged=true` once; cancel không ghi. Import preview hiển thị warning theo row và commit confirmation chỉ gửi một lần.
+Assert week markers cho non-working/holiday; warning dialog hiển thị occurrence summary/sample dates thay vì chỉ start date. Mỗi save intent sinh một idempotency key, giữ nguyên key qua warning confirmation và network retry; confirmed replay không tạo lịch thứ hai, sửa draft/new intent sinh key mới. Import preview/commit áp dụng cùng quy tắc cho toàn batch.
 
 - [ ] **Step 5: Tích hợp schedule API/view/UI**
 
-Render marker có accessible label; giữ overlap/duplicate errors hiện có. Import modal không coi calendar warning là file error nhưng yêu cầu confirmation trước commit. Settings event cho cùng branch refetch calendar metadata.
+API client gửi `Idempotency-Key`; modal giữ key trong state của save intent cho đến success/cancel/draft change. Render marker và occurrence warning có accessible label; giữ overlap/duplicate errors hiện có. Import modal không coi calendar warning là file error nhưng yêu cầu confirmation trước commit và reuse key khi retry. Settings event cho cùng branch refetch calendar metadata.
 
 - [ ] **Step 6: Viết cross-module realtime/snapshot display tests RED**
 
@@ -653,7 +665,7 @@ git commit -m "fix(employee-settings): complete acceptance flows"
 
 - [ ] **Step 3: Xác minh `DATABASE_URL`, backup DEV và migrate additive**
 
-Không in credential. Tạo backup timestamped; chạy migration deploy đã kiểm thử, không reset/seed. Xác minh bốn bảng, indexes, baseline cho `MAIN`, attendance backfill và payroll cũ.
+Không in credential. Tạo backup timestamped; chạy migration deploy đã kiểm thử, không reset/seed. Xác minh policy/holiday/revision/idempotency tables, indexes, baseline + revision row cho mọi branch hiện có, attendance backfill và payroll cũ.
 
 Expected: backup tồn tại; migration applied; dữ liệu UAT/payroll hiện có còn nguyên.
 
@@ -667,11 +679,12 @@ Checklist:
 
 - Tạo attendance policy version tương lai và thấy history/audit.
 - Realtime update settings screen thứ hai; form draft không bị overwrite.
-- Workweek/holiday warning trên lịch và confirmation retry chỉ tạo một lịch.
+- Weekly rule cảnh báo đúng occurrence ở giữa kỳ; confirmation/network retry cùng idempotency key chỉ tạo một lịch, còn reuse key với payload khác bị từ chối.
 - Kiosk session mới snapshot policy; đổi policy rồi checkout không đổi snapshot.
-- Bảng lương mở được recalculate và snapshot metadata; finalized `BL202608001` không đổi.
+- Bảng lương mở chỉ stale với policy/holiday giao kỳ; policy tương lai và holiday ngoài kỳ không làm stale; recalculate refresh snapshot metadata, finalized `BL202608001` không đổi.
 - Capability chưa hỗ trợ disabled.
-- Holiday create/edit/archive tiếng Việt.
+- Holiday tương lai create/edit/archive tiếng Việt; holiday đã bắt đầu khóa date/archive và correction name/note yêu cầu lý do.
+- Settings API chấp nhận Admin ở `MAIN`, từ chối branch khác phía server; hai area revision độc lập không conflict chéo.
 - Responsive 390px, tablet và desktop; keyboard/accessibility labels.
 - Export bảng lương vẫn tạo XLSX hợp lệ.
 

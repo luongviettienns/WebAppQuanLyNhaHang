@@ -76,6 +76,8 @@ Ràng buộc:
 - Hai threshold từ 0 đến 720.
 - Không có endpoint update/delete. Thay đổi tạo phiên bản mới.
 
+`revision` là revision của riêng nhóm attendance, không phải revision chung của toàn workspace.
+
 ### 4.2 `BranchPayrollPolicyVersion`
 
 - `id`
@@ -102,7 +104,18 @@ MVP chỉ chấp nhận các giá trị trên. Các lựa chọn khác không đ
 
 Phải có ít nhất một ngày làm việc.
 
-### 4.4 `BranchHolidayPeriod`
+### 4.4 `BranchEmployeeSettingsRevision`
+
+- `branchId` (primary key/foreign key)
+- `attendanceRevision`
+- `payrollRevision`
+- `workweekRevision`
+- `holidayRevision`
+- `updatedAt`
+
+Mỗi nhóm có counter độc lập. Hai Admin sửa attendance và payroll cùng lúc không xung đột; hai mutation cùng nhóm với cùng `expectedAreaRevision` thì chỉ một mutation được commit. Policy version lưu revision mới của chính nhóm tương ứng.
+
+### 4.5 `BranchHolidayPeriod`
 
 - `id`
 - `branchId`
@@ -113,9 +126,16 @@ Phải có ít nhất một ngày làm việc.
 - `archivedAt?`, `archivedByUserId?`
 - `createdByUserId`, `createdAt`, `updatedAt`
 
-Hai holiday đang hoạt động trong cùng branch không được chồng ngày. Holiday không bị xóa cứng. Sửa/lưu trữ yêu cầu `expectedRevision`; thay đổi được audit before/after.
+Hai holiday đang hoạt động trong cùng branch không được chồng ngày. Holiday không bị xóa cứng. Tạo holiday dùng `expectedHolidayRevision`; sửa/lưu trữ dùng cả `expectedHolidayRevision` của collection và `expectedRowRevision` của bản ghi; thay đổi được audit before/after.
 
-### 4.5 Snapshot attendance
+Quy tắc lịch sử:
+
+- Holiday có `startDate` sau business date hiện tại được sửa đầy đủ hoặc lưu trữ.
+- Holiday đã bắt đầu/đã qua không được đổi khoảng ngày hoặc lưu trữ.
+- Holiday đã bắt đầu/đã qua chỉ được sửa tên/ghi chú với lý do và audit; revision tăng nhưng lịch sử ngày không biến mất.
+- Schedule warning snapshot và payroll snapshot giữ tên/khoảng ngày/revision tại thời điểm tạo/tính. Màn hình lịch tuần hiển thị catalog holiday hiện hành; chi tiết cảnh báo đã xác nhận và payroll đã chốt hiển thị snapshot lịch sử.
+
+### 4.6 Snapshot attendance
 
 `EmployeeAttendanceSession` bổ sung:
 
@@ -127,7 +147,7 @@ Hai holiday đang hoạt động trong cùng branch không được chồng ngà
 
 Policy được chốt khi tạo session. Phiên ngoài lịch vẫn snapshot policy. Check-out và mọi projection sau đó dùng snapshot, không dùng policy hiện hành. Admin sửa policy snapshot của session chỉ qua correction hiện có, bắt buộc lý do/audit before-after.
 
-### 4.6 Snapshot payroll
+### 4.7 Snapshot payroll
 
 Không tạo cột tài chính trùng lặp. `EmployeePayrollLine.sourceSnapshot` của lần tạo/tính lại mới bổ sung:
 
@@ -138,7 +158,20 @@ Không tạo cột tài chính trùng lặp. `EmployeePayrollLine.sourceSnapshot
 
 Các metadata này phục vụ đối soát, không thay đổi công thức đã duyệt. Snapshot của payroll đã chốt bất biến.
 
-### 4.7 Audit
+### 4.8 Idempotency lưu lịch
+
+Thêm `EmployeeScheduleIdempotency`:
+
+- `actorId`, `operation`, `idempotencyKey`
+- `requestDigest`, `response`
+- `createdAt`
+- unique `(actorId, operation, idempotencyKey)`
+
+Batch create và import commit phải nhận `Idempotency-Key`. Yêu cầu chỉ đang trả warning và chưa ghi schedule không claim key. Khi Admin xác nhận warning, transaction tạo lịch lưu kết quả idempotency cùng commit; retry sau lỗi mạng replay đúng response thay vì tạo rule mới.
+
+`EmployeeScheduleRule` lưu `calendarWarningSnapshot?` khi Admin xác nhận cảnh báo, gồm kind, affected occurrence summary, holiday ID/name/revision và policy revision. Snapshot không điều khiển lịch; nó chỉ chứng minh Admin đã xác nhận cảnh báo nào.
+
+### 4.9 Audit
 
 Dùng `AuditLog` hiện có. Các action tối thiểu:
 
@@ -160,8 +193,8 @@ Khi tạo phiên bản:
 
 1. Xác thực Admin, branch và payload.
 2. Reject `effectiveFrom` trước business date hiện tại.
-3. Lock branch row và đọc revision mới nhất trong transaction.
-4. So sánh `expectedRevision`; khác thì trả `409 EMPLOYEE_SETTINGS_REVISION_CONFLICT`.
+3. Lock `BranchEmployeeSettingsRevision` của branch và đọc counter đúng nhóm trong transaction.
+4. So sánh expected revision của đúng nhóm; khác thì trả `409 EMPLOYEE_SETTINGS_REVISION_CONFLICT`.
 5. Reject duplicate effective date.
 6. Tạo version + audit trong cùng transaction.
 7. Commit rồi phát realtime invalidation.
@@ -181,7 +214,10 @@ Khi tạo phiên bản:
 
 - API tuần trả thêm metadata cho mỗi ngày: ngày làm mặc định, ngày ngoài workweek, holiday labels.
 - Tạo lịch vào ngày ngoài workweek/holiday không bị reject. API preview/mutation trả warning xác định; UI yêu cầu xác nhận trước khi lưu.
+- Với rule `ONCE`, kiểm tra occurrence duy nhất. Với rule `WEEKLY` có ngày kết thúc, kiểm tra toàn bộ occurrence thực tế trong khoảng. Với rule `WEEKLY` không có ngày kết thúc, không lặp vô hạn: backend tính mọi occurrence nằm trong các holiday đã biết và occurrence đầu tiên thuộc mỗi khoảng hiệu lực workweek mà weekday của rule bị tắt.
+- Warning trả `kind`, `firstAffectedDate`, `affectedCount` (`null` nếu vô hạn), tối đa 20 `sampleDates`, `unbounded` và holiday/workweek revision. Việc giới hạn sample không được làm sai count hoặc bỏ sót nguồn cảnh báo.
 - Xác nhận warning không thay đổi validation overlap/duplicate/employee status hiện có.
+- Batch create/import commit dùng idempotency ledger. Confirmation resend/retry với cùng key replay kết quả; reuse key với request digest khác trả `IDEMPOTENCY_KEY_REUSED`.
 - Thay đổi workweek/holiday không sửa hoặc hủy rule đã lưu.
 - Event settings làm lịch refetch để cập nhật marker/cảnh báo.
 
@@ -194,6 +230,17 @@ Khi tạo phiên bản:
 - Phụ cấp/giảm trừ sử dụng `EmployeePayrollAdjustment` hiện có.
 - Batch mở chỉ đọc policy mới khi `recalculate`; batch finalized không thay đổi.
 - Export và detail có thể hiển thị metadata policy/holiday nhưng không lộ attendance code.
+
+### 8.1 Quy tắc `sourceStale`
+
+`sourceStale` chỉ áp dụng cho batch `DRAFT`/`CALCULATED`. Backend dựng lại projection settings cho đúng `branchId` và `[periodStart, periodEnd]`, rồi so với `sourceSnapshot.settings`:
+
+- Khoảng hiệu lực của một policy version tính từ `effectiveFrom` đến ngày trước `effectiveFrom` của version kế tiếp; chỉ interval giao với kỳ lương mới được xét.
+- Attendance policy chỉ xét các version được session nguồn trong kỳ sử dụng.
+- Workweek policy chỉ xét các version có hiệu lực trong kỳ.
+- Holiday chỉ xét bản ghi có khoảng ngày giao với kỳ; so sánh ID, row revision, archived state, tên và khoảng ngày.
+- Policy tương lai có `effectiveFrom > periodEnd` và holiday hoàn toàn ngoài kỳ không làm batch stale.
+- Batch `FINALIZED` luôn hiển thị nguồn đã khóa và không bị đánh dấu stale bởi source mới.
 
 ## 9. Checklist Khởi tạo
 
@@ -211,16 +258,18 @@ Response trả `completedCount`, `totalCount = 5`, số liệu và destination k
 
 Base path: `/api/employee-settings`; toàn bộ route dùng `authenticate` + `authorize('ADMIN')`.
 
-- `GET /?branchId=`: policy hiệu lực, lịch sử phân trang ngắn, holiday đang hoạt động, checklist, capabilities và revision.
+MVP chưa có mô hình phân quyền user–branch. Vì vậy settings API chỉ cho phép branch mặc định `MAIN`; Admin gửi branch khác nhận `403 BRANCH_ACCESS_DENIED`. Dữ liệu vẫn có `branchId` và migration tạo baseline cho mọi branch để không khóa thiết kế tương lai. Khi triển khai quản lý nhiều chi nhánh, authorization phải chuyển sang grant server-side trước khi mở branch khác; client không quyết định quyền.
+
+- `GET /?branchId=`: policy hiệu lực, lịch sử phân trang ngắn, holiday đang hoạt động, checklist, capabilities và bốn area revisions.
 - `POST /attendance-policies`: tạo attendance version.
 - `POST /payroll-policies`: tạo payroll version.
 - `POST /workweek-policies`: tạo workweek version.
 - `GET /holidays?branchId=&from=&to=&includeArchived=`: danh sách holiday.
 - `POST /holidays`: tạo holiday.
-- `PATCH /holidays/:id`: sửa holiday với `expectedRevision` và reason.
-- `POST /holidays/:id/archive`: lưu trữ với `expectedRevision` và reason.
+- `PATCH /holidays/:id`: sửa holiday với `expectedHolidayRevision`, `expectedRowRevision` và reason khi cần.
+- `POST /holidays/:id/archive`: lưu trữ với `expectedHolidayRevision`, `expectedRowRevision` và reason.
 
-Mutation policy nhận `branchId`, `effectiveFrom`, `expectedRevision` và các field được hỗ trợ. Không nhận actor, revision mới, timestamp hoặc capability từ client.
+Mutation policy nhận `branchId`, `effectiveFrom`, `expectedAreaRevision` và các field được hỗ trợ. Holiday tạo nhận `expectedHolidayRevision`; holiday sửa/lưu trữ nhận thêm `expectedRowRevision`. Không nhận actor, revision mới, timestamp hoặc capability từ client.
 
 ### 10.1 Capabilities
 
@@ -245,6 +294,7 @@ Frontend dựa vào response này để khóa UI; backend vẫn reject payload n
 ### 10.2 Error codes
 
 - `EMPLOYEE_SETTINGS_BRANCH_NOT_FOUND` — 404
+- `BRANCH_ACCESS_DENIED` — 403
 - `EMPLOYEE_SETTINGS_EFFECTIVE_DATE_INVALID` — 422
 - `EMPLOYEE_SETTINGS_EFFECTIVE_DATE_IN_PAST` — 422
 - `EMPLOYEE_SETTINGS_VERSION_DUPLICATE` — 409
@@ -255,6 +305,9 @@ Frontend dựa vào response này để khóa UI; backend vẫn reject payload n
 - `EMPLOYEE_HOLIDAY_DATE_INVALID` — 422
 - `EMPLOYEE_HOLIDAY_OVERLAP` — 409
 - `EMPLOYEE_HOLIDAY_ARCHIVED` — 409
+- `EMPLOYEE_HOLIDAY_HISTORY_LOCKED` — 409
+- `SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED` — 409
+- `IDEMPOTENCY_KEY_REUSED` — 409
 - `ATTENDANCE_SCHEDULE_REQUIRED` — 409 tại kiosk punch
 
 ## 11. Realtime và cache consistency
@@ -328,14 +381,16 @@ Workspace Nhân viên bổ sung tab `Thiết lập nhân viên` chỉ có ở Ad
 
 Migration cộng thêm:
 
-1. Tạo bảng policy/holiday, foreign keys và index.
-2. Với mỗi branch hiện có, tạo baseline `effectiveFrom = 1970-01-01`:
+1. Tạo bảng policy/holiday/revision/schedule-idempotency, cột schedule warning snapshot, foreign keys và index.
+2. Với mỗi branch hiện có, không chỉ `MAIN`, tạo revision row và baseline `effectiveFrom = 1970-01-01`:
    - attendance: SHIFT, 480, threshold 0/0, allow unscheduled true;
    - payroll: MONTHLY, day 1, ACTUAL_ATTENDANCE;
    - workweek: T2–CN true.
 3. Thêm snapshot fields attendance; backfill session cũ bằng baseline mà không sửa actual/schedule snapshot.
 4. Giữ nguyên payroll source snapshot cũ; code đọc field settings như optional để tương thích.
 5. Không reset, truncate hoặc seed lại dữ liệu.
+
+Baseline `1970-01-01` là ngoại lệ chỉ dành cho migration/backfill. Runtime API vẫn cấm Admin tạo policy trong quá khứ.
 
 Migration chỉ được tạo và chạy lần đầu trên `TEST_DATABASE_URL`. Sau khi schema/domain/API/integration/frontend/regression tests đạt, rollout DEV yêu cầu:
 
@@ -357,9 +412,11 @@ Migration chỉ được tạo và chạy lần đầu trên `TEST_DATABASE_URL`
 ### 14.2 Backend/integration/concurrency
 
 - Admin-only trên mọi settings route; Cashier/Kitchen/kiosk bị 403.
-- Hai request policy cùng expected revision: một commit, một 409.
+- Hai request policy cùng area và cùng expected area revision: một commit, một 409.
+- Hai request ở hai nhóm policy khác nhau không xung đột revision.
 - Duplicate effective date, past date và invalid value không ghi policy/audit/event.
 - Holiday overlap và concurrent create được serialize đúng.
+- Holiday đã bắt đầu khóa date/archive nhưng cho phép sửa tên/ghi chú có reason; schedule/payroll snapshot cũ không đổi.
 - Audit commit/rollback cùng mutation.
 - Realtime chỉ sau commit.
 - Checklist thay đổi theo employee/shift/kiosk/compensation/payroll thực tế.
@@ -367,7 +424,9 @@ Migration chỉ được tạo và chạy lần đầu trên `TEST_DATABASE_URL`
 - Policy đổi giữa check-in/check-out không đổi session snapshot.
 - `allowUnscheduledAttendance=false` chặn mọi nhánh outside schedule.
 - Schedule holiday/workweek warning không làm thay đổi persistence semantics.
+- Schedule recurring warning xét occurrence thực tế; create/import retry cùng idempotency key không tạo trùng.
 - Payroll create/recalculate snapshot policy; finalized batch bất biến.
+- `sourceStale` bỏ qua policy tương lai/holiday ngoài kỳ và phát hiện đúng revision giao với kỳ.
 
 ### 14.3 Frontend
 
