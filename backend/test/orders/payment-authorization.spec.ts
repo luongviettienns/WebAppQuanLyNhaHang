@@ -10,6 +10,9 @@ import { env } from '../../src/config/env';
 // Exercise the real router, JWT middleware and controller without accessing a DB.
 vi.mock('../../src/config/env', () => ({
   env: {
+    NODE_ENV: 'test',
+    DATABASE_URL: 'mysql://test:test@localhost:3306/crispy_bite_test',
+    TEST_DATABASE_URL: 'mysql://test:test@localhost:3306/crispy_bite_test',
     JWT_SECRET: 'payment-route-test-secret-at-least-32-characters',
     JWT_ISSUER: 'crispy-bite-api',
     JWT_AUDIENCE: 'crispy-bite-client'
