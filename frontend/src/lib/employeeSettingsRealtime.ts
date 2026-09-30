@@ -13,6 +13,13 @@ export interface EmployeeSettingsChangedPayload {
   updatedAt: string;
 }
 
+interface EmployeeSettingsChecklistChangedPayload {
+  branchId: number;
+  settingsArea: 'checklist';
+  eventRevision: string;
+  updatedAt: string;
+}
+
 const areas = new Set<EmployeeSettingsArea>(['attendance', 'payroll', 'workweek', 'holiday']);
 const positiveInteger = (value: unknown): value is number => Number.isInteger(value) && Number(value) > 0;
 
@@ -24,6 +31,17 @@ export function isEmployeeSettingsChangedPayload(value: unknown): value is Emplo
     && areas.has(payload.settingsArea as EmployeeSettingsArea)
     && positiveInteger(payload.revision)
     && payload.eventRevision === `${payload.settingsArea}:${payload.revision}`
+    && typeof payload.updatedAt === 'string'
+    && !Number.isNaN(Date.parse(payload.updatedAt));
+}
+
+function isEmployeeSettingsChecklistChangedPayload(value: unknown): value is EmployeeSettingsChecklistChangedPayload {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as Partial<EmployeeSettingsChecklistChangedPayload>;
+  return positiveInteger(payload.branchId)
+    && payload.settingsArea === 'checklist'
+    && typeof payload.eventRevision === 'string'
+    && /^checklist:KIOSK_SESSION_(?:CREATED|REVOKED):[1-9]\d*$/.test(payload.eventRevision)
     && typeof payload.updatedAt === 'string'
     && !Number.isNaN(Date.parse(payload.updatedAt));
 }
@@ -59,7 +77,8 @@ export function subscribeToEmployeeSettingsWorkspaceInvalidation(
   for (const event of events) {
     const handler: Listener = payload => {
       if (event === 'employee-settings:changed') {
-        if (isEmployeeSettingsChangedPayload(payload) && payload.branchId === branchId) invalidate();
+        if ((isEmployeeSettingsChangedPayload(payload) || isEmployeeSettingsChecklistChangedPayload(payload))
+          && payload.branchId === branchId) invalidate();
         return;
       }
       if (event === 'employees:changed') {

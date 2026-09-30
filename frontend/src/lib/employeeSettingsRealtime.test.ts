@@ -42,8 +42,14 @@ describe('employee settings realtime', () => {
     handlers.get('employee-attendance:changed')?.({ branchId: 1 });
     handlers.get('employee-payroll:changed')?.({ branchId: 1 });
     handlers.get('employee-settings:changed')?.({ branchId: 2, settingsArea: 'holiday', revision: 2, eventRevision: 'holiday:2', updatedAt: '2026-09-30T10:00:00.000Z' });
+    handlers.get('employee-settings:changed')?.({
+      branchId: 1,
+      settingsArea: 'checklist',
+      eventRevision: 'checklist:KIOSK_SESSION_CREATED:12',
+      updatedAt: '2026-09-30T10:00:00.000Z'
+    });
 
-    expect(invalidate).toHaveBeenCalledTimes(4);
+    expect(invalidate).toHaveBeenCalledTimes(5);
     unsubscribe();
     expect((socket.off as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(6);
   });
