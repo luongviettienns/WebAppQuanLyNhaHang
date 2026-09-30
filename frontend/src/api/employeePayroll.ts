@@ -60,7 +60,7 @@ export interface PayrollAdjustmentInput extends PayrollReasonInput { type: 'BONU
 export interface PayrollPaymentInput { amount: number; method: 'CASH' | 'BANK_TRANSFER' | 'OTHER'; externalReference?: string; note?: string; paidAt?: string }
 
 export class EmployeePayrollApiError extends Error {
-  constructor(message: string, readonly code: ErrorCode, readonly status: number, readonly details?: Record<string, string>) {
+  constructor(message: string, readonly code: ErrorCode, readonly status: number, readonly details?: Record<string, unknown>) {
     super(message); this.name = 'EmployeePayrollApiError'; Object.setPrototypeOf(this, new.target.prototype);
   }
 }

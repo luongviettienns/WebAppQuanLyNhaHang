@@ -83,4 +83,26 @@ describe('EmployeePayrollDetail', () => {
     expect(JSON.stringify(finalized.toJSON())).toContain('FT001');
     expect(finalized.root.findByProps({ testID: 'payroll-payment-reverse-81' })).toBeDefined();
   });
+
+  it('renders the frozen settings versions and holidays used by the payroll calculation', async () => {
+    const calculatedDetail = detail('CALCULATED');
+    calculatedDetail.lines[0].sourceSnapshot = {
+      settings: {
+        payrollPolicy: { id: 11, revision: 4, effectiveFrom: '2026-09-01', values: { frequency: 'MONTHLY' } },
+        attendancePolicies: [{ id: 12, revision: 2, effectiveFrom: '2026-09-01', values: { attendanceMode: 'SHIFT' } }],
+        workweekPolicies: [{ id: 13, revision: 3, effectiveFrom: '2026-09-01', values: { sunday: false } }],
+        holidays: [{ id: 14, revision: 5, name: 'Quốc khánh', startDate: '2026-09-02', endDate: '2026-09-02', archivedAt: null }]
+      }
+    };
+    let screen: any;
+    await act(async () => { screen = create(<EmployeePayrollDetail detail={calculatedDetail} onChanged={async () => {}} />); });
+    await act(async () => screen.root.findByProps({ testID: 'payroll-line-10' }).props.onPress());
+    const snapshot = screen.root.findByProps({ testID: 'payroll-settings-snapshot-10' });
+    const text = snapshot.findAllByType('Text').map((node: any) => String(node.props.children)).join(' ');
+    expect(text).toContain('Chính sách lương #11 · phiên bản 4');
+    expect(text).toContain('Chấm công #12 · phiên bản 2');
+    expect(text).toContain('Ngày làm việc #13 · phiên bản 3');
+    expect(text).toContain('Quốc khánh');
+    expect(text).toContain('phiên bản 5');
+  });
 });

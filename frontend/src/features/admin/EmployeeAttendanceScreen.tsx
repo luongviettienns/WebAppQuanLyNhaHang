@@ -65,7 +65,7 @@ async function loadCompleteExceptions(token: string | null, query: Parameters<ty
 export const EmployeeAttendanceScreen: React.FC<EmployeeAttendanceScreenProps> = ({ initialWeekStart }) => {
   const { theme } = useTheme();
   const { token } = useAuth();
-  const { employeeAttendanceRevision } = useRestaurant();
+  const { employeeAttendanceRevision, employeeSettingsRevision } = useRestaurant();
   const { width } = useWindowDimensions();
   const compact = width < 820;
   const [weekStart, setWeekStart] = useState(() => getMondayWeekStart(initialWeekStart ?? getBusinessDate()));
@@ -114,6 +114,7 @@ export const EmployeeAttendanceScreen: React.FC<EmployeeAttendanceScreenProps> =
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (employeeAttendanceRevision > 0) void load(); }, [employeeAttendanceRevision, load]);
+  useEffect(() => { if (employeeSettingsRevision > 0) void load(); }, [employeeSettingsRevision, load]);
   useEffect(() => {
     const browserAvailable = typeof window !== 'undefined' && typeof document !== 'undefined';
     const refreshWhenFocused = () => { if (browserAvailable && document.visibilityState === 'visible') void load(); };

@@ -149,6 +149,12 @@ export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
             const attendanceSessions = Array.isArray(line.raw.sourceSnapshot.attendanceSessions)
               ? line.raw.sourceSnapshot.attendanceSessions as Array<{ id?: number; businessDate?: string; checkInAt?: string; checkOutAt?: string | null }>
               : [];
+            const settings = line.raw.sourceSnapshot.settings as undefined | {
+              payrollPolicy?: { id: number; revision: number; effectiveFrom: string };
+              attendancePolicies?: Array<{ id: number; revision: number; effectiveFrom: string }>;
+              workweekPolicies?: Array<{ id: number; revision: number; effectiveFrom: string }>;
+              holidays?: Array<{ id: number; revision: number; name: string; startDate: string; endDate: string }>;
+            };
             return (
               <View key={line.id}>
                 <Pressable
@@ -203,6 +209,14 @@ export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
                         </Text>
                       ))}
                     </View>
+
+                    {settings && <View testID={`payroll-settings-snapshot-${line.id}`} style={styles.historyBlock}>
+                      <Text style={styles.sectionTitle}>Thiết lập nhân viên đã dùng</Text>
+                      {settings.payrollPolicy && <Text style={styles.historyText}>{`Chính sách lương #${settings.payrollPolicy.id} · phiên bản ${settings.payrollPolicy.revision} · hiệu lực ${settings.payrollPolicy.effectiveFrom}`}</Text>}
+                      {(settings.attendancePolicies ?? []).map(policy => <Text key={`attendance-${policy.id}`} style={styles.historyText}>{`Chấm công #${policy.id} · phiên bản ${policy.revision} · hiệu lực ${policy.effectiveFrom}`}</Text>)}
+                      {(settings.workweekPolicies ?? []).map(policy => <Text key={`workweek-${policy.id}`} style={styles.historyText}>{`Ngày làm việc #${policy.id} · phiên bản ${policy.revision} · hiệu lực ${policy.effectiveFrom}`}</Text>)}
+                      {(settings.holidays ?? []).map(holiday => <Text key={`holiday-${holiday.id}`} style={styles.historyText}>{`${holiday.name} · phiên bản ${holiday.revision} · ${holiday.startDate} → ${holiday.endDate}`}</Text>)}
+                    </View>}
 
                     {line.warnings.blockers.length > 0 && (
                       <View style={styles.warningBlock}>

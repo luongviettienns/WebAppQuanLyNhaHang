@@ -21,6 +21,7 @@ vi.mock('react-native', () => ({
 vi.mock('lucide-react-native', () => ({ CalendarDays: native('Icon'), Check: native('Icon'), Clock3: native('Icon'), Settings: native('Icon'), WalletCards: native('Icon') }));
 vi.mock('../../ui', () => ({ AppIcon: () => React.createElement('Icon'), InlineAlert: (props: any) => React.createElement('Alert', props, props.message) }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ token: 'admin-token' }) }));
+vi.mock('../../contexts/RestaurantContext', () => ({ useRestaurant: () => ({ employeeSettingsRevision: 0 }) }));
 vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ theme: {
   surfaceCanvas: '#f5f7fa', surfaceBase: '#fff', surfaceRaised: '#fff', borderSubtle: '#d8dee8',
   primary: '#0877e8', interactiveSecondary: '#eaf4ff', textPrimary: '#172033', textSecondary: '#67748a',

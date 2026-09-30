@@ -19,7 +19,8 @@ vi.mock('react-native', () => ({
 }));
 vi.mock('lucide-react-native', () => { const Icon = native('Icon'); return { CalendarDays: Icon, ChevronLeft: Icon, ChevronRight: Icon, ClipboardCheck: Icon, Monitor: Icon, Search: Icon }; });
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ token: 'admin-token' }) }));
-vi.mock('../../contexts/RestaurantContext', () => ({ useRestaurant: () => ({ employeeAttendanceRevision: 0 }) }));
+const revisions = { attendance: 0, settings: 0 };
+vi.mock('../../contexts/RestaurantContext', () => ({ useRestaurant: () => ({ employeeAttendanceRevision: revisions.attendance, employeeSettingsRevision: revisions.settings }) }));
 vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ theme: {
   surfaceBase: '#fff', surfaceCanvas: '#f4f3f0', surfaceRaised: '#fff', interactiveSecondary: '#fff1dd',
   primary: '#b42318', textPrimary: '#24211f', textSecondary: '#6b6560', borderSubtle: '#d8d4ce'
@@ -43,10 +44,20 @@ const week: AttendanceWeekDto = {
 
 describe('EmployeeAttendanceScreen', () => {
   beforeEach(() => {
+    revisions.attendance = 0; revisions.settings = 0;
     fetchWeek.mockReset().mockImplementation(async (_token: string, query: { view?: string }) => ({ ...week, view: query.view ?? 'shift' }));
     fetchExceptions.mockReset().mockResolvedValue({ branch: week.branch, weekStart: week.weekStart, weekEnd: week.weekEnd,
       status: 'OPEN', rows: [], pagination: { page: 1, pageSize: 100, total: 0, totalPages: 0 } } satisfies AttendanceExceptionListDto);
     resolveConflict.mockReset().mockResolvedValue({});
+  });
+
+  it('refetches the attendance board when branch settings are invalidated', async () => {
+    let screen: any;
+    await act(async () => { screen = create(<EmployeeAttendanceScreen initialWeekStart="2026-09-28" />); await Promise.resolve(); });
+    const before = fetchWeek.mock.calls.length;
+    revisions.settings += 1;
+    await act(async () => { screen.update(<EmployeeAttendanceScreen initialWeekStart="2026-09-28" />); await Promise.resolve(); });
+    expect(fetchWeek.mock.calls.length).toBeGreaterThan(before);
   });
 
   it('loads the week for the MAIN branch and renders the unclocked state without inventing absence', async () => {

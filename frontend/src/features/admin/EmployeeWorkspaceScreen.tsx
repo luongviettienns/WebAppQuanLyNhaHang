@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Banknote, CalendarDays, Clock3, Users } from 'lucide-react-native';
+import { Banknote, CalendarDays, Clock3, Settings, Users } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon } from '../../ui';
@@ -8,12 +8,19 @@ import { EmployeeManagementScreen } from './EmployeeManagementScreen';
 import { EmployeeScheduleScreen } from './EmployeeScheduleScreen';
 import { EmployeeAttendanceScreen } from './EmployeeAttendanceScreen';
 import { EmployeePayrollScreen } from './EmployeePayrollScreen';
+import { EmployeeSettingsScreen } from './EmployeeSettingsScreen';
 
-type EmployeeWorkspaceSection = 'directory' | 'schedule' | 'attendance' | 'payroll';
+export type EmployeeWorkspaceSection = 'directory' | 'schedule' | 'attendance' | 'payroll' | 'settings';
 
 export const EmployeeWorkspaceScreen: React.FC = () => {
   const { theme } = useTheme();
   const [section, setSection] = useState<EmployeeWorkspaceSection>('directory');
+  const navigateFromSettings = (destination: string) => {
+    const targets: Record<string, EmployeeWorkspaceSection> = {
+      'employee-directory': 'directory', 'employee-schedule': 'schedule', 'employee-attendance': 'attendance', 'employee-payroll': 'payroll'
+    };
+    const target = targets[destination]; if (target) setSection(target);
+  };
   return <View style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
     <View accessibilityRole="tablist" style={[styles.subnav, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
       <Pressable
@@ -56,6 +63,16 @@ export const EmployeeWorkspaceScreen: React.FC = () => {
         <AppIcon icon={Banknote} color={section === 'payroll' ? theme.primary : theme.textSecondary} size={18} />
         <Text style={[styles.tabText, { color: section === 'payroll' ? theme.textPrimary : theme.textSecondary }]}>Bảng lương</Text>
       </Pressable>
+      <Pressable
+        testID="employee-workspace-settings"
+        accessibilityRole="tab"
+        accessibilityState={{ selected: section === 'settings' }}
+        onPress={() => setSection('settings')}
+        style={[styles.tab, section === 'settings' && { backgroundColor: theme.interactiveSecondary, borderBottomColor: theme.primary }]}
+      >
+        <AppIcon icon={Settings} color={section === 'settings' ? theme.primary : theme.textSecondary} size={18} />
+        <Text style={[styles.tabText, { color: section === 'settings' ? theme.textPrimary : theme.textSecondary }]}>Thiết lập nhân viên</Text>
+      </Pressable>
     </View>
     <View style={styles.content}>
       {section === 'directory'
@@ -64,7 +81,9 @@ export const EmployeeWorkspaceScreen: React.FC = () => {
           ? <EmployeeScheduleScreen />
           : section === 'attendance'
             ? <EmployeeAttendanceScreen />
-            : <EmployeePayrollScreen />}
+            : section === 'payroll'
+              ? <EmployeePayrollScreen />
+              : <EmployeeSettingsScreen onNavigate={navigateFromSettings} />}
     </View>
   </View>;
 };

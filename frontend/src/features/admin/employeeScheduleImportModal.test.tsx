@@ -61,7 +61,7 @@ describe('employee schedule import modal', () => {
     expect(api.previewEmployeeScheduleImportApi).toHaveBeenCalledWith('admin-token', 'lich.csv', 'YQ==');
     expect(screen.root.findAllByType('Text').some((node: any) => node.children.join('') === '1/1 dòng hợp lệ')).toBe(true);
     await act(async () => { screen.root.findByProps({ testID: 'schedule-import-commit' }).props.onPress(); await Promise.resolve(); });
-    expect(api.commitEmployeeScheduleImportApi).toHaveBeenCalledWith('admin-token', [validRow]);
+    expect(api.commitEmployeeScheduleImportApi).toHaveBeenCalledWith('admin-token', [validRow], false, expect.any(String));
     expect(saved).toHaveBeenCalledOnce();
     expect(closed).toHaveBeenCalledOnce();
     await act(async () => screen.unmount());
@@ -87,6 +87,19 @@ describe('employee schedule import modal', () => {
     expect(JSON.stringify(screen.toJSON())).toContain('Một ca đã bị trùng kể từ lúc xem trước');
     expect(screen.root.findAllByType('Text').some((node: any) => node.children.join('') === '1/1 dòng hợp lệ')).toBe(true);
     expect(closed).not.toHaveBeenCalled();
+    await act(async () => screen.unmount());
+  });
+
+  it('requires explicit confirmation for previewed calendar warnings and keeps one retry identity', async () => {
+    const warnedRow = { ...validRow, calendarWarnings: [{ kind: 'HOLIDAY', firstAffectedDate: '2026-10-05', affectedCount: 1, sampleDates: ['2026-10-05'], unbounded: false, source: { type: 'HOLIDAY', id: 2, revision: 1, name: 'Ngày nghỉ' } }] };
+    api.previewEmployeeScheduleImportApi.mockResolvedValue({ ...validPreview, validRows: [warnedRow], warningRows: [warnedRow] });
+    let screen: any;
+    await act(async () => { screen = create(<EmployeeScheduleImportModal visible onClose={closed} onSaved={saved} onDownloadTemplate={() => undefined} />); });
+    await act(async () => { screen.root.findByProps({ testID: 'schedule-import-pick-file' }).props.onPress(); await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(screen.root.findByProps({ testID: 'schedule-import-commit' }).props.disabled).toBe(true);
+    await act(async () => screen.root.findByProps({ testID: 'schedule-import-warning-confirm' }).props.onPress());
+    await act(async () => { screen.root.findByProps({ testID: 'schedule-import-commit' }).props.onPress(); await Promise.resolve(); });
+    expect(api.commitEmployeeScheduleImportApi).toHaveBeenCalledWith('admin-token', [warnedRow], true, expect.any(String));
     await act(async () => screen.unmount());
   });
 });

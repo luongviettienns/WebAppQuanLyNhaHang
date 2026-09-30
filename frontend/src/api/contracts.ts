@@ -109,7 +109,9 @@ export type ErrorCode =
   | 'EMPLOYEE_HOLIDAY_NOT_FOUND'
   | 'EMPLOYEE_HOLIDAY_ARCHIVED'
   | 'EMPLOYEE_HOLIDAY_HISTORY_LOCKED'
-  | 'EMPLOYEE_HOLIDAY_REVISION_CONFLICT';
+  | 'EMPLOYEE_HOLIDAY_REVISION_CONFLICT'
+  | 'SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED'
+  | 'ATTENDANCE_SCHEDULE_REQUIRED';
 
 // ==========================================
 // 2. HTTP ENVELOPES
@@ -122,7 +124,7 @@ export interface ApiErrorResponse {
   error: {
     code: ErrorCode;
     message: string;
-    details?: Record<string, string>;
+    details?: Record<string, unknown>;
   };
 }
 

@@ -87,9 +87,9 @@ export interface MarkAttendanceAbsentInput extends AttendanceReasonInput { branc
 export class AttendanceApiError extends Error {
   readonly code: ErrorCode;
   readonly status: number;
-  readonly details?: Record<string, string>;
+  readonly details?: Record<string, unknown>;
 
-  constructor(message: string, code: ErrorCode, status: number, details?: Record<string, string>) {
+  constructor(message: string, code: ErrorCode, status: number, details?: Record<string, unknown>) {
     super(message);
     this.name = 'AttendanceApiError';
     this.code = code;

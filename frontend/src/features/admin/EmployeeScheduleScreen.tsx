@@ -64,7 +64,7 @@ function getScheduleEmployeeRowHeight(
 export const EmployeeScheduleScreen: React.FC<EmployeeScheduleScreenProps> = ({ initialWeekStart }) => {
   const { theme } = useTheme();
   const { token } = useAuth();
-  const { employeeSchedulesRevision } = useRestaurant();
+  const { employeeSchedulesRevision, employeeSettingsRevision } = useRestaurant();
   const { width } = useWindowDimensions();
   const compact = width < 820;
   const [weekStart, setWeekStart] = useState(() => getMondayWeekStart(initialWeekStart ?? getBusinessDate()));
@@ -96,6 +96,7 @@ export const EmployeeScheduleScreen: React.FC<EmployeeScheduleScreenProps> = ({ 
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => { if (employeeSchedulesRevision > 0) void load(); }, [employeeSchedulesRevision, load]);
+  useEffect(() => { if (employeeSettingsRevision > 0) void load(); }, [employeeSettingsRevision, load]);
   useEffect(() => {
     const browserAvailable = typeof window !== 'undefined' && typeof document !== 'undefined';
     const refreshWhenFocused = () => { if (browserAvailable && document.visibilityState === 'visible') void load(); };
@@ -207,10 +208,24 @@ export const EmployeeScheduleScreen: React.FC<EmployeeScheduleScreenProps> = ({ 
           <ScrollView testID="schedule-days-scroll" horizontal style={styles.dayGridScroll} showsHorizontalScrollIndicator contentContainerStyle={{ minWidth: compact ? 7 * 146 + 170 : 7 * 150 + 170 }}>
             <View>
               <View style={[styles.gridHeader, { backgroundColor: theme.surfaceSunken, borderBottomColor: theme.borderSubtle }]}>
-                {days.map(day => <View key={day.date} style={[styles.dayHeading, day.isToday && { backgroundColor: theme.interactiveSecondary }, { borderRightColor: theme.borderSubtle }]}>
-                  <Text style={[styles.dayLabel, { color: day.isToday ? theme.primary : theme.textSecondary }]}>{day.label}</Text>
-                  <Text style={[styles.dayNumber, { color: day.isToday ? theme.primary : theme.textPrimary }]}>{day.dayNumber}</Text>
-                </View>)}
+                {days.map(day => {
+                  const calendarDay = data?.calendarDays.find(item => item.date === day.date);
+                  const calendarLabels = [
+                    ...(calendarDay && !calendarDay.isWorkingDay ? ['Ngày không làm việc'] : []),
+                    ...(calendarDay?.holidays.map(holiday => holiday.name) ?? [])
+                  ];
+                  return <View key={day.date} style={[styles.dayHeading, day.isToday && { backgroundColor: theme.interactiveSecondary }, { borderRightColor: theme.borderSubtle }]}>
+                    <Text style={[styles.dayLabel, { color: day.isToday ? theme.primary : theme.textSecondary }]}>{day.label}</Text>
+                    <Text style={[styles.dayNumber, { color: day.isToday ? theme.primary : theme.textPrimary }]}>{day.dayNumber}</Text>
+                    {calendarLabels.length > 0 && <View
+                      testID={`schedule-calendar-marker-${day.date}`}
+                      accessibilityLabel={calendarLabels.join(', ')}
+                      style={[styles.calendarMarker, { backgroundColor: theme.interactiveSecondary }]}
+                    >
+                      <Text numberOfLines={1} style={[styles.calendarMarkerText, { color: theme.primary }]}>{calendarLabels.join(' · ')}</Text>
+                    </View>}
+                  </View>;
+                })}
                 <View style={[styles.compensationHeading, { borderLeftColor: theme.borderSubtle }]}><Text style={[styles.columnHeader, { color: theme.textPrimary }]}>Lương dự kiến</Text></View>
               </View>
               {data?.employees.map(employee => <View key={employee.id} testID={`schedule-calendar-row-${employee.id}`} style={[styles.employeeRow, { height: getScheduleEmployeeRowHeight(employee, days, selection, businessToday), backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
@@ -274,6 +289,8 @@ export const EmployeeScheduleScreen: React.FC<EmployeeScheduleScreenProps> = ({ 
 
 const styles = StyleSheet.create({
   container: { flex: 1, minHeight: 0 },
+  calendarMarker: { maxWidth: 132, marginTop: 2, paddingHorizontal: 5, paddingVertical: 2, borderRadius: 999 },
+  calendarMarkerText: { fontSize: 9, fontWeight: '600' },
   pageHeader: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   pageHeaderCompact: { paddingHorizontal: spacing.md },
   compactActions: { borderBottomWidth: 1, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },

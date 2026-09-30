@@ -3,7 +3,7 @@ import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View
 import { Plus, X } from 'lucide-react-native';
 import {
   createEmployeeScheduleBatchApi, createWorkShiftApi, deleteEmployeeScheduleRuleApi, patchEmployeeScheduleRuleApi,
-  type ScheduleOccurrenceDto, type ScheduleShiftDto, type ScheduleWeekEmployeeDto
+  ScheduleApiError, type ScheduleCalendarWarningDto, type ScheduleOccurrenceDto, type ScheduleShiftDto, type ScheduleWeekEmployeeDto
 } from '../../api/employeeScheduleManagement';
 import { fetchEmployeesApi, type EmployeeListItemDto } from '../../api/employeeManagement';
 import { useAuth } from '../../contexts/AuthContext';
@@ -36,6 +36,7 @@ function minuteFromTime(value: string): number | null {
   if (hour > 23 || minute > 59) return null;
   return hour * 60 + minute;
 }
+const scheduleIntentKey = () => `schedule-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 
 export const EmployeeScheduleModal: React.FC<EmployeeScheduleModalProps> = ({
   visible, workDate: initialDate, employeeId, employees, shifts, occurrence, onClose, onSaved, onShiftCreated
@@ -67,11 +68,19 @@ export const EmployeeScheduleModal: React.FC<EmployeeScheduleModalProps> = ({
   const [newShiftStart, setNewShiftStart] = useState('08:00');
   const [newShiftEnd, setNewShiftEnd] = useState('12:00');
   const [savingShift, setSavingShift] = useState(false);
+  const [saveIntentKey, setSaveIntentKey] = useState(scheduleIntentKey);
+  const [calendarWarnings, setCalendarWarnings] = useState<ScheduleCalendarWarningDto[]>([]);
   const isEditing = Boolean(occurrence);
   const defaultEmployeeOption = useMemo<ScheduleEmployeeOption | undefined>(() => {
     const employee = employees.find(value => value.id === employeeId);
     return employee ? { id: employee.id, code: employee.code, name: employee.name, status: employee.status } : undefined;
   }, [employeeId, employees]);
+  const intentFingerprint = JSON.stringify({ workDate, selectedEmployees, selectedShifts, repeatWeekly, endDate });
+  useEffect(() => {
+    if (!visible || isEditing) return;
+    setSaveIntentKey(scheduleIntentKey());
+    setCalendarWarnings([]);
+  }, [intentFingerprint, isEditing, visible]);
 
   useEffect(() => {
     if (!visible || !defaultEmployeeOption) return;
@@ -122,7 +131,7 @@ export const EmployeeScheduleModal: React.FC<EmployeeScheduleModalProps> = ({
     setSelectedShifts(current => current.includes(id) ? current.filter(value => value !== id) : [...current, id]);
   };
 
-  const save = async () => {
+  const save = async (calendarWarningAcknowledged = false) => {
     if (!workDate || selectedShifts.length === 0 || (!isEditing && selectedEmployees.length === 0)) return;
     setSaving(true); setError('');
     try {
@@ -131,14 +140,19 @@ export const EmployeeScheduleModal: React.FC<EmployeeScheduleModalProps> = ({
       } else {
         await createEmployeeScheduleBatchApi(token, {
           employeeIds: selectedEmployees, shiftIds: selectedShifts, startDate: workDate,
-          repeatWeekly, endDate: repeatWeekly && endDate ? endDate : null
-        });
+          repeatWeekly, endDate: repeatWeekly && endDate ? endDate : null,
+          ...(calendarWarningAcknowledged ? { calendarWarningAcknowledged: true } : {})
+        }, saveIntentKey);
       }
       await onSaved();
       showToast({ type: 'success', title: isEditing ? 'Đã cập nhật lịch' : 'Đã thêm lịch', message: `${selectedShifts.length} ca làm việc đã được lưu.` });
       onClose();
     } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Không thể lưu lịch làm việc');
+      if (failure instanceof ScheduleApiError && failure.code === 'SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED') {
+        const warnings = failure.details?.warnings;
+        setCalendarWarnings(Array.isArray(warnings) ? warnings as ScheduleCalendarWarningDto[] : []);
+        setError('Lịch có ngày nghỉ hoặc ngày lễ. Kiểm tra và xác nhận trước khi lưu.');
+      } else setError(failure instanceof Error ? failure.message : 'Không thể lưu lịch làm việc');
     } finally { setSaving(false); }
   };
 
@@ -191,6 +205,13 @@ export const EmployeeScheduleModal: React.FC<EmployeeScheduleModalProps> = ({
 
         <ScrollView contentContainerStyle={styles.body} keyboardShouldPersistTaps="handled">
           {error ? <InlineAlert title="Chưa thể lưu lịch" message={error} testID="schedule-modal-error" /> : null}
+          {calendarWarnings.length > 0 && <View testID="schedule-calendar-warning" style={[styles.warningBox, { borderColor: theme.borderSubtle, backgroundColor: theme.surfaceSunken }]}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Ngày cần xác nhận</Text>
+            {calendarWarnings.map((warning, index) => <Text key={`${warning.kind}-${warning.firstAffectedDate}-${index}`} style={[styles.helper, { color: theme.textSecondary }]}>
+              {warning.kind === 'HOLIDAY' && warning.source.type === 'HOLIDAY' ? warning.source.name : 'Ngày nghỉ theo lịch làm việc'} · từ {warning.firstAffectedDate} · {warning.unbounded ? 'lặp không giới hạn' : `${warning.affectedCount ?? 0} lần`}
+            </Text>)}
+            <Button testID="schedule-confirm-calendar-warning" variant="secondary" label="Vẫn lưu lịch" onPress={() => void save(true)} loading={saving} />
+          </View>}
           <Field testID="schedule-date" label="Ngày làm việc" value={workDate} onChangeText={setWorkDate} placeholder="YYYY-MM-DD" accessibilityLabel="Ngày làm việc" />
 
           <View style={styles.sectionHead}>
@@ -343,5 +364,6 @@ const styles = StyleSheet.create({
   radioDot: { borderRadius: radii.pill, height: 10, width: 10 },
   deleteArea: { alignItems: 'flex-start' },
   deleteConfirm: { alignSelf: 'stretch', borderRadius: radii.md, gap: spacing.sm, padding: spacing.md },
+  warningBox: { borderRadius: radii.md, borderWidth: 1, gap: spacing.sm, padding: spacing.md },
   footer: { alignItems: 'center', borderTopWidth: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'flex-end', padding: spacing.md },
 });

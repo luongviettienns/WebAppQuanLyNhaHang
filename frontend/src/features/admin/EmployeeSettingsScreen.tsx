@@ -4,6 +4,7 @@ import { CalendarDays, Clock3, Settings, WalletCards } from 'lucide-react-native
 import { fetchEmployeeSettingsApi, type EmployeeSettingsDestination, type EmployeeSettingsWorkspaceDto } from '../../api/employeeSettings';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useRestaurant } from '../../contexts/RestaurantContext';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon, InlineAlert } from '../../ui';
 import { EmployeeAttendanceSettingsPanel } from './EmployeeAttendanceSettingsPanel';
@@ -21,6 +22,7 @@ const sections = [
 
 export const EmployeeSettingsScreen: React.FC<{ onNavigate: (destination: EmployeeSettingsDestination) => void }> = ({ onNavigate }) => {
   const { token } = useAuth(); const { theme } = useTheme(); const { width } = useWindowDimensions(); const compact = width < 820;
+  const { employeeSettingsRevision } = useRestaurant();
   const [section, setSection] = useState<Section>('initialization'); const [workspace, setWorkspace] = useState<EmployeeSettingsWorkspaceDto | null>(null);
   const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [refreshNotice, setRefreshNotice] = useState('');
   const styles = useMemo(() => createStyles(), []);
@@ -34,6 +36,7 @@ export const EmployeeSettingsScreen: React.FC<{ onNavigate: (destination: Employ
     finally { if (!background) setLoading(false); }
   }, [token, workspace]);
   useEffect(() => { void load(); }, [token]); // load only when authenticated identity changes
+  useEffect(() => { if (employeeSettingsRevision > 0) void load(true); }, [employeeSettingsRevision]);
 
   if (loading) return <View style={styles.center}><ActivityIndicator color={theme.primary} /><Text style={{ color: theme.textSecondary }}>Đang tải thiết lập…</Text></View>;
   if (!workspace) return <View style={styles.center}><InlineAlert message={error || 'Không thể tải thiết lập nhân viên.'} actionLabel="Thử lại" onAction={() => void load()} /></View>;
@@ -42,8 +45,12 @@ export const EmployeeSettingsScreen: React.FC<{ onNavigate: (destination: Employ
     key={item.key} testID={`settings-nav-${item.key}`} accessibilityRole="tab" accessibilityState={{ selected: item.key === section }}
     onPress={() => setSection(item.key)} style={[styles.navItem, item.key === section && { backgroundColor: theme.interactiveSecondary }]}
   ><AppIcon icon={item.icon} color={item.key === section ? theme.primary : theme.textSecondary} size={18} /><Text style={[styles.navText, { color: item.key === section ? theme.primary : theme.textPrimary }]}>{item.label}</Text></Pressable>)}</View>;
+  const navigate = (destination: EmployeeSettingsDestination) => {
+    if (destination === 'employee-settings-attendance') { setSection('attendance'); return; }
+    onNavigate(destination);
+  };
   const panel = section === 'initialization'
-    ? <EmployeeSettingsInitializationPanel workspace={workspace} onNavigate={onNavigate} />
+    ? <EmployeeSettingsInitializationPanel workspace={workspace} onNavigate={navigate} />
     : section === 'attendance'
       ? <EmployeeAttendanceSettingsPanel token={token} workspace={workspace} onSaved={() => void load(true)} />
       : section === 'payroll'

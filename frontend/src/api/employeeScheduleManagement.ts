@@ -10,6 +10,7 @@ export type ScheduleApiErrorCode = Extract<ErrorCode,
   | 'SCHEDULE_IMPORT_FILE_TOO_LARGE' | 'SCHEDULE_IMPORT_FORMULA_NOT_ALLOWED'
   | 'SCHEDULE_IMPORT_ROW_LIMIT' | 'SCHEDULE_IMPORT_HEADERS_INVALID'
   | 'SCHEDULE_IMPORT_ROWS_INVALID' | 'SCHEDULE_IMPORT_EMPTY'
+  | 'SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED' | 'IDEMPOTENCY_KEY_REUSED'
 >;
 export type ScheduleEmployeeStatus = 'WORKING' | 'RESIGNED';
 export type ScheduleCompensationStatus = 'ESTIMATED' | 'MONTHLY_NOT_ESTIMATED' | 'COMPENSATION_NOT_CONFIGURED';
@@ -27,11 +28,21 @@ export type ScheduleWeekEmployeeDto = {
 };
 export type EmployeeScheduleWeekDto = {
   weekStart: string; weekEnd: string; employees: ScheduleWeekEmployeeDto[];
+  calendarDays: ScheduleCalendarDayDto[];
   pagination: { page: number; pageSize: number; totalRows: number; totalPages: number };
+};
+export type ScheduleCalendarDayDto = {
+  date: string; weekday: number; isWorkingDay: boolean; workweekPolicyVersionId: number; workweekRevision: number;
+  holidays: Array<{ id: number; revision: number; name: string }>;
+};
+export type ScheduleCalendarWarningDto = {
+  kind: 'NON_WORKING_DAY' | 'HOLIDAY'; firstAffectedDate: string; affectedCount: number | null;
+  sampleDates: string[]; unbounded: boolean;
+  source: { type: 'WORKWEEK_POLICY'; id: number; revision: number } | { type: 'HOLIDAY'; id: number; revision: number; name: string };
 };
 export type EmployeeScheduleWeekQuery = { weekStart: string; search?: string; departmentId?: number; page?: number; pageSize?: number };
 export type CreateEmployeeScheduleBatchInput = {
-  employeeIds: number[]; shiftIds: number[]; startDate: string; repeatWeekly: boolean; endDate?: string | null;
+  employeeIds: number[]; shiftIds: number[]; startDate: string; repeatWeekly: boolean; endDate?: string | null; calendarWarningAcknowledged?: boolean;
 };
 export type ScheduleMutationInput = { workDate: string; scope: 'occurrence' | 'following'; shiftIds: number[] };
 export type ScheduleDeleteInput = { workDate: string; scope: 'occurrence' | 'following' };
@@ -42,10 +53,11 @@ export type CreateScheduleBatchResultDto = {
   createdCount: number;
   rules: Array<{ id: number; employeeId: number; shiftId: number; recurrenceType: ScheduleRecurrenceType; startDate: string; endDate: string | null; dayOfWeek: number | null }>;
 };
-export type ScheduleImportRowDto = { rowNumber: number; employeeCode: string; shiftCode: string; workDate: string; repeatWeekly: boolean; endDate: string | null };
+export type ScheduleImportRowDto = { rowNumber: number; employeeCode: string; shiftCode: string; workDate: string; repeatWeekly: boolean; endDate: string | null; calendarWarnings?: ScheduleCalendarWarningDto[] };
 export type ScheduleImportErrorRowDto = Partial<ScheduleImportRowDto> & { error: string };
 export type ScheduleImportPreviewDto = {
-  fileName: string; totalRows: number; validRows: ScheduleImportRowDto[]; errorRows: ScheduleImportErrorRowDto[]; canCommit: boolean;
+  fileName: string; totalRows: number; validRows: ScheduleImportRowDto[]; errorRows: ScheduleImportErrorRowDto[];
+  warningRows?: ScheduleImportRowDto[]; canCommit: boolean;
 };
 export type ScheduleImportCommitDto = { createdCount: number; rules: CreateScheduleBatchResultDto['rules'] };
 export type ScheduleExportFormat = 'csv' | 'xlsx';
@@ -53,9 +65,9 @@ export type ScheduleExportFormat = 'csv' | 'xlsx';
 export class ScheduleApiError extends Error {
   readonly code: ErrorCode;
   readonly status: number;
-  readonly details?: Record<string, string>;
+  readonly details?: Record<string, unknown>;
 
-  constructor(message: string, code: ErrorCode, status: number, details?: Record<string, string>) {
+  constructor(message: string, code: ErrorCode, status: number, details?: Record<string, unknown>) {
     super(message);
     this.name = 'ScheduleApiError';
     this.code = code;
@@ -65,9 +77,10 @@ export class ScheduleApiError extends Error {
   }
 }
 
-const authHeaders = (token: string | null, json = false): Record<string, string> => ({
+const authHeaders = (token: string | null, json = false, idempotencyKey?: string): Record<string, string> => ({
   ...(json ? { 'Content-Type': 'application/json' } : {}),
-  ...(token ? { Authorization: `Bearer ${token}` } : {})
+  ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {})
 });
 
 async function fail(response: Response, fallback: string): Promise<never> {
@@ -78,9 +91,9 @@ async function fail(response: Response, fallback: string): Promise<never> {
   );
 }
 
-async function request<T>(token: string | null, path: string, method = 'GET', body?: unknown): Promise<T> {
+async function request<T>(token: string | null, path: string, method = 'GET', body?: unknown, idempotencyKey?: string): Promise<T> {
   const response = await fetch(`${getApiBaseUrl()}/api/employee-schedules${path}`, {
-    method, headers: authHeaders(token, body !== undefined), ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    method, headers: authHeaders(token, body !== undefined, idempotencyKey), ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
   if (!response.ok) await fail(response, 'Không thể xử lý lịch làm việc');
   return (await response.json() as { data: T }).data;
@@ -100,16 +113,16 @@ export const fetchEmployeeScheduleShiftsApi = async (token: string | null) =>
   (await request<{ shifts: ScheduleShiftDto[] }>(token, '/shifts')).shifts;
 export const createWorkShiftApi = (token: string | null, input: Omit<ScheduleShiftDto, 'id' | 'isActive' | 'createdAt' | 'updatedAt'>) =>
   request<ScheduleShiftDto>(token, '/shifts', 'POST', input);
-export const createEmployeeScheduleBatchApi = (token: string | null, input: CreateEmployeeScheduleBatchInput) =>
-  request<CreateScheduleBatchResultDto>(token, '', 'POST', input);
+export const createEmployeeScheduleBatchApi = (token: string | null, input: CreateEmployeeScheduleBatchInput, idempotencyKey: string) =>
+  request<CreateScheduleBatchResultDto>(token, '', 'POST', input, idempotencyKey);
 export const patchEmployeeScheduleRuleApi = (token: string | null, ruleId: number, input: ScheduleMutationInput) =>
   request<ScheduleMutationResultDto>(token, `/${ruleId}`, 'PATCH', input);
 export const deleteEmployeeScheduleRuleApi = (token: string | null, ruleId: number, input: ScheduleDeleteInput) =>
   request<ScheduleDeleteResultDto>(token, `/${ruleId}?${query(input)}`, 'DELETE');
 export const previewEmployeeScheduleImportApi = (token: string | null, fileName: string, fileBase64: string) =>
   request<ScheduleImportPreviewDto>(token, '/import/preview', 'POST', { fileName, fileBase64 });
-export const commitEmployeeScheduleImportApi = (token: string | null, rows: ScheduleImportRowDto[]) =>
-  request<ScheduleImportCommitDto>(token, '/import/commit', 'POST', { rows });
+export const commitEmployeeScheduleImportApi = (token: string | null, rows: ScheduleImportRowDto[], calendarWarningAcknowledged: boolean, idempotencyKey: string) =>
+  request<ScheduleImportCommitDto>(token, '/import/commit', 'POST', { rows, calendarWarningAcknowledged }, idempotencyKey);
 
 export async function downloadEmployeeScheduleExportApi(token: string | null, weekStart: string, format: ScheduleExportFormat = 'xlsx'): Promise<Blob> {
   const response = await fetch(`${getApiBaseUrl()}/api/employee-schedules/export?${query({ weekStart, format })}`, { headers: authHeaders(token) });

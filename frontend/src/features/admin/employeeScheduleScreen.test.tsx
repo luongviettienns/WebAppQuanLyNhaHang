@@ -10,13 +10,14 @@ const { createNativeComponent } = vi.hoisted(() => ({
   }
 }));
 const api = vi.hoisted(() => ({
+  ScheduleApiError: class ScheduleApiError extends Error { constructor(message: string, public code: string, public status: number, public details?: Record<string, unknown>) { super(message); } },
   fetchEmployeeScheduleWeekApi: vi.fn(), fetchEmployeeScheduleShiftsApi: vi.fn(), createEmployeeScheduleBatchApi: vi.fn(),
   patchEmployeeScheduleRuleApi: vi.fn(), deleteEmployeeScheduleRuleApi: vi.fn(), createWorkShiftApi: vi.fn(),
   previewEmployeeScheduleImportApi: vi.fn(), commitEmployeeScheduleImportApi: vi.fn(),
   downloadEmployeeScheduleExportApi: vi.fn(), downloadEmployeeScheduleTemplateApi: vi.fn(), fetchEmployeesApi: vi.fn(), showToast: vi.fn()
 }));
 const screenState = vi.hoisted(() => ({
-  width: 1280, employeeSchedulesRevision: 0, employeesRevision: 0, platform: 'web',
+  width: 1280, employeeSchedulesRevision: 0, employeeSettingsRevision: 0, employeesRevision: 0, platform: 'web',
   appStateListener: null as null | ((state: string) => void), appStateRemove: vi.fn()
 }));
 
@@ -36,6 +37,7 @@ vi.mock('lucide-react-native', () => {
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ token: 'admin-token' }) }));
 vi.mock('../../contexts/RestaurantContext', () => ({ useRestaurant: () => ({
   employeeSchedulesRevision: screenState.employeeSchedulesRevision, employeesRevision: screenState.employeesRevision
+  ,employeeSettingsRevision: screenState.employeeSettingsRevision
 }) }));
 vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ theme: {
   mode: 'light', surfaceCanvas: '#F4F3F0', surfaceBase: '#FFFFFF', surfaceRaised: '#FFFFFF', surfaceSunken: '#ECEAE6',
@@ -64,6 +66,7 @@ import type { EmployeeScheduleWeekDto } from '../../api/employeeScheduleManageme
 
 const weekData = (withOccurrence = false, withSecondEmployee = false, occurrenceDate = '2026-09-30'): EmployeeScheduleWeekDto => ({
   weekStart: '2026-09-28', weekEnd: '2026-10-04',
+  calendarDays: [],
   employees: [{
     id: 5, code: 'NV00005', name: 'Nguyễn An', status: 'WORKING', department: { id: 2, name: 'Bếp' }, jobTitle: null,
     occurrences: withOccurrence ? [{ ruleId: 12, employeeId: 5, shiftId: 2, recurrenceType: 'WEEKLY', workDate: occurrenceDate, ruleStartDate: '2026-09-07', ruleEndDate: null, dayOfWeek: occurrenceDate === '2026-09-28' ? 1 : 3, shiftCode: 'MORNING', shiftName: 'Ca sáng', startMinute: 480, endMinute: 720 }] : [],
@@ -111,7 +114,7 @@ describe('employee schedule screen', () => {
     await act(async () => { screen.root.findByProps({ testID: 'schedule-add-cell-button' }).props.onPress(); });
     await act(async () => { screen.root.findByProps({ testID: 'schedule-shift-2' }).props.onPress(); });
     await act(async () => { screen.root.findByProps({ testID: 'schedule-save' }).props.onPress(); await Promise.resolve(); });
-    expect(api.createEmployeeScheduleBatchApi).toHaveBeenCalledWith('admin-token', expect.objectContaining({ employeeIds: [5], shiftIds: [2], startDate: '2026-09-29' }));
+    expect(api.createEmployeeScheduleBatchApi).toHaveBeenCalledWith('admin-token', expect.objectContaining({ employeeIds: [5], shiftIds: [2], startDate: '2026-09-29' }), expect.any(String));
     expect(api.fetchEmployeeScheduleWeekApi).toHaveBeenCalledTimes(2);
     expect(screen.root.findAllByProps({ testID: 'employee-schedule-modal' })).toHaveLength(0);
     await act(async () => screen.unmount());
@@ -175,7 +178,7 @@ describe('employee schedule screen', () => {
     await act(async () => { screen.root.findByProps({ testID: 'schedule-save' }).props.onPress(); await Promise.resolve(); });
     expect(api.createEmployeeScheduleBatchApi).toHaveBeenCalledWith('admin-token', {
       employeeIds: [5, 6], shiftIds: [2, 3], startDate: '2026-09-29', repeatWeekly: true, endDate: '2026-10-27'
-    });
+    }, expect.any(String));
     await act(async () => screen.unmount());
   });
 
@@ -190,6 +193,27 @@ describe('employee schedule screen', () => {
     expect(screen.root.findByProps({ testID: 'employee-schedule-modal' })).toBeDefined();
     expect(screen.root.findByProps({ testID: 'schedule-date' }).props.value).toBe('2026-09-29');
     expect(JSON.stringify(screen.toJSON())).toContain('Ca làm bị chồng giờ');
+    await act(async () => screen.unmount());
+  });
+
+  it('reuses one save identity when confirming occurrence-aware calendar warnings', async () => {
+    api.createEmployeeScheduleBatchApi
+      .mockRejectedValueOnce(new api.ScheduleApiError('Cần xác nhận', 'SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED', 409, { warnings: [{
+        kind: 'HOLIDAY', firstAffectedDate: '2026-09-29', affectedCount: 1, sampleDates: ['2026-09-29'], unbounded: false,
+        source: { type: 'HOLIDAY', id: 2, revision: 1, name: 'Ngày nghỉ thử nghiệm' }
+      }] }))
+      .mockResolvedValueOnce({ createdCount: 1, rules: [] });
+    let screen: any;
+    await act(async () => { screen = create(<EmployeeScheduleScreen initialWeekStart="2026-09-28" />); await Promise.resolve(); });
+    await act(async () => { screen.root.findByProps({ testID: 'schedule-cell-5-2026-09-29' }).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'schedule-add-cell-button' }).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'schedule-shift-2' }).props.onPress(); });
+    await act(async () => { screen.root.findByProps({ testID: 'schedule-save' }).props.onPress(); await Promise.resolve(); });
+    expect(screen.root.findByProps({ testID: 'schedule-calendar-warning' })).toBeDefined();
+    const firstKey = api.createEmployeeScheduleBatchApi.mock.calls[0][2];
+    await act(async () => { screen.root.findByProps({ testID: 'schedule-confirm-calendar-warning' }).props.onPress(); await Promise.resolve(); });
+    expect(api.createEmployeeScheduleBatchApi.mock.calls[1][2]).toBe(firstKey);
+    expect(api.createEmployeeScheduleBatchApi.mock.calls[1][1]).toMatchObject({ calendarWarningAcknowledged: true });
     await act(async () => screen.unmount());
   });
 
@@ -263,6 +287,22 @@ describe('employee schedule screen', () => {
     await act(async () => screen.unmount());
   });
 
+  it('renders non-working and holiday markers from the branch calendar metadata', async () => {
+    api.fetchEmployeeScheduleWeekApi.mockResolvedValueOnce({
+      ...weekData(),
+      calendarDays: [{
+        date: '2026-09-29', weekday: 2, isWorkingDay: false,
+        workweekPolicyVersionId: 41, workweekRevision: 3,
+        holidays: [{ id: 71, revision: 2, name: 'Ngày nghỉ nhà hàng' }]
+      }]
+    });
+    let screen: any;
+    await act(async () => { screen = create(<EmployeeScheduleScreen initialWeekStart="2026-09-28" />); await Promise.resolve(); });
+    const marker = screen.root.findByProps({ testID: 'schedule-calendar-marker-2026-09-29' });
+    expect(JSON.stringify(marker.props.accessibilityLabel)).toContain('Ngày không làm việc');
+    expect(JSON.stringify(marker.props.accessibilityLabel)).toContain('Ngày nghỉ nhà hàng');
+  });
+
   it('preserves unsaved modal input when a schedule refresh replaces employee data', async () => {
     let screen: any;
     await act(async () => { screen = create(<EmployeeScheduleScreen initialWeekStart="2026-09-28" />); await Promise.resolve(); });
@@ -331,7 +371,7 @@ describe('employee schedule screen', () => {
     expect(screen.root.findByProps({ testID: 'schedule-employee-51' })).toBeDefined();
     await act(async () => { screen.root.findByProps({ testID: 'schedule-employee-51' }).props.onPress(); screen.root.findByProps({ testID: 'schedule-shift-2' }).props.onPress(); });
     await act(async () => { screen.root.findByProps({ testID: 'schedule-save' }).props.onPress(); await Promise.resolve(); });
-    expect(api.createEmployeeScheduleBatchApi).toHaveBeenCalledWith('admin-token', expect.objectContaining({ employeeIds: [5, 51], shiftIds: [2] }));
+    expect(api.createEmployeeScheduleBatchApi).toHaveBeenCalledWith('admin-token', expect.objectContaining({ employeeIds: [5, 51], shiftIds: [2] }), expect.any(String));
     await act(async () => screen.unmount());
   });
 

@@ -41,6 +41,7 @@ import {
   subscribeToEmployeePayrollInvalidation,
   type EmployeePayrollRealtimeSocket
 } from '../lib/employeePayrollRealtime';
+import { subscribeToEmployeeSettingsWorkspaceInvalidation, type EmployeeSettingsRealtimeSocket } from '../lib/employeeSettingsRealtime';
 import { bulkUpdateMenuItemsApi } from '../api/menuBulk';
 import {
   bulkUpdatePriceListApi,
@@ -130,6 +131,7 @@ interface RestaurantContextType {
   employeeSchedulesRevision: number;
   employeeAttendanceRevision: number;
   employeePayrollRevision: number;
+  employeeSettingsRevision: number;
   reservationsRevision: number;
   orderPaymentsRevision: number;
 
@@ -227,6 +229,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [employeeSchedulesRevision, setEmployeeSchedulesRevision] = useState(0);
   const [employeeAttendanceRevision, setEmployeeAttendanceRevision] = useState(0);
   const [employeePayrollRevision, setEmployeePayrollRevision] = useState(0);
+  const [employeeSettingsRevision, setEmployeeSettingsRevision] = useState(0);
   const [reservationsRevision, setReservationsRevision] = useState(0);
   const [orderPaymentsRevision, setOrderPaymentsRevision] = useState(0);
 
@@ -540,6 +543,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       socket as unknown as EmployeePayrollRealtimeSocket,
       () => setEmployeePayrollRevision(nextEmployeePayrollRevision)
     );
+    const unsubscribeEmployeeSettingsInvalidation = subscribeToEmployeeSettingsWorkspaceInvalidation(
+      socket as unknown as EmployeeSettingsRealtimeSocket,
+      1,
+      () => setEmployeeSettingsRevision(revision => revision + 1)
+    );
 
     socket.on('connect', () => {
       console.log('⚡ Socket connected to Crispy Bite Server:', socketUrl);
@@ -746,6 +754,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       unsubscribeEmployeeScheduleInvalidation();
       unsubscribeEmployeeAttendanceInvalidation();
       unsubscribeEmployeePayrollInvalidation();
+      unsubscribeEmployeeSettingsInvalidation();
       socket.disconnect();
     };
   }, [token, fetchTables, fetchKDSOrders, fetchPriceList, fetchMenu, user?.role]);
@@ -1320,6 +1329,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         employeeSchedulesRevision,
         employeeAttendanceRevision,
         employeePayrollRevision,
+        employeeSettingsRevision,
         reservationsRevision,
         orderPaymentsRevision,
         kdsOrders,

@@ -46,7 +46,7 @@ function downloadBlob(blob: Blob, fileName: string) {
 
 export const EmployeePayrollScreen: React.FC = () => {
   const { token } = useAuth();
-  const { employeePayrollRevision, employeesRevision, employeeAttendanceRevision } = useRestaurant();
+  const { employeePayrollRevision, employeesRevision, employeeAttendanceRevision, employeeSettingsRevision } = useRestaurant();
   const { theme } = useTheme();
   const { width } = useWindowDimensions();
   const compact = width < 820;
@@ -68,7 +68,7 @@ export const EmployeePayrollScreen: React.FC = () => {
   const [detail, setDetail] = useState<EmployeePayrollDetailDto | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const requestId = useRef(0);
-  const revisionsRef = useRef({ employeePayrollRevision, employeesRevision, employeeAttendanceRevision });
+  const revisionsRef = useRef({ employeePayrollRevision, employeesRevision, employeeAttendanceRevision, employeeSettingsRevision });
 
   useEffect(() => {
     const timer = setTimeout(() => { setSearch(queryText.trim()); setPage(1); }, 250);
@@ -110,14 +110,15 @@ export const EmployeePayrollScreen: React.FC = () => {
     const previous = revisionsRef.current;
     const payrollChanged = previous.employeePayrollRevision !== employeePayrollRevision;
     const sourceChanged = previous.employeesRevision !== employeesRevision
-      || previous.employeeAttendanceRevision !== employeeAttendanceRevision;
-    revisionsRef.current = { employeePayrollRevision, employeesRevision, employeeAttendanceRevision };
+      || previous.employeeAttendanceRevision !== employeeAttendanceRevision
+      || previous.employeeSettingsRevision !== employeeSettingsRevision;
+    revisionsRef.current = { employeePayrollRevision, employeesRevision, employeeAttendanceRevision, employeeSettingsRevision };
     if (!payrollChanged && !sourceChanged) return;
     void load();
     if (expandedId !== null && (payrollChanged || (sourceChanged && detail?.status !== 'FINALIZED'))) {
       void loadDetail(expandedId);
     }
-  }, [detail?.status, employeeAttendanceRevision, employeePayrollRevision, employeesRevision, expandedId, load, loadDetail]);
+  }, [detail?.status, employeeAttendanceRevision, employeePayrollRevision, employeeSettingsRevision, employeesRevision, expandedId, load, loadDetail]);
 
   useEffect(() => {
     const refreshWhenFocused = () => {

@@ -39,6 +39,7 @@ vi.mock('./PriceListScreen', () => ({ PriceListScreen: stubScreen() }));
 vi.mock('../../features/orders/OrdersScreen', () => ({ OrdersScreen: stubScreen() }));
 vi.mock('./CustomerManagementScreen', () => ({ CustomerManagementScreen: stubScreen() }));
 vi.mock('./ReservationManagementScreen', () => ({ ReservationManagementScreen: stubScreen() }));
+vi.mock('./EmployeeSettingsScreen', () => ({ EmployeeSettingsScreen: stubScreen() }));
 vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ token: 'admin-token' }) }));
 vi.mock('../../contexts/RestaurantContext', () => ({ useRestaurant: () => ({ employeesRevision: 0 }) }));
 vi.mock('../../api/config', () => ({ getApiBaseUrl: () => 'https://api.example.test', resolveImageUrl: (url: string) => url }));
