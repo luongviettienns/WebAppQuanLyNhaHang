@@ -28,6 +28,7 @@ export async function truncateAllTables() {
   // Xoa du lieu theo thu tu khoa ngoai
   await prismaTest.$executeRawUnsafe(`SET FOREIGN_KEY_CHECKS = 0;`);
   const tables = [
+    'EmployeeScheduleIdempotency',
     'EmployeePayrollIdempotency',
     'EmployeePayrollPayment',
     'EmployeePayrollAdjustment',
@@ -36,6 +37,11 @@ export async function truncateAllTables() {
     'AttendanceKioskIdempotency',
     'EmployeeAttendanceDisposition',
     'EmployeeAttendanceSession',
+    'BranchHolidayPeriod',
+    'BranchAttendancePolicyVersion',
+    'BranchPayrollPolicyVersion',
+    'BranchWorkweekPolicyVersion',
+    'BranchEmployeeSettingsRevision',
     'AttendanceKioskRateLimitBucket',
     'AttendanceKioskSession',
     'EmployeeScheduleException',

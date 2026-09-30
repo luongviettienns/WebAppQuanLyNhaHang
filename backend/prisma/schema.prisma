@@ -31,6 +31,18 @@ enum EmployeePayBasis {
   PER_SHIFT
 }
 
+enum EmployeeAttendanceMode {
+  SHIFT
+}
+
+enum EmployeePayrollFrequency {
+  MONTHLY
+}
+
+enum EmployeePayrollHourlySource {
+  ACTUAL_ATTENDANCE
+}
+
 enum PayrollFrequency {
   MONTHLY
 }
@@ -249,6 +261,12 @@ model User {
   createdPayrollPayments            EmployeePayrollPayment[]        @relation("EmployeePayrollPaymentCreator")
   reversedPayrollPayments           EmployeePayrollPayment[]        @relation("EmployeePayrollPaymentReverser")
   payrollIdempotencies              EmployeePayrollIdempotency[]
+  createdAttendancePolicies         BranchAttendancePolicyVersion[] @relation("AttendancePolicyCreator")
+  createdPayrollPolicies            BranchPayrollPolicyVersion[]    @relation("PayrollPolicyCreator")
+  createdWorkweekPolicies           BranchWorkweekPolicyVersion[]   @relation("WorkweekPolicyCreator")
+  createdHolidayPeriods             BranchHolidayPeriod[]           @relation("HolidayPeriodCreator")
+  archivedHolidayPeriods            BranchHolidayPeriod[]           @relation("HolidayPeriodArchiver")
+  scheduleIdempotencies             EmployeeScheduleIdempotency[]
 }
 
 model Branch {
@@ -266,8 +284,109 @@ model Branch {
   plannedAttendanceSessions EmployeeAttendanceSession[]     @relation("AttendancePlannedBranch")
   attendanceDispositions    EmployeeAttendanceDisposition[]
   payrollBatches            EmployeePayrollBatch[]
+  attendancePolicyVersions  BranchAttendancePolicyVersion[]
+  payrollPolicyVersions     BranchPayrollPolicyVersion[]
+  workweekPolicyVersions    BranchWorkweekPolicyVersion[]
+  holidayPeriods            BranchHolidayPeriod[]
+  employeeSettingsRevision  BranchEmployeeSettingsRevision?
 
   @@index([isActive, isDefault])
+}
+
+model BranchEmployeeSettingsRevision {
+  branchId           Int      @id
+  attendanceRevision Int      @default(1)
+  payrollRevision    Int      @default(1)
+  workweekRevision   Int      @default(1)
+  holidayRevision    Int      @default(0)
+  updatedAt          DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+}
+
+model BranchAttendancePolicyVersion {
+  id                         Int                    @id @default(autoincrement())
+  branchId                   Int
+  effectiveFrom              DateTime               @db.Date
+  revision                   Int
+  attendanceMode             EmployeeAttendanceMode @default(SHIFT)
+  standardDayMinutes         Int                    @default(480)
+  lateThresholdMinutes       Int                    @default(0)
+  earlyLeaveThresholdMinutes Int                    @default(0)
+  allowUnscheduledAttendance Boolean                @default(true)
+  createdByUserId            Int?
+  createdAt                  DateTime               @default(now())
+
+  branch             Branch                      @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy          User?                       @relation("AttendancePolicyCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  attendanceSessions EmployeeAttendanceSession[]
+
+  @@unique([branchId, effectiveFrom], map: "AttendancePolicy_branch_effective_key")
+  @@unique([branchId, revision], map: "AttendancePolicy_branch_revision_key")
+  @@index([branchId, effectiveFrom])
+}
+
+model BranchPayrollPolicyVersion {
+  id                      Int                         @id @default(autoincrement())
+  branchId                Int
+  effectiveFrom           DateTime                    @db.Date
+  revision                Int
+  frequency               EmployeePayrollFrequency    @default(MONTHLY)
+  periodStartDay          Int                         @default(1)
+  hourlyCalculationSource EmployeePayrollHourlySource @default(ACTUAL_ATTENDANCE)
+  createdByUserId         Int?
+  createdAt               DateTime                    @default(now())
+
+  branch    Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy User?  @relation("PayrollPolicyCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, effectiveFrom], map: "PayrollPolicy_branch_effective_key")
+  @@unique([branchId, revision], map: "PayrollPolicy_branch_revision_key")
+  @@index([branchId, effectiveFrom])
+}
+
+model BranchWorkweekPolicyVersion {
+  id              Int      @id @default(autoincrement())
+  branchId        Int
+  effectiveFrom   DateTime @db.Date
+  revision        Int
+  monday          Boolean  @default(true)
+  tuesday         Boolean  @default(true)
+  wednesday       Boolean  @default(true)
+  thursday        Boolean  @default(true)
+  friday          Boolean  @default(true)
+  saturday        Boolean  @default(true)
+  sunday          Boolean  @default(true)
+  createdByUserId Int?
+  createdAt       DateTime @default(now())
+
+  branch    Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy User?  @relation("WorkweekPolicyCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, effectiveFrom], map: "WorkweekPolicy_branch_effective_key")
+  @@unique([branchId, revision], map: "WorkweekPolicy_branch_revision_key")
+  @@index([branchId, effectiveFrom])
+}
+
+model BranchHolidayPeriod {
+  id               Int       @id @default(autoincrement())
+  branchId         Int
+  name             String    @db.VarChar(160)
+  startDate        DateTime  @db.Date
+  endDate          DateTime  @db.Date
+  note             String?   @db.VarChar(500)
+  revision         Int       @default(1)
+  archivedAt       DateTime?
+  archivedByUserId Int?
+  createdByUserId  Int?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  branch     Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy  User?  @relation("HolidayPeriodCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  archivedBy User?  @relation("HolidayPeriodArchiver", fields: [archivedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([branchId, startDate, endDate, archivedAt])
 }
 
 model Department {
@@ -498,6 +617,20 @@ model EmployeePayrollIdempotency {
   @@index([payrollBatchId])
 }
 
+model EmployeeScheduleIdempotency {
+  id             Int      @id @default(autoincrement())
+  actorId        Int
+  operation      String   @db.VarChar(80)
+  idempotencyKey String   @db.VarChar(128)
+  requestDigest  String   @db.Char(64)
+  response       Json
+  createdAt      DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@unique([actorId, operation, idempotencyKey], map: "EmployeeScheduleIdempotency_actor_operation_key")
+}
+
 model WorkShift {
   id              Int      @id @default(autoincrement())
   code            String   @unique @db.VarChar(40)
@@ -516,19 +649,20 @@ model WorkShift {
 }
 
 model EmployeeScheduleRule {
-  id                Int                    @id @default(autoincrement())
-  employeeId        Int
-  branchId          Int                    @default(1)
-  shiftId           Int
-  recurrenceType    ScheduleRecurrenceType
-  startDate         DateTime               @db.Date
-  endDate           DateTime?              @db.Date
-  dayOfWeek         Int?
-  cancelledAt       DateTime?
-  cancelledByUserId Int?
-  createdByUserId   Int
-  createdAt         DateTime               @default(now())
-  updatedAt         DateTime               @updatedAt
+  id                      Int                    @id @default(autoincrement())
+  employeeId              Int
+  branchId                Int                    @default(1)
+  shiftId                 Int
+  recurrenceType          ScheduleRecurrenceType
+  startDate               DateTime               @db.Date
+  endDate                 DateTime?              @db.Date
+  dayOfWeek               Int?
+  cancelledAt             DateTime?
+  cancelledByUserId       Int?
+  createdByUserId         Int
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  calendarWarningSnapshot Json?
 
   employee               Employee                        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
   branch                 Branch                          @relation(fields: [branchId], references: [id], onDelete: Restrict)
@@ -583,38 +717,45 @@ model AttendanceKioskSession {
 }
 
 model EmployeeAttendanceSession {
-  id                     Int                          @id @default(autoincrement())
-  employeeId             Int
-  branchId               Int
-  scheduleRuleId         Int?
-  scheduleDate           DateTime?                    @db.Date
-  checkInAt              DateTime
-  checkOutAt             DateTime?
-  checkInSource          AttendancePunchSource
-  checkOutSource         AttendancePunchSource?
-  checkInKioskSessionId  Int?
-  checkOutKioskSessionId Int?
-  scheduleLinkStatus     AttendanceScheduleLinkStatus @default(UNSCHEDULED)
-  plannedBranchId        Int?
-  plannedWorkDate        DateTime?                    @db.Date
-  plannedShiftName       String?                      @db.VarChar(120)
-  plannedStartMinute     Int?
-  plannedEndMinute       Int?
-  createdAt              DateTime                     @default(now())
-  updatedAt              DateTime                     @updatedAt
+  id                                 Int                          @id @default(autoincrement())
+  employeeId                         Int
+  branchId                           Int
+  scheduleRuleId                     Int?
+  scheduleDate                       DateTime?                    @db.Date
+  checkInAt                          DateTime
+  checkOutAt                         DateTime?
+  checkInSource                      AttendancePunchSource
+  checkOutSource                     AttendancePunchSource?
+  checkInKioskSessionId              Int?
+  checkOutKioskSessionId             Int?
+  scheduleLinkStatus                 AttendanceScheduleLinkStatus @default(UNSCHEDULED)
+  plannedBranchId                    Int?
+  plannedWorkDate                    DateTime?                    @db.Date
+  plannedShiftName                   String?                      @db.VarChar(120)
+  plannedStartMinute                 Int?
+  plannedEndMinute                   Int?
+  attendancePolicyVersionId          Int?
+  standardDayMinutesSnapshot         Int                          @default(480)
+  lateThresholdMinutesSnapshot       Int                          @default(0)
+  earlyLeaveThresholdMinutesSnapshot Int                          @default(0)
+  allowUnscheduledAttendanceSnapshot Boolean                      @default(true)
+  createdAt                          DateTime                     @default(now())
+  updatedAt                          DateTime                     @updatedAt
 
-  employee      Employee                     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  branch        Branch                       @relation("AttendanceBranch", fields: [branchId], references: [id], onDelete: Restrict)
-  scheduleRule  EmployeeScheduleRule?        @relation(fields: [scheduleRuleId], references: [id], onDelete: Restrict)
-  checkInKiosk  AttendanceKioskSession?      @relation("AttendanceCheckInKiosk", fields: [checkInKioskSessionId], references: [id], onDelete: Restrict)
-  checkOutKiosk AttendanceKioskSession?      @relation("AttendanceCheckOutKiosk", fields: [checkOutKioskSessionId], references: [id], onDelete: Restrict)
-  plannedBranch Branch?                      @relation("AttendancePlannedBranch", fields: [plannedBranchId], references: [id], onDelete: Restrict)
-  idempotencies AttendanceKioskIdempotency[]
+  employee                Employee                       @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  branch                  Branch                         @relation("AttendanceBranch", fields: [branchId], references: [id], onDelete: Restrict)
+  scheduleRule            EmployeeScheduleRule?          @relation(fields: [scheduleRuleId], references: [id], onDelete: Restrict)
+  checkInKiosk            AttendanceKioskSession?        @relation("AttendanceCheckInKiosk", fields: [checkInKioskSessionId], references: [id], onDelete: Restrict)
+  checkOutKiosk           AttendanceKioskSession?        @relation("AttendanceCheckOutKiosk", fields: [checkOutKioskSessionId], references: [id], onDelete: Restrict)
+  plannedBranch           Branch?                        @relation("AttendancePlannedBranch", fields: [plannedBranchId], references: [id], onDelete: Restrict)
+  attendancePolicyVersion BranchAttendancePolicyVersion? @relation(fields: [attendancePolicyVersionId], references: [id], onDelete: Restrict)
+  idempotencies           AttendanceKioskIdempotency[]
 
   @@index([employeeId, branchId, checkInAt])
   @@index([branchId, checkInAt, checkOutAt])
   @@index([branchId, scheduleRuleId, scheduleDate], map: "AttendanceSession_schedule_occurrence_idx")
   @@index([checkOutAt])
+  @@index([attendancePolicyVersionId])
 }
 
 model AttendanceKioskIdempotency {
