@@ -22,13 +22,18 @@ describe('employee schedule import/export API', () => {
   let actorId = 0;
   let employees: Array<{ id: number; code: string; name: string }> = [];
   let shifts: Array<{ id: number; code: string }> = [];
+  let commitSequence = 0;
   const auth = () => ({ Authorization: `Bearer ${token}` });
   const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
   const preview = (file: { fileName: string; fileBase64: string }) => request(app).post('/api/employee-schedules/import/preview').set(auth()).send(file);
-  const commit = (rows: unknown[]) => request(app).post('/api/employee-schedules/import/commit').set(auth()).send({ rows });
+  const commit = (rows: unknown[], options: { key?: string; acknowledged?: boolean } = {}) => request(app)
+    .post('/api/employee-schedules/import/commit').set(auth())
+    .set('Idempotency-Key', options.key ?? `schedule-import-${++commitSequence}`)
+    .send({ rows, calendarWarningAcknowledged: options.acknowledged ?? true });
 
   beforeEach(async () => {
     await truncateAllTables();
+    commitSequence = 0;
     const admin = await prismaTest.user.create({
       data: { username: `schedule-transfer-admin-${Date.now()}`, passwordHash: 'test-hash', name: 'Schedule Admin', role: 'ADMIN' }
     });
@@ -47,6 +52,48 @@ describe('employee schedule import/export API', () => {
       prismaTest.workShift.create({ data: { code: 'AFTERNOON', name: 'Ca chiều', startMinute: 780, endMinute: 1020 } }),
       prismaTest.workShift.create({ data: { code: 'EVENING', name: 'Ca tối', startMinute: 1080, endMinute: 1320 } })
     ]);
+    const main = await prismaTest.branch.findUniqueOrThrow({ where: { code: 'MAIN' } });
+    await prismaTest.branchWorkweekPolicyVersion.create({
+      data: {
+        branchId: main.id, effectiveFrom: day('1970-01-01'), revision: 1,
+        monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: true,
+        createdByUserId: actorId
+      }
+    });
+  });
+
+  it('previews calendar warnings per row and requires the same acknowledgement/idempotency handshake on import commit', async () => {
+    const main = await prismaTest.branch.findUniqueOrThrow({ where: { code: 'MAIN' } });
+    await prismaTest.branchHolidayPeriod.create({
+      data: {
+        branchId: main.id, name: 'Ngày nghỉ import', startDate: day('2026-10-05'), endDate: day('2026-10-05'),
+        revision: 1, createdByUserId: actorId
+      }
+    });
+    const file = csvFile([[employees[0].code, 'MORNING', '2026-10-05', 'false', '']]);
+    const previewed = await preview(file);
+    expect(previewed.status).toBe(200);
+    expect(previewed.body.data.warningRows[0]).toMatchObject({
+      rowNumber: 2,
+      calendarWarnings: [expect.objectContaining({ kind: 'HOLIDAY', firstAffectedDate: '2026-10-05' })]
+    });
+
+    const rows = previewed.body.data.validRows.map((row: Record<string, unknown>) => ({
+      rowNumber: row.rowNumber, employeeCode: row.employeeCode, shiftCode: row.shiftCode,
+      workDate: row.workDate, repeatWeekly: row.repeatWeekly, endDate: row.endDate
+    }));
+    const key = 'schedule-import-warning-0001';
+    const warned = await commit(rows, { key, acknowledged: false });
+    expect(warned.status).toBe(409);
+    expect(warned.body.error.code).toBe('SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED');
+    expect(await prismaTest.employeeScheduleIdempotency.count()).toBe(0);
+
+    const accepted = await commit(rows, { key, acknowledged: true });
+    const replay = await commit(rows, { key, acknowledged: true });
+    expect(accepted.status).toBe(201);
+    expect(replay.body.data).toEqual(accepted.body.data);
+    expect(await prismaTest.employeeScheduleRule.count()).toBe(1);
+    expect(await prismaTest.employeeScheduleIdempotency.count()).toBe(1);
   });
 
   it('previews CSV and XLSX rows without writing rules or audits', async () => {

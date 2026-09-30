@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { prisma } from '../../config/prisma';
 import { env } from '../../config/env';
 import { ApiError } from '../../lib/api-error';
@@ -7,11 +8,16 @@ import { AuditService } from '../audit/audit.service';
 import {
   estimateWeeklyCompensation,
   expandRulesForWeek,
+  buildScheduleCalendarMetadata,
+  findScheduleOccurrenceWarnings,
   findRuleConflict,
   ScheduleDomainError,
   validateScheduleRule,
   type ScheduleException,
-  type ScheduleRule
+  type ScheduleRule,
+  type ScheduleCalendarWarning,
+  type WorkweekPolicyProjection,
+  type HolidayProjection
 } from './schedule-domain';
 import type { CreateScheduleBatchInput, CreateWorkShiftInput, ScheduleDeleteInput, ScheduleMutationInput, ScheduleWeekQuery } from './employee-schedules.schemas';
 
@@ -98,6 +104,78 @@ interface ScheduleDraft {
   rowNumber?: number;
 }
 
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => [key, canonicalize(entry)]));
+  }
+  return value;
+}
+
+function scheduleRequestDigest(operation: string, payload: unknown): string {
+  return createHash('sha256').update(JSON.stringify(canonicalize({ operation, payload })), 'utf8').digest('hex');
+}
+
+function storedScheduleResponse(value: Prisma.JsonValue) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw ApiError.internal('Kết quả idempotency lịch làm việc không hợp lệ.');
+  }
+  return value as Record<string, unknown>;
+}
+
+function isUniqueViolation(error: unknown): error is Prisma.PrismaClientKnownRequestError {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+}
+
+function workweekProjection(row: {
+  id: number; revision: number; effectiveFrom: Date;
+  monday: boolean; tuesday: boolean; wednesday: boolean; thursday: boolean;
+  friday: boolean; saturday: boolean; sunday: boolean;
+}): WorkweekPolicyProjection {
+  const values = [row.monday, row.tuesday, row.wednesday, row.thursday, row.friday, row.saturday, row.sunday];
+  return {
+    id: row.id,
+    revision: row.revision,
+    effectiveFrom: isoDate(row.effectiveFrom)!,
+    workingWeekdays: values.flatMap((enabled, index) => enabled ? [index + 1] : [])
+  };
+}
+
+function holidayProjection(row: { id: number; revision: number; name: string; startDate: Date; endDate: Date }): HolidayProjection {
+  return {
+    id: row.id,
+    revision: row.revision,
+    name: row.name,
+    startDate: isoDate(row.startDate)!,
+    endDate: isoDate(row.endDate)!
+  };
+}
+
+async function readScheduleCalendarSources(tx: Prisma.TransactionClient, branchId: number) {
+  const [workweekRows, holidayRows] = await Promise.all([
+    tx.branchWorkweekPolicyVersion.findMany({ where: { branchId }, orderBy: [{ effectiveFrom: 'asc' }, { revision: 'asc' }] }),
+    tx.branchHolidayPeriod.findMany({ where: { branchId, archivedAt: null }, orderBy: [{ startDate: 'asc' }, { id: 'asc' }] })
+  ]);
+  return {
+    workweekVersions: workweekRows.map(workweekProjection),
+    holidays: holidayRows.map(holidayProjection)
+  };
+}
+
+function draftWarnings(draft: ScheduleDraft, sources: Awaited<ReturnType<typeof readScheduleCalendarSources>>) {
+  return findScheduleOccurrenceWarnings({
+    rule: {
+      recurrenceType: draft.recurrenceType,
+      startDate: draft.startDate,
+      endDate: draft.endDate,
+      dayOfWeek: draft.dayOfWeek
+    },
+    ...sources
+  });
+}
+
 function draftErrorDetails(draft: ScheduleDraft, extra: Record<string, string> = {}) {
   return {
     ...(draft.employeeCode ? { employeeCode: draft.employeeCode } : { employeeId: String(draft.employeeId) }),
@@ -111,13 +189,15 @@ function draftErrorDetails(draft: ScheduleDraft, extra: Record<string, string> =
 async function createScheduleDraftsInTransaction(
   tx: Prisma.TransactionClient,
   drafts: ScheduleDraft[],
-  actor: { id: number; name: string }
+  actor: { id: number; name: string },
+  calendarWarningAcknowledged: boolean
 ) {
   if (drafts.length === 0) return [];
   const employeeIds = [...new Set(drafts.map(draft => draft.employeeId))].sort((left, right) => left - right);
   const shiftIds = [...new Set(drafts.map(draft => draft.shiftId))].sort((left, right) => left - right);
   await lockEmployeeRows(tx, employeeIds);
   const branchId = await resolveMainBranchId(tx);
+  const calendarSources = await readScheduleCalendarSources(tx, branchId);
 
   const employees = await tx.employee.findMany({
     where: { id: { in: employeeIds } },
@@ -166,7 +246,7 @@ async function createScheduleDraftsInTransaction(
     include: { shift: { select: { code: true, name: true, startMinute: true, endMinute: true } }, exceptions: { select: { workDate: true, type: true } } }
   });
   const existingRules = existingRulesRaw.map(toScheduleRule);
-  const candidates: Array<{ draft: ScheduleDraft; index: number; rule: ScheduleRule }> = [];
+  const candidates: Array<{ draft: ScheduleDraft; index: number; rule: ScheduleRule; warnings: ScheduleCalendarWarning[] }> = [];
   for (const [index, draft] of drafts.entries()) {
     const employee = employeesById.get(draft.employeeId)!;
     const shift = shiftsById.get(draft.shiftId)!;
@@ -201,11 +281,20 @@ async function createScheduleDraftsInTransaction(
         })
       );
     }
-    candidates.push({ draft, index, rule: candidate });
+    candidates.push({ draft, index, rule: candidate, warnings: draftWarnings(draft, calendarSources) });
+  }
+
+  const warnings = candidates.flatMap(candidate => candidate.warnings);
+  if (warnings.length > 0 && !calendarWarningAcknowledged) {
+    throw ApiError.conflict(
+      'Lịch có occurrence rơi vào ngày nghỉ hoặc ngày lễ; cần xác nhận trước khi lưu.',
+      'SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED',
+      { warnings }
+    );
   }
 
   const createdRules = [];
-  for (const { draft, rule: candidate } of candidates) {
+  for (const { draft, rule: candidate, warnings: candidateWarnings } of candidates) {
     const created = await tx.employeeScheduleRule.create({
       data: {
         employeeId: draft.employeeId,
@@ -215,7 +304,10 @@ async function createScheduleDraftsInTransaction(
         startDate: dateFromIso(draft.startDate),
         endDate: draft.endDate ? dateFromIso(draft.endDate) : null,
         dayOfWeek: draft.dayOfWeek,
-        createdByUserId: actor.id
+        createdByUserId: actor.id,
+        calendarWarningSnapshot: candidateWarnings.length > 0
+          ? candidateWarnings as unknown as Prisma.InputJsonValue
+          : undefined
       }
     });
     await AuditService.logInTransaction(tx, {
@@ -302,7 +394,7 @@ export class EmployeeSchedulesService {
       ] } : {}),
       ...(query.departmentId ? { departmentId: query.departmentId } : {})
     };
-    const [employees, totalRows] = await Promise.all([
+    const [employees, totalRows, workweekRows, holidayRows] = await Promise.all([
       prisma.employee.findMany({
         where,
         select: {
@@ -337,7 +429,12 @@ export class EmployeeSchedulesService {
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize
       }),
-      prisma.employee.count({ where })
+      prisma.employee.count({ where }),
+      prisma.branchWorkweekPolicyVersion.findMany({ where: { branchId }, orderBy: [{ effectiveFrom: 'asc' }, { revision: 'asc' }] }),
+      prisma.branchHolidayPeriod.findMany({
+        where: { branchId, archivedAt: null, startDate: { lte: weekEndDate }, endDate: { gte: weekStartDate } },
+        orderBy: [{ startDate: 'asc' }, { id: 'asc' }]
+      })
     ]);
 
     const rules = employees.flatMap(employee => employee.scheduleRules.map(toScheduleRule));
@@ -370,6 +467,11 @@ export class EmployeeSchedulesService {
     return {
       weekStart: query.weekStart,
       weekEnd,
+      calendarDays: buildScheduleCalendarMetadata({
+        weekStart: query.weekStart,
+        workweekVersions: workweekRows.map(workweekProjection),
+        holidays: holidayRows.map(holidayProjection)
+      }),
       employees: employees.map(employee => ({
         id: employee.id,
         code: employee.code,
@@ -391,7 +493,9 @@ export class EmployeeSchedulesService {
     };
   }
 
-  static async createBatch(input: CreateScheduleBatchInput, actor: { id: number; name: string }) {
+  static async createBatch(input: CreateScheduleBatchInput, actor: { id: number; name: string }, idempotencyKey: string) {
+    const operation = 'CREATE_BATCH';
+    const digest = scheduleRequestDigest(operation, input);
     const drafts = input.employeeIds.flatMap(employeeId => input.shiftIds.map(shiftId => ({
       employeeId,
       shiftId,
@@ -400,16 +504,62 @@ export class EmployeeSchedulesService {
       recurrenceType: input.recurrenceType,
       dayOfWeek: input.dayOfWeek
     })));
-    const created = await prisma.$transaction(tx => createScheduleDraftsInTransaction(tx, drafts, actor), { timeout: 30000 });
-    emitScheduleChanged(input.employeeIds, input.startDate, input.endDate);
-    return { createdCount: created.length, rules: created };
+    try {
+      const committed = await prisma.$transaction(async tx => {
+        await tx.$queryRaw`SELECT id FROM User WHERE id = ${actor.id} FOR UPDATE`;
+        const existing = await tx.employeeScheduleIdempotency.findUnique({
+          where: { actorId_operation_idempotencyKey: { actorId: actor.id, operation, idempotencyKey } }
+        });
+        if (existing) {
+          if (existing.requestDigest !== digest) {
+            throw ApiError.conflict('Idempotency-Key đã được dùng cho yêu cầu lịch khác.', 'IDEMPOTENCY_KEY_REUSED');
+          }
+          return { response: storedScheduleResponse(existing.response), replayed: true };
+        }
+        const created = await createScheduleDraftsInTransaction(tx, drafts, actor, input.calendarWarningAcknowledged);
+        const response = { createdCount: created.length, rules: created };
+        await tx.employeeScheduleIdempotency.create({
+          data: {
+            actorId: actor.id, operation, idempotencyKey, requestDigest: digest,
+            response: response as unknown as Prisma.InputJsonValue
+          }
+        });
+        return { response, replayed: false };
+      }, { timeout: 30000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+      if (!committed.replayed) emitScheduleChanged(input.employeeIds, input.startDate, input.endDate);
+      return committed.response;
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      const existing = await prisma.employeeScheduleIdempotency.findUnique({
+        where: { actorId_operation_idempotencyKey: { actorId: actor.id, operation, idempotencyKey } }
+      });
+      if (!existing) throw error;
+      if (existing.requestDigest !== digest) throw ApiError.conflict('Idempotency-Key đã được dùng cho yêu cầu lịch khác.', 'IDEMPOTENCY_KEY_REUSED');
+      return storedScheduleResponse(existing.response);
+    }
   }
 
-  static async importBatch(rows: Array<{ employeeCode: string; shiftCode: string; workDate: string; repeatWeekly: boolean; endDate: string | null; rowNumber?: number }>, actor: { id: number; name: string }) {
+  static async importBatch(
+    rows: Array<{ employeeCode: string; shiftCode: string; workDate: string; repeatWeekly: boolean; endDate: string | null; rowNumber?: number }>,
+    calendarWarningAcknowledged: boolean,
+    actor: { id: number; name: string },
+    idempotencyKey: string
+  ) {
     if (rows.length === 0) throw ApiError.badRequest('File không có dòng lịch hợp lệ', {}, 'SCHEDULE_IMPORT_EMPTY');
+    const operation = 'IMPORT_COMMIT';
+    const digest = scheduleRequestDigest(operation, { rows, calendarWarningAcknowledged });
     const employeeCodes = [...new Set(rows.map(row => row.employeeCode.trim().toUpperCase()))];
     const shiftCodes = [...new Set(rows.map(row => row.shiftCode.trim().toUpperCase()))];
-    const committed = await prisma.$transaction(async tx => {
+    try {
+      const committed = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM User WHERE id = ${actor.id} FOR UPDATE`;
+      const replay = await tx.employeeScheduleIdempotency.findUnique({
+        where: { actorId_operation_idempotencyKey: { actorId: actor.id, operation, idempotencyKey } }
+      });
+      if (replay) {
+        if (replay.requestDigest !== digest) throw ApiError.conflict('Idempotency-Key đã được dùng cho yêu cầu import khác.', 'IDEMPOTENCY_KEY_REUSED');
+        return { response: storedScheduleResponse(replay.response), replayed: true, employeeIds: [], changedFrom: null, changedThrough: null };
+      }
       const employees = await tx.employee.findMany({ where: { code: { in: employeeCodes } }, select: { id: true, code: true } });
       const employeesByCode = new Map(employees.map(employee => [employee.code.toUpperCase(), employee]));
       const shifts = await tx.workShift.findMany({ where: { code: { in: shiftCodes } }, select: { id: true, code: true } });
@@ -434,16 +584,34 @@ export class EmployeeSchedulesService {
           rowNumber: row.rowNumber
         };
       });
-      const rules = await createScheduleDraftsInTransaction(tx, drafts, actor);
+      const rules = await createScheduleDraftsInTransaction(tx, drafts, actor, calendarWarningAcknowledged);
       await AuditService.logInTransaction(tx, {
         action: 'EMPLOYEE_SCHEDULE_IMPORT_COMMITTED', targetType: 'EmployeeScheduleImport', targetId: null,
         actorId: actor.id, actorName: actor.name,
         metadata: { createdCount: rules.length, rowCount: rows.length, employeeCodes }
       });
-      return { rules, employeeIds: [...new Set(drafts.map(draft => draft.employeeId))], changedFrom: rows.map(row => row.workDate).sort()[0], changedThrough: rows.some(row => row.repeatWeekly && !row.endDate) ? null : rows.map(row => row.repeatWeekly ? row.endDate ?? row.workDate : row.workDate).sort().at(-1) ?? null };
-    }, { timeout: 30000 });
-    emitScheduleChanged(committed.employeeIds, committed.changedFrom, committed.changedThrough);
-    return { createdCount: committed.rules.length, rules: committed.rules };
+      const response = { createdCount: rules.length, rules };
+      await tx.employeeScheduleIdempotency.create({
+        data: { actorId: actor.id, operation, idempotencyKey, requestDigest: digest, response: response as unknown as Prisma.InputJsonValue }
+      });
+      return {
+        response, replayed: false,
+        employeeIds: [...new Set(drafts.map(draft => draft.employeeId))],
+        changedFrom: rows.map(row => row.workDate).sort()[0],
+        changedThrough: rows.some(row => row.repeatWeekly && !row.endDate) ? null : rows.map(row => row.repeatWeekly ? row.endDate ?? row.workDate : row.workDate).sort().at(-1) ?? null
+      };
+    }, { timeout: 30000, isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
+      if (!committed.replayed) emitScheduleChanged(committed.employeeIds, committed.changedFrom, committed.changedThrough);
+      return committed.response;
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      const existing = await prisma.employeeScheduleIdempotency.findUnique({
+        where: { actorId_operation_idempotencyKey: { actorId: actor.id, operation, idempotencyKey } }
+      });
+      if (!existing) throw error;
+      if (existing.requestDigest !== digest) throw ApiError.conflict('Idempotency-Key đã được dùng cho yêu cầu import khác.', 'IDEMPOTENCY_KEY_REUSED');
+      return storedScheduleResponse(existing.response);
+    }
   }
 
   static async mutateRule(ruleId: number, input: ScheduleMutationInput, actor: { id: number; name: string }) {

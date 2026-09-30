@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildScheduleCalendarMetadata,
   estimateWeeklyCompensation,
   expandRulesForWeek,
+  findScheduleOccurrenceWarnings,
   findRuleConflict,
   validateScheduleRule,
   type ScheduleRule
@@ -82,6 +84,82 @@ describe('schedule date and recurrence domain', () => {
     expect(() => validateScheduleRule({
       recurrenceType: 'ONCE', startDate: monday, dayOfWeek: 1, endDate: '2026-10-05'
     })).toThrowError(expect.objectContaining({ code: 'SCHEDULE_RECURRENCE_INVALID' }));
+  });
+});
+
+describe('workweek and holiday schedule metadata', () => {
+  const workweeks = [
+    { id: 10, revision: 1, effectiveFrom: '2026-01-01', workingWeekdays: [1, 2, 3, 4, 5, 6] },
+    { id: 11, revision: 2, effectiveFrom: '2026-10-01', workingWeekdays: [1, 2, 3, 4, 5] }
+  ];
+  const holidays = [
+    { id: 20, revision: 3, name: 'Quốc khánh bù', startDate: '2026-09-29', endDate: '2026-09-30' },
+    { id: 21, revision: 1, name: 'Kỳ nghỉ tháng 10', startDate: '2026-10-12', endDate: '2026-10-12' }
+  ];
+
+  it('marks all seven calendar days with the effective workweek revision and holiday labels', () => {
+    const days = buildScheduleCalendarMetadata({ weekStart: monday, workweekVersions: workweeks, holidays });
+
+    expect(days).toHaveLength(7);
+    expect(days[0]).toMatchObject({ date: '2026-09-28', weekday: 1, isWorkingDay: true, workweekPolicyVersionId: 10, workweekRevision: 1 });
+    expect(days[1].holidays).toEqual([{ id: 20, revision: 3, name: 'Quốc khánh bù' }]);
+    expect(days[5]).toMatchObject({ date: '2026-10-03', weekday: 6, isWorkingDay: false, workweekPolicyVersionId: 11, workweekRevision: 2 });
+    expect(days[6]).toMatchObject({ date: '2026-10-04', weekday: 7, isWorkingDay: false });
+  });
+
+  it('warns for the actual one-time occurrence rather than unrelated dates', () => {
+    const warnings = findScheduleOccurrenceWarnings({
+      rule: { recurrenceType: 'ONCE', startDate: '2026-09-29', endDate: null, dayOfWeek: null },
+      workweekVersions: workweeks,
+      holidays
+    });
+
+    expect(warnings).toEqual([expect.objectContaining({
+      kind: 'HOLIDAY', firstAffectedDate: '2026-09-29', affectedCount: 1,
+      sampleDates: ['2026-09-29'], unbounded: false,
+      source: { type: 'HOLIDAY', id: 20, revision: 3, name: 'Quốc khánh bù' }
+    })]);
+  });
+
+  it('checks every bounded weekly occurrence across workweek intervals and holidays after start date', () => {
+    const warnings = findScheduleOccurrenceWarnings({
+      rule: { recurrenceType: 'WEEKLY', startDate: '2026-09-28', endDate: '2026-10-19', dayOfWeek: 1 },
+      workweekVersions: workweeks,
+      holidays
+    });
+
+    expect(warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'HOLIDAY', firstAffectedDate: '2026-10-12', affectedCount: 1,
+        sampleDates: ['2026-10-12'], source: { type: 'HOLIDAY', id: 21, revision: 1, name: 'Kỳ nghỉ tháng 10' }
+      })
+    ]));
+    expect(warnings.find(item => item.kind === 'NON_WORKING_DAY')).toBeUndefined();
+  });
+
+  it('summarizes an open-ended weekly rule without enumerating forever', () => {
+    const sundayWorkweeks = [
+      { id: 30, revision: 4, effectiveFrom: '2026-01-01', workingWeekdays: [1, 2, 3, 4, 5, 6, 7] },
+      { id: 31, revision: 5, effectiveFrom: '2026-10-01', workingWeekdays: [1, 2, 3, 4, 5, 6] }
+    ];
+    const warnings = findScheduleOccurrenceWarnings({
+      rule: { recurrenceType: 'WEEKLY', startDate: '2026-09-27', endDate: null, dayOfWeek: 7 },
+      workweekVersions: sundayWorkweeks,
+      holidays: [{ id: 40, revision: 2, name: 'Nghỉ Chủ nhật đặc biệt', startDate: '2026-10-18', endDate: '2026-10-18' }]
+    });
+
+    expect(warnings).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'NON_WORKING_DAY', firstAffectedDate: '2026-10-04', affectedCount: null,
+        sampleDates: ['2026-10-04'], unbounded: true,
+        source: { type: 'WORKWEEK_POLICY', id: 31, revision: 5 }
+      }),
+      expect.objectContaining({
+        kind: 'HOLIDAY', firstAffectedDate: '2026-10-18', affectedCount: 1,
+        sampleDates: ['2026-10-18'], unbounded: false,
+        source: { type: 'HOLIDAY', id: 40, revision: 2, name: 'Nghỉ Chủ nhật đặc biệt' }
+      })
+    ]));
   });
 });
 

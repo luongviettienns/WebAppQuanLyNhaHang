@@ -89,6 +89,50 @@ export interface WeeklyCompensationProjection {
   status: 'ESTIMATED' | 'MONTHLY_NOT_ESTIMATED' | 'COMPENSATION_NOT_CONFIGURED';
 }
 
+export interface WorkweekPolicyProjection {
+  id: number;
+  revision: number;
+  effectiveFrom: string;
+  workingWeekdays: number[];
+}
+
+export interface HolidayProjection {
+  id: number;
+  revision: number;
+  name: string;
+  startDate: string;
+  endDate: string;
+}
+
+export interface ScheduleRuleDraft {
+  recurrenceType: ScheduleRecurrenceType;
+  startDate: string;
+  endDate: string | null;
+  dayOfWeek: number | null;
+}
+
+export interface ScheduleCalendarDay {
+  date: string;
+  weekday: number;
+  isWorkingDay: boolean;
+  workweekPolicyVersionId: number;
+  workweekRevision: number;
+  holidays: Array<{ id: number; revision: number; name: string }>;
+}
+
+export type ScheduleCalendarWarningSource =
+  | { type: 'WORKWEEK_POLICY'; id: number; revision: number }
+  | { type: 'HOLIDAY'; id: number; revision: number; name: string };
+
+export interface ScheduleCalendarWarning {
+  kind: 'NON_WORKING_DAY' | 'HOLIDAY';
+  firstAffectedDate: string;
+  affectedCount: number | null;
+  sampleDates: string[];
+  unbounded: boolean;
+  source: ScheduleCalendarWarningSource;
+}
+
 const DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 function dateToUtc(value: string): Date | null {
@@ -134,6 +178,158 @@ function isoWeekday(date: Date): number {
 function firstDateForWeekday(onOrAfter: Date, weekday: number): Date {
   const difference = (weekday - isoWeekday(onOrAfter) + 7) % 7;
   return addDays(onOrAfter, difference);
+}
+
+function previousDay(value: Date): Date {
+  return addDays(value, -1);
+}
+
+function laterDate(left: Date, right: Date): Date {
+  return left > right ? left : right;
+}
+
+function earlierDate(left: Date, right: Date): Date {
+  return left < right ? left : right;
+}
+
+function effectiveWorkweek(versions: WorkweekPolicyProjection[], workDate: string): WorkweekPolicyProjection {
+  const effective = versions
+    .filter(version => version.effectiveFrom <= workDate)
+    .sort((left, right) => right.effectiveFrom.localeCompare(left.effectiveFrom) || right.revision - left.revision)[0];
+  if (!effective) throw new ScheduleDomainError('SCHEDULE_DATE_INVALID', 'Không có chính sách ngày làm việc hiệu lực');
+  return effective;
+}
+
+function validatePolicyProjection(policy: WorkweekPolicyProjection): void {
+  requireDate(policy.effectiveFrom, 'Ngày hiệu lực chính sách');
+  if (!policy.workingWeekdays.every(day => Number.isInteger(day) && day >= 1 && day <= 7)) {
+    throw new ScheduleDomainError('SCHEDULE_DATE_INVALID', 'Ngày làm việc trong chính sách không hợp lệ');
+  }
+}
+
+export function buildScheduleCalendarMetadata(input: {
+  weekStart: string;
+  workweekVersions: WorkweekPolicyProjection[];
+  holidays: HolidayProjection[];
+}): ScheduleCalendarDay[] {
+  const monday = requireDate(input.weekStart, 'Ngày đầu tuần');
+  if (isoWeekday(monday) !== 1) throw new ScheduleDomainError('SCHEDULE_DATE_INVALID', 'Ngày đầu tuần phải là thứ Hai');
+  input.workweekVersions.forEach(validatePolicyProjection);
+  input.holidays.forEach(holiday => {
+    const start = requireDate(holiday.startDate, 'Ngày bắt đầu kỳ nghỉ');
+    const end = requireDate(holiday.endDate, 'Ngày kết thúc kỳ nghỉ');
+    if (end < start) throw new ScheduleDomainError('SCHEDULE_DATE_INVALID', 'Kỳ nghỉ có khoảng ngày không hợp lệ');
+  });
+
+  return Array.from({ length: 7 }, (_, offset) => {
+    const date = addDays(monday, offset);
+    const dateText = formatDate(date);
+    const weekday = isoWeekday(date);
+    const policy = effectiveWorkweek(input.workweekVersions, dateText);
+    return {
+      date: dateText,
+      weekday,
+      isWorkingDay: policy.workingWeekdays.includes(weekday),
+      workweekPolicyVersionId: policy.id,
+      workweekRevision: policy.revision,
+      holidays: input.holidays
+        .filter(holiday => holiday.startDate <= dateText && holiday.endDate >= dateText)
+        .map(holiday => ({ id: holiday.id, revision: holiday.revision, name: holiday.name }))
+    };
+  });
+}
+
+function occurrenceSummary(input: {
+  rule: ScheduleRuleDraft;
+  rangeStart: Date;
+  rangeEnd: Date | null;
+  unbounded: boolean;
+}): { first: string; count: number | null; samples: string[] } | null {
+  const ruleStart = requireDate(input.rule.startDate, 'Ngày bắt đầu quy tắc');
+  const ruleEnd = input.rule.endDate ? requireDate(input.rule.endDate, 'Ngày kết thúc quy tắc') : null;
+  const lower = laterDate(ruleStart, input.rangeStart);
+  const upper = ruleEnd && input.rangeEnd
+    ? earlierDate(ruleEnd, input.rangeEnd)
+    : ruleEnd ?? input.rangeEnd;
+  if (upper && lower > upper) return null;
+
+  if (input.rule.recurrenceType === 'ONCE') {
+    if (ruleStart < lower || (upper && ruleStart > upper)) return null;
+    const date = formatDate(ruleStart);
+    return { first: date, count: 1, samples: [date] };
+  }
+
+  const weekday = input.rule.dayOfWeek ?? isoWeekday(ruleStart);
+  const first = firstDateForWeekday(lower, weekday);
+  if (upper && first > upper) return null;
+  const firstText = formatDate(first);
+  if (input.unbounded && !upper) return { first: firstText, count: null, samples: [firstText] };
+  if (!upper) throw new ScheduleDomainError('SCHEDULE_DATE_INVALID', 'Khoảng cảnh báo lịch không được để mở ngoài interval cuối');
+  const count = Math.floor((upper.getTime() - first.getTime()) / (7 * 86_400_000)) + 1;
+  const samples = Array.from({ length: Math.min(count, 20) }, (_, index) => formatDate(addDays(first, index * 7)));
+  return { first: firstText, count, samples };
+}
+
+export function findScheduleOccurrenceWarnings(input: {
+  rule: ScheduleRuleDraft;
+  workweekVersions: WorkweekPolicyProjection[];
+  holidays: HolidayProjection[];
+}): ScheduleCalendarWarning[] {
+  validateScheduleRule(input.rule);
+  const ruleStart = requireDate(input.rule.startDate, 'Ngày bắt đầu quy tắc');
+  const ruleEnd = input.rule.endDate ? requireDate(input.rule.endDate, 'Ngày kết thúc quy tắc') : null;
+  const warnings: ScheduleCalendarWarning[] = [];
+  const policies = [...input.workweekVersions]
+    .map(policy => { validatePolicyProjection(policy); return policy; })
+    .sort((left, right) => left.effectiveFrom.localeCompare(right.effectiveFrom) || left.revision - right.revision);
+
+  policies.forEach((policy, index) => {
+    const intervalStart = requireDate(policy.effectiveFrom, 'Ngày hiệu lực chính sách');
+    const nextStart = policies[index + 1] ? requireDate(policies[index + 1].effectiveFrom, 'Ngày hiệu lực chính sách') : null;
+    const intervalEnd = nextStart ? previousDay(nextStart) : null;
+    const overlapStart = laterDate(ruleStart, intervalStart);
+    const overlapEnd = ruleEnd && intervalEnd ? earlierDate(ruleEnd, intervalEnd) : ruleEnd ?? intervalEnd;
+    if (overlapEnd && overlapStart > overlapEnd) return;
+    const weekday = input.rule.recurrenceType === 'ONCE'
+      ? isoWeekday(ruleStart)
+      : input.rule.dayOfWeek!;
+    if (policy.workingWeekdays.includes(weekday)) return;
+    const summary = occurrenceSummary({
+      rule: input.rule,
+      rangeStart: overlapStart,
+      rangeEnd: overlapEnd,
+      unbounded: input.rule.recurrenceType === 'WEEKLY' && ruleEnd === null && intervalEnd === null
+    });
+    if (!summary) return;
+    warnings.push({
+      kind: 'NON_WORKING_DAY',
+      firstAffectedDate: summary.first,
+      affectedCount: summary.count,
+      sampleDates: summary.samples,
+      unbounded: summary.count === null,
+      source: { type: 'WORKWEEK_POLICY', id: policy.id, revision: policy.revision }
+    });
+  });
+
+  for (const holiday of input.holidays) {
+    const holidayStart = requireDate(holiday.startDate, 'Ngày bắt đầu kỳ nghỉ');
+    const holidayEnd = requireDate(holiday.endDate, 'Ngày kết thúc kỳ nghỉ');
+    if (holidayEnd < holidayStart) throw new ScheduleDomainError('SCHEDULE_DATE_INVALID', 'Kỳ nghỉ có khoảng ngày không hợp lệ');
+    const summary = occurrenceSummary({ rule: input.rule, rangeStart: holidayStart, rangeEnd: holidayEnd, unbounded: false });
+    if (!summary) continue;
+    warnings.push({
+      kind: 'HOLIDAY',
+      firstAffectedDate: summary.first,
+      affectedCount: summary.count,
+      sampleDates: summary.samples,
+      unbounded: false,
+      source: { type: 'HOLIDAY', id: holiday.id, revision: holiday.revision, name: holiday.name }
+    });
+  }
+
+  return warnings.sort((left, right) => left.firstAffectedDate.localeCompare(right.firstAffectedDate)
+    || left.kind.localeCompare(right.kind)
+    || left.source.id - right.source.id);
 }
 
 export function validateScheduleRule(input: {

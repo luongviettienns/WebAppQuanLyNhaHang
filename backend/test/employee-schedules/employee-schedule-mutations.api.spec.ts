@@ -61,6 +61,14 @@ describe('employee schedule mutation API', () => {
       prismaTest.workShift.create({ data: { code: 'MORNING', name: 'Ca sáng', startMinute: 480, endMinute: 720 } }),
       prismaTest.workShift.create({ data: { code: 'EVENING', name: 'Ca tối', startMinute: 1080, endMinute: 1320 } })
     ]);
+    const main = await prismaTest.branch.findUniqueOrThrow({ where: { code: 'MAIN' } });
+    await prismaTest.branchWorkweekPolicyVersion.create({
+      data: {
+        branchId: main.id, effectiveFrom: day('1970-01-01'), revision: 1,
+        monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: true,
+        createdByUserId: actorId
+      }
+    });
     firstMonday = nextDate(14);
   });
 

@@ -11,11 +11,14 @@ describe('employee schedule batch create API', () => {
   let employees: Array<{ id: number; code: string }> = [];
   let shifts: Array<{ id: number; code: string }> = [];
   let sequence = 0;
+  let requestSequence = 0;
 
   const auth = () => ({ Authorization: `Bearer ${token}` });
   const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
-  const createSchedule = (payload: Record<string, unknown>) => request(app)
-    .post('/api/employee-schedules').set(auth()).send(payload);
+  const createSchedule = (payload: Record<string, unknown>, idempotencyKey?: string) => request(app)
+    .post('/api/employee-schedules').set(auth())
+    .set('Idempotency-Key', idempotencyKey ?? `schedule-create-${++requestSequence}`)
+    .send(payload);
   const once = (employeeIds: number[], shiftIds: number[], startDate = '2026-09-28') => ({
     employeeIds, shiftIds, startDate, repeatWeekly: false
   });
@@ -23,6 +26,7 @@ describe('employee schedule batch create API', () => {
   beforeEach(async () => {
     await truncateAllTables();
     sequence = 0;
+    requestSequence = 0;
     const admin = await prismaTest.user.create({
       data: { username: `schedule-create-admin-${Date.now()}`, passwordHash: 'test-hash', name: 'Schedule Admin', role: 'ADMIN' }
     });
@@ -38,6 +42,53 @@ describe('employee schedule batch create API', () => {
       prismaTest.workShift.create({ data: { code: 'AFTERNOON', name: 'Ca chiều', startMinute: 780, endMinute: 1020 } }),
       prismaTest.workShift.create({ data: { code: 'EVENING', name: 'Ca tối', startMinute: 1080, endMinute: 1320 } })
     ]);
+    const main = await prismaTest.branch.findUniqueOrThrow({ where: { code: 'MAIN' } });
+    await prismaTest.branchWorkweekPolicyVersion.create({
+      data: {
+        branchId: main.id, effectiveFrom: day('1970-01-01'), revision: 1,
+        monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: true,
+        createdByUserId: actorId
+      }
+    });
+  });
+
+  it('requires explicit warning acknowledgement without claiming the idempotency key, then replays the committed result', async () => {
+    const main = await prismaTest.branch.findUniqueOrThrow({ where: { code: 'MAIN' } });
+    await prismaTest.branchHolidayPeriod.create({
+      data: {
+        branchId: main.id, name: 'Ngày nghỉ kiểm thử', startDate: day('2026-09-28'), endDate: day('2026-09-28'),
+        revision: 1, createdByUserId: actorId
+      }
+    });
+    const payload = once([employees[0].id], [shifts[0].id]);
+    const key = 'schedule-warning-0001';
+
+    const warned = await createSchedule(payload, key);
+
+    expect(warned.status).toBe(409);
+    expect(warned.body.error.code).toBe('SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED');
+    expect(warned.body.error.details.warnings[0]).toMatchObject({
+      kind: 'HOLIDAY', firstAffectedDate: '2026-09-28', affectedCount: 1
+    });
+    expect(await prismaTest.employeeScheduleRule.count()).toBe(0);
+    expect(await prismaTest.employeeScheduleIdempotency.count()).toBe(0);
+    expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_SCHEDULE_CREATED' } })).toBe(0);
+
+    const confirmed = await createSchedule({ ...payload, calendarWarningAcknowledged: true }, key);
+    const replay = await createSchedule({ ...payload, calendarWarningAcknowledged: true }, key);
+    const reused = await createSchedule({ ...payload, shiftIds: [shifts[1].id], calendarWarningAcknowledged: true }, key);
+
+    expect(confirmed.status).toBe(201);
+    expect(replay.status).toBe(201);
+    expect(replay.body.data).toEqual(confirmed.body.data);
+    expect(reused.status).toBe(409);
+    expect(reused.body.error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    expect(await prismaTest.employeeScheduleRule.count()).toBe(1);
+    expect(await prismaTest.employeeScheduleIdempotency.count()).toBe(1);
+    const saved = await prismaTest.employeeScheduleRule.findFirstOrThrow();
+    expect(saved.calendarWarningSnapshot).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'HOLIDAY', firstAffectedDate: '2026-09-28' })
+    ]));
   });
 
   async function createEmployee(name: string, overrides: Record<string, unknown> = {}) {
@@ -159,5 +210,20 @@ describe('employee schedule batch create API', () => {
     expect(results.find(result => result.status === 409)?.body.error.code).toBe('SCHEDULE_DUPLICATE');
     expect(await prismaTest.employeeScheduleRule.count()).toBe(1);
     expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_SCHEDULE_CREATED' } })).toBe(1);
+  });
+
+  it('replays concurrent retries that use the same idempotency key instead of reporting a schedule duplicate', async () => {
+    const payload = once([employees[0].id], [shifts[0].id]);
+    const key = 'schedule-concurrent-retry-0001';
+
+    const results = await Promise.all([
+      createSchedule(payload, key),
+      createSchedule(payload, key)
+    ]);
+
+    expect(results.map(result => result.status)).toEqual([201, 201]);
+    expect(results[0].body.data).toEqual(results[1].body.data);
+    expect(await prismaTest.employeeScheduleRule.count()).toBe(1);
+    expect(await prismaTest.employeeScheduleIdempotency.count()).toBe(1);
   });
 });

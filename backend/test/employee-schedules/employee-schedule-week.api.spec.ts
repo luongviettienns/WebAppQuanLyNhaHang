@@ -29,6 +29,17 @@ describe('employee schedule week API', () => {
     employeeId = employee.id;
     const shift = await prismaTest.workShift.create({ data: { code: 'MORNING', name: 'Ca sáng', startMinute: 480, endMinute: 720 } });
     morningShiftId = shift.id;
+    const main = await prismaTest.branch.findUniqueOrThrow({ where: { code: 'MAIN' } });
+    await prismaTest.branchWorkweekPolicyVersion.create({
+      data: {
+        branchId: main.id, effectiveFrom: day('1970-01-01'), revision: 1,
+        monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: false,
+        createdByUserId: admin.id
+      }
+    });
+    await prismaTest.branchHolidayPeriod.create({
+      data: { branchId: main.id, name: 'Ngày nghỉ mẫu', startDate: day('2026-09-29'), endDate: day('2026-09-29'), revision: 1, createdByUserId: admin.id }
+    });
   });
 
   it('expands weekly, open-ended, inclusive-end, and one-time rules after date exceptions', async () => {
@@ -56,6 +67,12 @@ describe('employee schedule week API', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.weekStart).toBe('2026-09-28');
+    expect(response.body.data.calendarDays).toHaveLength(7);
+    expect(response.body.data.calendarDays[1]).toMatchObject({
+      date: '2026-09-29', isWorkingDay: true,
+      holidays: [{ name: 'Ngày nghỉ mẫu', revision: 1 }]
+    });
+    expect(response.body.data.calendarDays[6]).toMatchObject({ date: '2026-10-04', isWorkingDay: false });
     expect(response.body.data.employees).toHaveLength(1);
     expect(response.body.data.employees[0].occurrences.map((item: { workDate: string }) => item.workDate)).toEqual(['2026-09-29', '2026-10-02', '2026-10-04']);
     expect(response.body.data.employees[0].compensation).toEqual({ amount: 1050000, status: 'ESTIMATED' });

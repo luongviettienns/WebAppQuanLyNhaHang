@@ -10,7 +10,8 @@ import {
   parseScheduleWeekQuery,
   parseScheduleImportExportQuery,
   parseScheduleImportFile,
-  parseScheduleImportRows
+  parseScheduleImportRows,
+  parseScheduleIdempotencyKey
 } from './employee-schedules.schemas';
 
 export class EmployeeSchedulesController {
@@ -27,7 +28,7 @@ export class EmployeeSchedulesController {
       const result = await EmployeeSchedulesService.createBatch(parseCreateScheduleBatchInput(req.body), {
         id: req.user!.id,
         name: req.user!.name
-      });
+      }, parseScheduleIdempotencyKey(req.header('Idempotency-Key')));
       res.status(201).json({ data: result });
     } catch (error) {
       next(error);
@@ -103,8 +104,13 @@ export class EmployeeSchedulesController {
 
   static async commitImport(req: Request, res: Response, next: NextFunction) {
     try {
-      const rows = parseScheduleImportRows(req.body);
-      const data = await EmployeeScheduleTransferService.commit(rows, { id: req.user!.id, name: req.user!.name });
+      const input = parseScheduleImportRows(req.body);
+      const data = await EmployeeScheduleTransferService.commit(
+        input.rows,
+        input.calendarWarningAcknowledged,
+        { id: req.user!.id, name: req.user!.name },
+        parseScheduleIdempotencyKey(req.header('Idempotency-Key'))
+      );
       res.status(201).json({ data });
     } catch (error) { next(error); }
   }

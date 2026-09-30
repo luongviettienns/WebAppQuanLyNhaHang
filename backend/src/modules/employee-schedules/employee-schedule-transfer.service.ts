@@ -1,7 +1,17 @@
 import * as XLSX from 'xlsx';
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
-import { findRuleConflict, isValidScheduleDate, ScheduleDomainError, validateScheduleRule, type ScheduleRule } from './schedule-domain';
+import {
+  findRuleConflict,
+  findScheduleOccurrenceWarnings,
+  isValidScheduleDate,
+  ScheduleDomainError,
+  validateScheduleRule,
+  type HolidayProjection,
+  type ScheduleCalendarWarning,
+  type ScheduleRule,
+  type WorkweekPolicyProjection
+} from './schedule-domain';
 import { EmployeeSchedulesService } from './employee-schedules.service';
 
 const MAX_BYTES = 5 * 1024 * 1024;
@@ -144,17 +154,32 @@ export class EmployeeScheduleTransferService {
     const parsed = parseRows(readRows(fileName, fileBase64));
     const employeeCodes = [...new Set(parsed.candidates.map(row => row.employeeCode))];
     const shiftCodes = [...new Set(parsed.candidates.map(row => row.shiftCode))];
-    const [employees, shifts] = await Promise.all([
+    const main = await prisma.branch.findUnique({ where: { code: 'MAIN' }, select: { id: true } });
+    if (!main) throw ApiError.internal('Chưa khởi tạo chi nhánh mặc định MAIN.');
+    const [employees, shifts, workweekRows, holidayRows] = await Promise.all([
       prisma.employee.findMany({ where: { code: { in: employeeCodes } }, select: { id: true, code: true, name: true, status: true, startDate: true, endDate: true, scheduleRules: {
         where: { branch: { code: 'MAIN' } },
         include: { shift: { select: { code: true, name: true, startMinute: true, endMinute: true } }, exceptions: { select: { workDate: true, type: true } } }
       } } }),
-      prisma.workShift.findMany({ where: { code: { in: shiftCodes } }, select: { id: true, code: true, name: true, startMinute: true, endMinute: true, isActive: true } })
+      prisma.workShift.findMany({ where: { code: { in: shiftCodes } }, select: { id: true, code: true, name: true, startMinute: true, endMinute: true, isActive: true } }),
+      prisma.branchWorkweekPolicyVersion.findMany({ where: { branchId: main.id }, orderBy: [{ effectiveFrom: 'asc' }, { revision: 'asc' }] }),
+      prisma.branchHolidayPeriod.findMany({ where: { branchId: main.id, archivedAt: null }, orderBy: [{ startDate: 'asc' }, { id: 'asc' }] })
     ]);
+    const workweekVersions: WorkweekPolicyProjection[] = workweekRows.map(row => ({
+      id: row.id,
+      revision: row.revision,
+      effectiveFrom: dateText(row.effectiveFrom),
+      workingWeekdays: [row.monday, row.tuesday, row.wednesday, row.thursday, row.friday, row.saturday, row.sunday]
+        .flatMap((enabled, index) => enabled ? [index + 1] : [])
+    }));
+    const holidays: HolidayProjection[] = holidayRows.map(row => ({
+      id: row.id, revision: row.revision, name: row.name,
+      startDate: dateText(row.startDate), endDate: dateText(row.endDate)
+    }));
     const employeeByCode = new Map(employees.map(employee => [employee.code.toUpperCase(), employee]));
     const shiftByCode = new Map(shifts.map(shift => [shift.code.toUpperCase(), shift]));
     const acceptedRules: ScheduleRule[] = [];
-    const acceptedRows: ImportRow[] = [];
+    const acceptedRows: Array<ImportRow & { calendarWarnings: ScheduleCalendarWarning[] }> = [];
     const errorRows = [...parsed.errors];
     for (const row of parsed.candidates) {
       const employee = employeeByCode.get(row.employeeCode);
@@ -178,16 +203,40 @@ export class EmployeeScheduleTransferService {
       const existingRules = employee.scheduleRules.map(asScheduleRule);
       const conflict = findRuleConflict(candidate, [...existingRules, ...acceptedRules.filter(rule => rule.employeeId === employee.id)]);
       if (conflict) { errorRows.push({ ...row, error: ruleError(conflict.code) }); continue; }
-      acceptedRows.push(row);
+      const calendarWarnings = findScheduleOccurrenceWarnings({
+        rule: {
+          recurrenceType: candidate.recurrenceType,
+          startDate: candidate.startDate,
+          endDate: candidate.endDate,
+          dayOfWeek: candidate.dayOfWeek
+        },
+        workweekVersions,
+        holidays
+      });
+      acceptedRows.push({ ...row, calendarWarnings });
       acceptedRules.push(candidate);
     }
     errorRows.sort((left, right) => (left.rowNumber ?? 0) - (right.rowNumber ?? 0));
-    const validRows = acceptedRows.map(({ rowNumber, employeeCode, shiftCode, workDate, repeatWeekly, endDate }) => ({ rowNumber, employeeCode, shiftCode, workDate, repeatWeekly, endDate }));
-    return { fileName, totalRows: parsed.totalRows, validRows, errorRows, canCommit: validRows.length > 0 && errorRows.length === 0 };
+    const validRows = acceptedRows.map(({ rowNumber, employeeCode, shiftCode, workDate, repeatWeekly, endDate, calendarWarnings }) => ({
+      rowNumber, employeeCode, shiftCode, workDate, repeatWeekly, endDate, calendarWarnings
+    }));
+    return {
+      fileName,
+      totalRows: parsed.totalRows,
+      validRows,
+      errorRows,
+      warningRows: validRows.filter(row => row.calendarWarnings.length > 0),
+      canCommit: validRows.length > 0 && errorRows.length === 0
+    };
   }
 
-  static async commit(rows: ImportRow[], actor: { id: number; name: string }) {
-    return EmployeeSchedulesService.importBatch(rows, actor);
+  static async commit(
+    rows: ImportRow[],
+    calendarWarningAcknowledged: boolean,
+    actor: { id: number; name: string },
+    idempotencyKey: string
+  ) {
+    return EmployeeSchedulesService.importBatch(rows, calendarWarningAcknowledged, actor, idempotencyKey);
   }
 
   static async export(weekStart: string, format: 'csv' | 'xlsx') {

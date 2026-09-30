@@ -81,14 +81,14 @@ export type ErrorCode =
 export class ApiError extends Error {
   public readonly statusCode: number;
   public readonly code: ErrorCode;
-  public readonly details?: Record<string, string>;
+  public readonly details?: Record<string, unknown>;
   public readonly retryAfterSec?: number;
 
   constructor(
     statusCode: number,
     code: ErrorCode,
     message: string,
-    details?: Record<string, string>,
+    details?: Record<string, unknown>,
     retryAfterSec?: number
   ) {
     super(message);
@@ -100,7 +100,7 @@ export class ApiError extends Error {
     Object.setPrototypeOf(this, new.target.prototype);
   }
 
-  static badRequest(message: string, details?: Record<string, string>, code: ErrorCode = 'VALIDATION_ERROR') {
+  static badRequest(message: string, details?: Record<string, unknown>, code: ErrorCode = 'VALIDATION_ERROR') {
     return new ApiError(400, code, message, details);
   }
 
@@ -112,11 +112,11 @@ export class ApiError extends Error {
     return new ApiError(403, code, message);
   }
 
-  static notFound(message = 'Tai nguyen yeu cau khong ton tai', code: ErrorCode = 'NOT_FOUND', details?: Record<string, string>) {
+  static notFound(message = 'Tai nguyen yeu cau khong ton tai', code: ErrorCode = 'NOT_FOUND', details?: Record<string, unknown>) {
     return new ApiError(404, code, message, details);
   }
 
-  static conflict(message: string, code: ErrorCode = 'CONFLICT', details?: Record<string, string>) {
+  static conflict(message: string, code: ErrorCode = 'CONFLICT', details?: Record<string, unknown>) {
     return new ApiError(409, code, message, details);
   }
 

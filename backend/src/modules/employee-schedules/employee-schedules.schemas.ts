@@ -24,7 +24,8 @@ const createScheduleBatchSchema = z.object({
   shiftIds: z.array(z.number().int().positive()).min(1).max(20),
   startDate: z.string(),
   repeatWeekly: z.boolean(),
-  endDate: z.string().nullable().optional()
+  endDate: z.string().nullable().optional(),
+  calendarWarningAcknowledged: z.boolean().default(false)
 });
 
 const mutationBodySchema = z.object({
@@ -48,7 +49,11 @@ const scheduleImportRowSchema = z.object({
   endDate: z.string().nullable().optional().transform(value => value ?? null),
   rowNumber: z.number().int().min(2).optional()
 });
-const scheduleImportCommitSchema = z.object({ rows: z.array(scheduleImportRowSchema).min(1).max(1000) });
+const scheduleImportCommitSchema = z.object({
+  rows: z.array(scheduleImportRowSchema).min(1).max(1000),
+  calendarWarningAcknowledged: z.boolean().default(false)
+});
+const scheduleIdempotencyKeySchema = z.string().trim().min(8).max(128).regex(/^[A-Za-z0-9._:-]+$/);
 const scheduleExportSchema = z.object({
   weekStart: z.string().min(1),
   format: z.enum(['csv', 'xlsx']).default('csv')
@@ -143,7 +148,7 @@ export function parseScheduleImportFile(value: unknown) {
   return parsed.data;
 }
 
-export function parseScheduleImportRows(value: unknown): ScheduleImportRowInput[] {
+export function parseScheduleImportRows(value: unknown): { rows: ScheduleImportRowInput[]; calendarWarningAcknowledged: boolean } {
   const parsed = scheduleImportCommitSchema.safeParse(value);
   if (!parsed.success) throw ApiError.badRequest('Danh sách lịch import không hợp lệ hoặc vượt quá 1000 dòng', {}, 'SCHEDULE_IMPORT_ROWS_INVALID');
   for (const row of parsed.data.rows) {
@@ -164,7 +169,13 @@ export function parseScheduleImportRows(value: unknown): ScheduleImportRowInput[
       throw error;
     }
   }
-  return parsed.data.rows;
+  return parsed.data;
+}
+
+export function parseScheduleIdempotencyKey(value: unknown): string {
+  const parsed = scheduleIdempotencyKeySchema.safeParse(value);
+  if (!parsed.success) throw ApiError.badRequest('Idempotency-Key lịch làm việc không hợp lệ');
+  return parsed.data;
 }
 
 export function parseScheduleImportExportQuery(value: unknown): ScheduleImportExportQuery {
