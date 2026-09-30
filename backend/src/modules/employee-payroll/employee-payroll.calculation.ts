@@ -54,6 +54,29 @@ export interface PayrollAttendanceSessionInput {
   plannedEndMinute?: number | null;
 }
 
+export interface PayrollPolicySnapshot {
+  id: number;
+  revision: number;
+  effectiveFrom: string;
+  values: Record<string, string | number | boolean | null>;
+}
+
+export interface PayrollHolidaySnapshot {
+  id: number;
+  revision: number;
+  name: string;
+  startDate: string;
+  endDate: string;
+  archivedAt: string | null;
+}
+
+export interface PayrollSettingsSnapshot {
+  payrollPolicy: PayrollPolicySnapshot;
+  attendancePolicies: PayrollPolicySnapshot[];
+  workweekPolicies: PayrollPolicySnapshot[];
+  holidays: PayrollHolidaySnapshot[];
+}
+
 export interface PayrollCalculationInput {
   month: string;
   timeZone?: string;
@@ -63,6 +86,7 @@ export interface PayrollCalculationInput {
   attendanceSessions: PayrollAttendanceSessionInput[];
   scheduledShiftCount: number;
   confirmedAbsenceCount: number;
+  settingsSnapshot?: PayrollSettingsSnapshot;
 }
 
 export interface PayrollCalculationResult {
@@ -83,6 +107,7 @@ export interface PayrollCalculationResult {
     employment: { startDate: string | null; endDate: string | null };
     compensationTerms: PayrollCompensationTermInput[];
     attendanceSessions: Array<PayrollAttendanceSessionInput & { businessDate: string }>;
+    settings?: PayrollSettingsSnapshot;
   };
 }
 
@@ -201,7 +226,10 @@ export function calculatePayrollLine(input: PayrollCalculationInput): PayrollCal
     sourceSnapshot: {
       employment: { startDate: input.employmentStartDate, endDate: input.employmentEndDate },
       compensationTerms: [...input.compensationTerms],
-      attendanceSessions: snapshottedSessions
+      attendanceSessions: snapshottedSessions,
+      ...(input.settingsSnapshot
+        ? { settings: JSON.parse(JSON.stringify(input.settingsSnapshot)) as PayrollSettingsSnapshot }
+        : {})
     }
   };
 }

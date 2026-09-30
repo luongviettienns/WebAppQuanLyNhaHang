@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { prismaTest, truncateAllTables } from '../../../test/helpers/database';
+import { prismaTest, seedEmployeeSettingsBaselines, truncateAllTables } from '../../../test/helpers/database';
 import { EmployeePayrollMutationService } from './employee-payroll.mutation.service';
 import { EmployeePayrollPaymentService } from './employee-payroll.payment.service';
 
@@ -20,6 +20,7 @@ describe('EmployeePayrollPaymentService', () => {
     });
     actor = { id: admin.id, name: admin.name };
     const branchId = (await prismaTest.branch.findUniqueOrThrow({ where: { code: 'MAIN' } })).id;
+    await seedEmployeeSettingsBaselines(branchId, admin.id);
     const employee = await prismaTest.employee.create({
       data: { code: 'NV-PMT-001', attendanceCode: 'CC-PMT-001', name: 'Nhân viên', phone: '0900000401', startDate: day('2026-01-01') }
     });

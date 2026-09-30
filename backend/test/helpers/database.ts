@@ -103,3 +103,13 @@ export async function truncateAllTables() {
   }
   await prismaTest.$executeRawUnsafe(`SET FOREIGN_KEY_CHECKS = 1;`);
 }
+
+export async function seedEmployeeSettingsBaselines(branchId: number, createdByUserId?: number) {
+  const effectiveFrom = new Date('1970-01-01T00:00:00.000Z');
+  await prismaTest.branchPayrollPolicyVersion.create({
+    data: { branchId, effectiveFrom, revision: 1, createdByUserId }
+  });
+  await prismaTest.branchWorkweekPolicyVersion.create({
+    data: { branchId, effectiveFrom, revision: 1, createdByUserId }
+  });
+}

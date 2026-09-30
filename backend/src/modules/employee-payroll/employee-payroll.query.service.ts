@@ -4,14 +4,25 @@ import { ApiError } from '../../lib/api-error';
 import { getPayrollMonthBounds } from './employee-payroll.calculation';
 import type { PayrollListQuery } from './employee-payroll.schemas';
 import type { EmployeePayrollExportRow } from './employee-payroll.export';
+import { buildPayrollSettingsProjection } from './employee-payroll.settings-projection';
+import type { PayrollSettingsSnapshot } from './employee-payroll.calculation';
 
 type PayrollQueryClient = Pick<
   typeof prisma,
-  'employeePayrollBatch' | 'employee' | 'employeeCompensation' | 'employeeAttendanceSession' | 'employeeScheduleRule'
+  'employeePayrollBatch' | 'employee' | 'employeeCompensation' | 'employeeAttendanceSession' | 'employeeScheduleRule' |
+  'branchPayrollPolicyVersion' | 'branchAttendancePolicyVersion' | 'branchWorkweekPolicyVersion' | 'branchHolidayPeriod'
 >;
 
 const isoDate = (value: Date) => value.toISOString().slice(0, 10);
 const isoDateTime = (value: Date) => value.toISOString();
+const canonicalJson = (value: unknown) => JSON.stringify(value);
+
+function storedSettingsSnapshot(value: Prisma.JsonValue): PayrollSettingsSnapshot | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const settings = (value as Prisma.JsonObject).settings;
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return null;
+  return settings as unknown as PayrollSettingsSnapshot;
+}
 
 export class EmployeePayrollQueryService {
   constructor(private readonly db: PayrollQueryClient = prisma) {}
@@ -154,9 +165,10 @@ export class EmployeePayrollQueryService {
         this.db.employeeAttendanceSession.findMany({
           where: {
             employeeId: { in: employeeIds },
+            branchId: batch.branchId,
             checkInAt: { gte: batch.periodStart, lt: periodEndExclusive }
           },
-          select: { id: true, updatedAt: true }
+          select: { id: true, updatedAt: true, attendancePolicyVersionId: true }
         }),
         this.db.employeeScheduleRule.findMany({
           where: {
@@ -175,6 +187,17 @@ export class EmployeePayrollQueryService {
         ...schedules.map(row => row.updatedAt)
       ];
       sourceStale = sourceTimestamps.some(timestamp => timestamp > batch.calculatedAt!);
+      const frozenSettings = batch.lines.map(line => storedSettingsSnapshot(line.sourceSnapshot)).find(Boolean);
+      if (frozenSettings) {
+        const currentSettings = await buildPayrollSettingsProjection(
+          this.db,
+          batch.branchId,
+          isoDate(batch.periodStart),
+          isoDate(batch.periodEnd),
+          sessions
+        );
+        sourceStale ||= canonicalJson(currentSettings) !== canonicalJson(frozenSettings);
+      }
     }
 
     return {

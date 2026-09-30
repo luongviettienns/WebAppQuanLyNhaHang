@@ -140,6 +140,31 @@ describe('payroll MVP formulas', () => {
 
     expect(result.grossAmount).toBe(17);
   });
+
+  it('clones optional settings metadata into the source snapshot without changing payroll totals', () => {
+    const settingsSnapshot = {
+      payrollPolicy: { id: 31, revision: 2, effectiveFrom: '2026-09-01', values: { frequency: 'MONTHLY', periodStartDay: 1 } },
+      attendancePolicies: [{ id: 41, revision: 3, effectiveFrom: '2026-08-15', values: { lateThresholdMinutes: 5 } }],
+      workweekPolicies: [{ id: 51, revision: 4, effectiveFrom: '2026-01-01', values: { monday: true, sunday: false } }],
+      holidays: [{ id: 61, revision: 2, name: 'Quốc khánh', startDate: '2026-09-02', endDate: '2026-09-02', archivedAt: null }]
+    };
+    const baseline = calculatePayrollLine(baseInput());
+    const result = calculatePayrollLine(baseInput({ settingsSnapshot }));
+
+    expect(result.sourceSnapshot.settings).toEqual(settingsSnapshot);
+    expect(result.sourceSnapshot.settings).not.toBe(settingsSnapshot);
+    expect(result).toMatchObject({
+      grossAmount: baseline.grossAmount,
+      actualMinutes: baseline.actualMinutes,
+      warningCodes: baseline.warningCodes
+    });
+    settingsSnapshot.holidays[0].name = 'Đã sửa phía caller';
+    expect(result.sourceSnapshot.settings?.holidays[0].name).toBe('Quốc khánh');
+  });
+
+  it('keeps the legacy source snapshot shape when no settings metadata is provided', () => {
+    expect(calculatePayrollLine(baseInput()).sourceSnapshot).not.toHaveProperty('settings');
+  });
 });
 
 describe('payroll warnings and finalization readiness', () => {

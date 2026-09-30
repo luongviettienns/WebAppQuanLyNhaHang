@@ -19,6 +19,12 @@ describe('EmployeePayrollMutationService', () => {
     });
     actor = { id: admin.id, name: admin.name };
     branchId = (await prismaTest.branch.findUniqueOrThrow({ where: { code: 'MAIN' } })).id;
+    await prismaTest.branchPayrollPolicyVersion.create({
+      data: { branchId, effectiveFrom: day('1970-01-01'), revision: 1, createdByUserId: admin.id }
+    });
+    await prismaTest.branchWorkweekPolicyVersion.create({
+      data: { branchId, effectiveFrom: day('1970-01-01'), revision: 1, createdByUserId: admin.id }
+    });
     const working = await prismaTest.employee.create({
       data: {
         code: 'NV-PM-001', attendanceCode: 'CC-PM-001', name: 'Nhân viên đang làm', phone: '0900000101',
@@ -59,6 +65,14 @@ describe('EmployeePayrollMutationService', () => {
     expect(stored.lines.map(line => line.employeeId).sort((a, b) => a - b)).toEqual([workingId, resignedId].sort((a, b) => a - b));
     expect(stored.lines.find(line => line.employeeId === workingId)).toMatchObject({ activeCalendarDays: 30, grossAmount: 12_000_000 });
     expect(stored.lines.find(line => line.employeeId === resignedId)).toMatchObject({ activeCalendarDays: 15 });
+    expect(stored.lines[0].sourceSnapshot).toMatchObject({
+      settings: {
+        payrollPolicy: { revision: 1, effectiveFrom: '1970-01-01' },
+        attendancePolicies: [],
+        workweekPolicies: [{ revision: 1, effectiveFrom: '1970-01-01' }],
+        holidays: []
+      }
+    });
     expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_PAYROLL_CREATED', targetId: result.id } })).toBe(1);
     expect(emit).toHaveBeenCalledTimes(1);
     expect(emit).toHaveBeenCalledWith('employee-payroll:changed', expect.objectContaining({

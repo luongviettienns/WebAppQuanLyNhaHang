@@ -4,6 +4,7 @@ import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { calculatePayrollLine, getPayrollMonthBounds } from './employee-payroll.calculation';
+import { buildPayrollSettingsProjection } from './employee-payroll.settings-projection';
 import type { PayrollAdjustmentInput, PayrollCancelInput, PayrollCreateInput, PayrollReasonInput } from './employee-payroll.schemas';
 
 export interface PayrollActor { id: number; name: string }
@@ -115,6 +116,13 @@ async function calculateLineDrafts(
       select: { id: true, employeeId: true, scheduleRuleId: true, workDate: true }
     })
   ]);
+  const settingsSnapshot = await buildPayrollSettingsProjection(
+    tx,
+    branchId,
+    bounds.periodStart,
+    bounds.periodEnd,
+    sessions.map(session => ({ attendancePolicyVersionId: session.attendancePolicyVersionId }))
+  );
 
   return employees.map(employee => {
     const employeeRules = scheduleRules.filter(rule => rule.employeeId === employee.id);
@@ -138,7 +146,8 @@ async function calculateLineDrafts(
         plannedEndMinute: session.plannedEndMinute
       })),
       scheduledShiftCount: scheduleOccurrenceCount(employeeRules, bounds.periodStart, bounds.periodEnd),
-      confirmedAbsenceCount: employeeDispositions.length
+      confirmedAbsenceCount: employeeDispositions.length,
+      settingsSnapshot
     });
     return { employee, calculation, employeeDispositions, employeeRules };
   });

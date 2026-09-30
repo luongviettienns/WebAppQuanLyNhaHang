@@ -3,7 +3,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { app } from '../../src/app';
 import { env } from '../../src/config/env';
-import { prismaTest, truncateAllTables } from '../helpers/database';
+import { prismaTest, seedEmployeeSettingsBaselines, truncateAllTables } from '../helpers/database';
 
 const day = (value: string) => new Date(`${value}T00:00:00.000Z`);
 
@@ -26,6 +26,7 @@ describe('employee payroll create and recalculate API', () => {
       { algorithm: 'HS256', expiresIn: '1h', issuer: env.JWT_ISSUER, audience: env.JWT_AUDIENCE }
     );
     branchId = (await prismaTest.branch.findUniqueOrThrow({ where: { code: 'MAIN' } })).id;
+    await seedEmployeeSettingsBaselines(branchId, admin.id);
     const employee = await prismaTest.employee.create({
       data: { code: 'NV-API-001', attendanceCode: 'CC-API-001', name: 'Nhân viên tháng', phone: '0900000201', startDate: day('2026-01-01') }
     });

@@ -186,4 +186,64 @@ describe('EmployeePayrollQueryService', () => {
     expect((await service.detail(3)).sourceStale).toBe(false);
     await expect(service.detail(999)).rejects.toMatchObject({ statusCode: 404, code: 'NOT_FOUND' });
   });
+
+  it('scopes settings staleness to policy intervals and holidays used by the open payroll period', async () => {
+    const calculatedAt = new Date('2026-09-30T08:00:00.000Z');
+    const settings = {
+      payrollPolicy: {
+        id: 1, revision: 1, effectiveFrom: '1970-01-01',
+        values: { frequency: 'MONTHLY', periodStartDay: 1, hourlyCalculationSource: 'ACTUAL_ATTENDANCE' }
+      },
+      attendancePolicies: [],
+      workweekPolicies: [{
+        id: 2, revision: 1, effectiveFrom: '1970-01-01',
+        values: { monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: true }
+      }],
+      holidays: [{ id: 3, revision: 1, name: 'Quốc khánh', startDate: '2026-09-02', endDate: '2026-09-02', archivedAt: null }]
+    };
+    const detailBatch = {
+      ...batch({ calculatedAt, status: 'CALCULATED', version: 1 }),
+      branch: { id: 1, code: 'MAIN', name: 'Chi nhánh trung tâm' },
+      createdBy: { id: 1, name: 'Admin' }, calculatedBy: { id: 1, name: 'Admin' }, finalizedBy: null, cancelledBy: null,
+      finalizedAt: null, cancelledAt: null, cancelReason: null,
+      lines: [{
+        id: 31, payrollBatchId: 3, employeeId: 8, employeeCode: 'NV000008', employeeName: 'Nguyễn Minh Anh',
+        departmentName: null, jobTitleName: null, bankName: null, bankAccountNumber: null, bankAccountName: null,
+        employmentStartDate: new Date('2026-01-01T00:00:00.000Z'), employmentEndDate: null,
+        activeCalendarDays: 30, periodCalendarDays: 30, scheduledShifts: 0, completedSessions: 0, actualMinutes: 0,
+        confirmedAbsences: 0, missingCheckouts: 0, reviewRequiredCount: 0, grossAmount: 0, bonusAmount: 0,
+        deductionAmount: 0, netAmount: 0, paidAmount: 0, remainingAmount: 0, calculationStatus: 'READY', warningCodes: [],
+        sourceSnapshot: { settings }, calculatedAt, createdAt: calculatedAt, updatedAt: calculatedAt, adjustments: [], payments: []
+      }]
+    };
+    const holidayFindMany = vi.fn()
+      .mockResolvedValueOnce([
+        { id: 3, revision: 1, name: 'Quốc khánh', startDate: new Date('2026-09-02T00:00:00.000Z'), endDate: new Date('2026-09-02T00:00:00.000Z'), archivedAt: null },
+        { id: 4, revision: 1, name: 'Ngoài kỳ', startDate: new Date('2026-10-01T00:00:00.000Z'), endDate: new Date('2026-10-01T00:00:00.000Z'), archivedAt: null }
+      ])
+      .mockResolvedValueOnce([
+        { id: 3, revision: 2, name: 'Quốc khánh điều chỉnh', startDate: new Date('2026-09-02T00:00:00.000Z'), endDate: new Date('2026-09-02T00:00:00.000Z'), archivedAt: null },
+        { id: 4, revision: 1, name: 'Ngoài kỳ', startDate: new Date('2026-10-01T00:00:00.000Z'), endDate: new Date('2026-10-01T00:00:00.000Z'), archivedAt: null }
+      ]);
+    const service = new EmployeePayrollQueryService({
+      employeePayrollBatch: { findUnique: vi.fn().mockResolvedValue(detailBatch), findMany: vi.fn(), count: vi.fn(), aggregate: vi.fn() },
+      employee: { findMany: vi.fn().mockResolvedValue([{ id: 8, updatedAt: calculatedAt }]) },
+      employeeCompensation: { findMany: vi.fn().mockResolvedValue([]) },
+      employeeAttendanceSession: { findMany: vi.fn().mockResolvedValue([]) },
+      employeeScheduleRule: { findMany: vi.fn().mockResolvedValue([]) },
+      branchPayrollPolicyVersion: { findMany: vi.fn().mockResolvedValue([
+        { id: 5, revision: 2, effectiveFrom: new Date('2026-10-01T00:00:00.000Z'), frequency: 'MONTHLY', periodStartDay: 1, hourlyCalculationSource: 'ACTUAL_ATTENDANCE' },
+        { id: 1, revision: 1, effectiveFrom: new Date('1970-01-01T00:00:00.000Z'), frequency: 'MONTHLY', periodStartDay: 1, hourlyCalculationSource: 'ACTUAL_ATTENDANCE' }
+      ]) },
+      branchAttendancePolicyVersion: { findMany: vi.fn().mockResolvedValue([]) },
+      branchWorkweekPolicyVersion: { findMany: vi.fn().mockResolvedValue([
+        { id: 6, revision: 2, effectiveFrom: new Date('2026-10-01T00:00:00.000Z'), monday: false, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: false, sunday: false },
+        { id: 2, revision: 1, effectiveFrom: new Date('1970-01-01T00:00:00.000Z'), monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: true }
+      ]) },
+      branchHolidayPeriod: { findMany: holidayFindMany }
+    } as never);
+
+    expect((await service.detail(3)).sourceStale).toBe(false);
+    expect((await service.detail(3)).sourceStale).toBe(true);
+  });
 });
