@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Banknote, CalendarDays, Clock3, Settings, Users } from 'lucide-react-native';
+import { BadgeDollarSign, Banknote, CalendarDays, Clock3, Settings, Users } from 'lucide-react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon } from '../../ui';
@@ -8,9 +8,10 @@ import { EmployeeManagementScreen } from './EmployeeManagementScreen';
 import { EmployeeScheduleScreen } from './EmployeeScheduleScreen';
 import { EmployeeAttendanceScreen } from './EmployeeAttendanceScreen';
 import { EmployeePayrollScreen } from './EmployeePayrollScreen';
+import { EmployeeCommissionScreen } from './EmployeeCommissionScreen';
 import { EmployeeSettingsScreen } from './EmployeeSettingsScreen';
 
-export type EmployeeWorkspaceSection = 'directory' | 'schedule' | 'attendance' | 'payroll' | 'settings';
+export type EmployeeWorkspaceSection = 'directory' | 'schedule' | 'attendance' | 'payroll' | 'commission' | 'settings';
 
 export const EmployeeWorkspaceScreen: React.FC = () => {
   const { theme } = useTheme();
@@ -64,6 +65,16 @@ export const EmployeeWorkspaceScreen: React.FC = () => {
         <Text style={[styles.tabText, { color: section === 'payroll' ? theme.textPrimary : theme.textSecondary }]}>Bảng lương</Text>
       </Pressable>
       <Pressable
+        testID="employee-workspace-commission"
+        accessibilityRole="tab"
+        accessibilityState={{ selected: section === 'commission' }}
+        onPress={() => setSection('commission')}
+        style={[styles.tab, section === 'commission' && { backgroundColor: theme.interactiveSecondary, borderBottomColor: theme.primary }]}
+      >
+        <AppIcon icon={BadgeDollarSign} color={section === 'commission' ? theme.primary : theme.textSecondary} size={18} />
+        <Text style={[styles.tabText, { color: section === 'commission' ? theme.textPrimary : theme.textSecondary }]}>Bảng hoa hồng</Text>
+      </Pressable>
+      <Pressable
         testID="employee-workspace-settings"
         accessibilityRole="tab"
         accessibilityState={{ selected: section === 'settings' }}
@@ -83,7 +94,9 @@ export const EmployeeWorkspaceScreen: React.FC = () => {
             ? <EmployeeAttendanceScreen />
             : section === 'payroll'
               ? <EmployeePayrollScreen />
-              : <EmployeeSettingsScreen onNavigate={navigateFromSettings} />}
+              : section === 'commission'
+                ? <EmployeeCommissionScreen />
+                : <EmployeeSettingsScreen onNavigate={navigateFromSettings} />}
     </View>
   </View>;
 };

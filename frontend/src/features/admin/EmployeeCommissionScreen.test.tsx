@@ -1,0 +1,114 @@
+import React from 'react';
+import { act, create } from 'react-test-renderer';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const { screenState, native } = vi.hoisted(() => ({
+  screenState: { width: 1280 },
+  native: (name: string) => { const Component = (props: any) => React.createElement(name, props, props.children); Component.displayName = name; return Component; }
+}));
+vi.mock('react-native', () => ({
+  ActivityIndicator: native('ActivityIndicator'), Modal: native('Modal'), Pressable: native('Pressable'),
+  ScrollView: native('ScrollView'), StyleSheet: { create: (styles: any) => styles }, Text: native('Text'),
+  TextInput: native('TextInput'), View: native('View'), useWindowDimensions: () => ({ width: screenState.width, height: 800 })
+}));
+vi.mock('lucide-react-native', () => ({ AlertTriangle: native('Icon'), BookOpen: native('Icon'), ChevronRight: native('Icon'), Menu: native('Icon'), Plus: native('Icon'), Search: native('Icon'), Users: native('Icon'), UtensilsCrossed: native('Icon'), X: native('Icon') }));
+vi.mock('../../ui', () => ({ AppIcon: () => React.createElement('Icon') }));
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ token: 'token' }) }));
+vi.mock('../../contexts/RestaurantContext', () => ({ useRestaurant: () => ({ employeeCommissionRevision: 0 }) }));
+vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ theme: {
+  primary: '#b42318', success: '#15803d', warning: '#8a480b', danger: '#b42318', focusRing: '#0f6cbd',
+  surfaceCanvas: '#f4f3f0', surfaceBase: '#fff', surfaceRaised: '#fff', surfaceSunken: '#eceae6',
+  textPrimary: '#24211f', textSecondary: '#6b6560', textInverse: '#fff', borderSubtle: '#d8d4ce', borderStrong: '#bdb7af',
+  interactivePrimary: '#b42318', interactivePrimaryPressed: '#8f1c13', interactiveSecondary: '#fff1dd', interactiveQuiet: '#f4f3f0', overlay: 'rgba(0,0,0,.5)'
+} }) }));
+
+const api = vi.hoisted(() => ({
+  workspace: vi.fn(), issues: vi.fn(), ledger: vi.fn(), createPlan: vi.fn(), updatePlan: vi.fn(), activatePlan: vi.fn(), archivePlan: vi.fn(), createRule: vi.fn(), createAssignment: vi.fn(), assignees: vi.fn(), retryIssue: vi.fn(), reassign: vi.fn()
+}));
+vi.mock('../../api/employeeCommissions', () => ({
+  fetchEmployeeCommissionWorkspaceApi: api.workspace, fetchCommissionIssuesApi: api.issues,
+  fetchCommissionLedgerApi: api.ledger, createCommissionPlanApi: api.createPlan, updateCommissionPlanApi: api.updatePlan,
+  activateCommissionPlanApi: api.activatePlan, archiveCommissionPlanApi: api.archivePlan, createCommissionRuleApi: api.createRule,
+  createCommissionEmployeeAssignmentApi: api.createAssignment, fetchCommissionAssigneesApi: api.assignees,
+  retryCommissionIssueApi: api.retryIssue, reassignCommissionOrderItemApi: api.reassign
+}));
+
+import { EmployeeCommissionScreen } from './EmployeeCommissionScreen';
+(globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+
+const plan = { id: 7, code: 'BAN_HANG', name: 'Bán hàng', status: 'ACTIVE', effectiveFrom: '2026-10-01', effectiveTo: null, revision: 1 };
+const itemWorkspace = {
+  mode: 'ITEM', plans: [plan], rows: [{ id: 4, sku: 'CF01', name: 'Cà phê sữa', basePrice: 35000, categoryId: 2, categoryName: 'Đồ uống', rules: { '7': { id: 9, planId: 7, revision: 1, type: 'FIXED_PER_UNIT', fixedAmount: 3000, rateBps: null, effectiveFrom: '2026-10-01', effectiveTo: null } } }],
+  pagination: { page: 1, pageSize: 25, total: 1, totalPages: 1 }, issues: { openCount: 2 }, ledger: { total: 12 }
+};
+const employeeWorkspace = {
+  ...itemWorkspace, mode: 'EMPLOYEE', rows: [{ id: 3, code: 'NV003', name: 'An', status: 'WORKING', departmentName: 'Phục vụ', assignments: [{ id: 5, planId: 7, effectiveFrom: '2026-10-01', effectiveTo: null, autoAssignOwnPos: true }] }]
+};
+
+async function renderScreen() {
+  let screen: any;
+  await act(async () => { screen = create(<EmployeeCommissionScreen />); await Promise.resolve(); });
+  return screen;
+}
+
+describe('EmployeeCommissionScreen', () => {
+  beforeEach(() => {
+    vi.clearAllMocks(); screenState.width = 1280;
+    api.workspace.mockImplementation((_token: string, query: any) => Promise.resolve(query.mode === 'EMPLOYEE' ? employeeWorkspace : itemWorkspace));
+    api.issues.mockResolvedValue({ rows: [{ id: 21, reasonCode: 'MISSING_EMPLOYEE', orderItemId: 44, status: 'OPEN' }], pagination: { page: 1, total: 1, totalPages: 1 } });
+    api.ledger.mockResolvedValue({ rows: [{ id: 31, orderItemId: 44, employeeId: 3, employeeNameSnapshot: 'An', menuItemNameSnapshot: 'Cà phê sữa', entryType: 'EARNING', signedAmount: 3000, accountingDate: '2026-10-01' }], pagination: { page: 1, total: 1, totalPages: 1 } });
+    api.assignees.mockResolvedValue({ assignees: [{ id: 3, code: 'NV003', name: 'An' }, { id: 6, code: 'NV006', name: 'Bình' }], safeDefaultEmployeeId: null });
+    api.createRule.mockResolvedValue({ rule: itemWorkspace.rows[0].rules['7'] });
+    api.retryIssue.mockResolvedValue({}); api.reassign.mockResolvedValue({});
+  });
+
+  it('renders the item matrix, plan rail and switches to the employee matrix', async () => {
+    const screen = await renderScreen();
+    expect(screen.root.findByProps({ testID: 'commission-plan-7' })).toBeDefined();
+    expect(screen.root.findByProps({ testID: 'commission-item-row-4' })).toBeDefined();
+    expect(screen.root.findByProps({ testID: 'commission-rule-4-7' }).findByType('Text').props.children).toContain('3.000đ/sp');
+    expect(screen.root.findAllByProps({ testID: 'commission-issues-count' }).some((node: any) => node.props.children === 2)).toBe(true);
+    await act(async () => { screen.root.findByProps({ testID: 'commission-mode-employee' }).props.onPress(); await Promise.resolve(); });
+    expect(api.workspace).toHaveBeenLastCalledWith('token', expect.objectContaining({ branchId: 1, mode: 'EMPLOYEE' }));
+    expect(screen.root.findByProps({ testID: 'commission-employee-row-3' })).toBeDefined();
+    expect(screen.root.findByProps({ testID: 'commission-assignment-3-7' }).findByType('Text').props.children).toContain('Tự gán POS');
+  });
+
+  it('creates a rule from a matrix cell and reloads without losing the selected plan', async () => {
+    const screen = await renderScreen();
+    await act(async () => screen.root.findByProps({ testID: 'commission-rule-4-7' }).props.onPress());
+    await act(async () => screen.root.findByProps({ testID: 'commission-rule-type-net' }).props.onPress());
+    await act(async () => screen.root.findByProps({ testID: 'commission-rule-rate' }).props.onChangeText('5'));
+    await act(async () => { await screen.root.findByProps({ testID: 'commission-rule-save' }).props.onPress(); });
+    expect(api.createRule).toHaveBeenCalledWith('token', 7, expect.objectContaining({ menuItemId: 4, type: 'PERCENT_NET_REVENUE', rateBps: 500 }));
+    expect(screen.root.findByProps({ testID: 'commission-plan-7' }).props.accessibilityState.selected).toBe(true);
+  });
+
+  it('opens issues and ledger operations, retries and reassigns with an audit reason', async () => {
+    const screen = await renderScreen();
+    await act(async () => { await screen.root.findByProps({ testID: 'commission-open-issues' }).props.onPress(); });
+    expect(screen.root.findByProps({ testID: 'commission-issue-21' })).toBeDefined();
+    await act(async () => { await screen.root.findByProps({ testID: 'commission-issue-retry-21' }).props.onPress(); });
+    expect(api.retryIssue).toHaveBeenCalledWith('token', 21, expect.stringMatching(/^commission-issue-/));
+    await act(async () => { await screen.root.findByProps({ testID: 'commission-open-ledger' }).props.onPress(); });
+    expect(screen.root.findByProps({ testID: 'commission-ledger-31' })).toBeDefined();
+    await act(async () => screen.root.findByProps({ testID: 'commission-ledger-reassign-31' }).props.onPress());
+    await act(async () => screen.root.findByProps({ testID: 'commission-reassign-employee-6' }).props.onPress());
+    await act(async () => screen.root.findByProps({ testID: 'commission-reassign-reason' }).props.onChangeText('Chuyển đúng người phục vụ'));
+    await act(async () => { await screen.root.findByProps({ testID: 'commission-reassign-save' }).props.onPress(); });
+    expect(api.reassign).toHaveBeenCalledWith('token', 44, expect.objectContaining({ employeeId: 6, reason: 'Chuyển đúng người phục vụ' }));
+  });
+
+  it('shows a compact filter drawer and truthful error/empty states', async () => {
+    screenState.width = 600; api.workspace.mockRejectedValueOnce(new Error('Mất kết nối'));
+    const errorScreen = await renderScreen();
+    expect(errorScreen.root.findByProps({ testID: 'commission-error' }).props.children).toContain('Mất kết nối');
+    await act(async () => errorScreen.unmount());
+    api.workspace.mockResolvedValueOnce({ ...itemWorkspace, rows: [], pagination: { ...itemWorkspace.pagination, total: 0 } });
+    const emptyScreen = await renderScreen();
+    expect(emptyScreen.root.findByProps({ testID: 'commission-filters-toggle' })).toBeDefined();
+    expect(emptyScreen.root.findByProps({ testID: 'commission-empty' }).props.children).toContain('Chưa có hàng hóa');
+    await act(async () => emptyScreen.root.findByProps({ testID: 'commission-filters-toggle' }).props.onPress());
+    expect(emptyScreen.root.findByProps({ testID: 'commission-filter-drawer' })).toBeDefined();
+  });
+});
