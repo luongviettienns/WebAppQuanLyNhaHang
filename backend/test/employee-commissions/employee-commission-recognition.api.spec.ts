@@ -85,6 +85,24 @@ describe('employee commission recognition ledger', () => {
     expect(earning).toMatchObject({ employeeId, quantityDelta: 1, commissionAmountDelta: 5_000 });
   });
 
+  it('resolves a fully returned queued sale without creating an earning', async () => {
+    const order = await paidOrder(null);
+    await prisma.$transaction(tx => EmployeeCommissionRecognitionService.recognizePaidOrder(tx, order.id, order.paidAt!, { id: adminId }));
+    const returned = await prismaTest.orderReturn.create({ data: {
+      returnCode: `RETURN-FULL-${Date.now()}`, orderId: order.id, totalRefundDue: 60_000, refundedAmount: 60_000,
+      completedAt: new Date('2026-10-02T00:00:00.000Z'), createdByUserId: adminId,
+      lines: { create: { orderItemId: order.items[0].id, menuItemId, menuItemSku: 'ITEM', menuItemName: 'Món bán', quantity: 2, unitPrice: 30_000, lineAmount: 60_000 } }
+    } });
+    await prisma.$transaction(tx => EmployeeCommissionRecognitionService.reverseReturn(tx, returned.id, { id: adminId }));
+
+    await EmployeeCommissionMutationService.assignOrderItem(order.items[0].id, employeeId, { id: adminId, name: 'Ledger Admin' });
+
+    expect(await prismaTest.commissionEntry.count({ where: { orderItemId: order.items[0].id } })).toBe(0);
+    expect(await prismaTest.commissionRecognitionIssue.findUniqueOrThrow({ where: { orderItemId: order.items[0].id } })).toMatchObject({
+      status: 'RESOLVED', resolutionCode: 'NO_REMAINING_QUANTITY'
+    });
+  });
+
   it('uses payment-time rule and cost snapshots for late recognition', async () => {
     const order = await paidOrder(null, 1);
     await prisma.$transaction(tx => EmployeeCommissionRecognitionService.recognizePaidOrder(tx, order.id, order.paidAt!, { id: adminId }));
@@ -112,13 +130,36 @@ describe('employee commission recognition ledger', () => {
       data: { menuItemId, ingredientId: (await prismaTest.ingredient.findFirstOrThrow()).id, quantityRequired: 1 }
     });
 
-    await EmployeeCommissionMutationService.createResolution(basis.id, {
+    const result = await EmployeeCommissionMutationService.createResolution(basis.id, {
       type: 'COST_OVERRIDE', resolution: { unitCost: 10_000 }, reason: 'Khôi phục giá vốn theo chứng từ bán', idempotencyKey: 'cost-override-001'
     }, { id: adminId, name: 'Ledger Admin' });
 
     const earning = await prismaTest.commissionEntry.findFirstOrThrow({ where: { orderItemId: order.items[0].id } });
     expect(earning).toMatchObject({ costAmountDelta: 10_000, grossProfitDelta: 18_000, commissionAmountDelta: 1_800 });
+    expect(earning.ruleSnapshot).toMatchObject({
+      costResolution: {
+        id: result.resolution.id, type: 'COST_OVERRIDE', reason: 'Khôi phục giá vốn theo chứng từ bán',
+        createdByUserId: adminId, createdByName: 'Ledger Admin', createdAt: expect.any(String)
+      }
+    });
     expect(await prismaTest.auditLog.count({ where: { action: 'EMPLOYEE_COMMISSION_BASIS_RESOLUTION_CREATED', actorId: adminId } })).toBe(1);
+  });
+
+  it('uses the payment-time employee snapshot when a queued assigned employee later changes profile', async () => {
+    await prismaTest.commissionRule.updateMany({ data: { type: 'PERCENT_GROSS_PROFIT', fixedAmount: null, rateBps: 1_000 } });
+    await prismaTest.menuItemIngredient.deleteMany({ where: { menuItemId } });
+    const original = await prismaTest.employee.findUniqueOrThrow({ where: { id: employeeId } });
+    const order = await paidOrder(employeeId, 1);
+    await prisma.$transaction(tx => EmployeeCommissionRecognitionService.recognizePaidOrder(tx, order.id, order.paidAt!, { id: adminId }));
+    const basis = await prismaTest.commissionSaleBasis.findUniqueOrThrow({ where: { orderItemId: order.items[0].id } });
+    await prismaTest.employee.update({ where: { id: employeeId }, data: { name: 'Tên mới không dùng', status: 'RESIGNED' } });
+
+    await EmployeeCommissionMutationService.createResolution(basis.id, {
+      type: 'COST_OVERRIDE', resolution: { unitCost: 10_000 }, reason: 'Khôi phục giá vốn lịch sử', idempotencyKey: 'employee-snapshot-001'
+    }, { id: adminId, name: 'Ledger Admin' });
+
+    const earning = await prismaTest.commissionEntry.findFirstOrThrow({ where: { orderItemId: order.items[0].id } });
+    expect(earning.employeeSnapshot).toEqual({ id: employeeId, code: original.code, name: original.name });
   });
 
   it('returns against the current owner after reassignment and never the root employee', async () => {

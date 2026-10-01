@@ -58,6 +58,7 @@ describe('EmployeeCommissionScreen', () => {
     api.issues.mockResolvedValue({ rows: [{ id: 21, type: 'COST_MISSING', orderItemId: 44, saleBasisId: 81, status: 'OPEN' }], pagination: { page: 1, total: 1, totalPages: 1 } });
     api.ledger.mockResolvedValue({ rows: [{ id: 31, orderItemId: 44, employeeId: 3, employeeSnapshot: { id: 3, code: 'NV003', name: 'An' }, itemSnapshot: { id: 4, sku: 'CF01', name: 'Cà phê sữa' }, type: 'EARNING', commissionAmountDelta: 3000, accountingDate: '2026-10-01', allocations: [{ id: 91, type: 'FINALIZED', payrollBatch: { id: 12, code: 'BL000012' } }] }], pagination: { page: 1, total: 1, totalPages: 1 } });
     api.assignees.mockResolvedValue({ assignees: [{ id: 3, code: 'NV003', name: 'An' }, { id: 6, code: 'NV006', name: 'Bình' }], safeDefaultEmployeeId: null });
+    api.createPlan.mockResolvedValue({ plan }); api.createAssignment.mockResolvedValue({});
     api.createRule.mockResolvedValue({ rule: itemWorkspace.rows[0].rules['7'] });
     api.assignOrderItem.mockResolvedValue({}); api.retryIssue.mockResolvedValue({}); api.resolveIssue.mockResolvedValue({}); api.reassign.mockResolvedValue({});
   });
@@ -81,9 +82,31 @@ describe('EmployeeCommissionScreen', () => {
     await act(async () => screen.root.findByProps({ testID: 'commission-rule-4-7' }).props.onPress());
     await act(async () => screen.root.findByProps({ testID: 'commission-rule-type-net' }).props.onPress());
     await act(async () => screen.root.findByProps({ testID: 'commission-rule-rate' }).props.onChangeText('5'));
+    await act(async () => screen.root.findByProps({ testID: 'commission-rule-effective-from' }).props.onChangeText('2026-11-15'));
     await act(async () => { await screen.root.findByProps({ testID: 'commission-rule-save' }).props.onPress(); });
-    expect(api.createRule).toHaveBeenCalledWith('token', 7, expect.objectContaining({ menuItemId: 4, type: 'PERCENT_NET_REVENUE', rateBps: 500 }));
+    expect(api.createRule).toHaveBeenCalledWith('token', 7, expect.objectContaining({ menuItemId: 4, type: 'PERCENT_NET_REVENUE', rateBps: 500, effectiveFrom: '2026-11-15' }));
     expect(screen.root.findByProps({ testID: 'commission-plan-7' }).props.accessibilityState.selected).toBe(true);
+  });
+
+  it('submits explicit plan and employee assignment effective ranges with an opt-in POS default', async () => {
+    const screen = await renderScreen();
+    await act(async () => screen.root.findByProps({ testID: 'commission-plan-create' }).props.onPress());
+    await act(async () => screen.root.findByProps({ testID: 'commission-plan-code' }).props.onChangeText('TET_2027'));
+    await act(async () => screen.root.findByProps({ testID: 'commission-plan-name' }).props.onChangeText('Tết 2027'));
+    await act(async () => screen.root.findByProps({ testID: 'commission-plan-effective-from' }).props.onChangeText('2027-01-01'));
+    await act(async () => screen.root.findByProps({ testID: 'commission-plan-effective-to' }).props.onChangeText('2027-02-28'));
+    await act(async () => { await screen.root.findByProps({ testID: 'commission-plan-save' }).props.onPress(); });
+    expect(api.createPlan).toHaveBeenCalledWith('token', expect.objectContaining({ effectiveFrom: '2027-01-01', effectiveTo: '2027-02-28' }));
+
+    await act(async () => { screen.root.findByProps({ testID: 'commission-mode-employee' }).props.onPress(); await Promise.resolve(); });
+    await act(async () => screen.root.findByProps({ testID: 'commission-assignment-3-7' }).props.onPress());
+    await act(async () => screen.root.findByProps({ testID: 'commission-assignment-effective-from' }).props.onChangeText('2027-01-05'));
+    await act(async () => screen.root.findByProps({ testID: 'commission-assignment-effective-to' }).props.onChangeText('2027-01-31'));
+    await act(async () => screen.root.findByProps({ testID: 'commission-assignment-auto-pos' }).props.onPress());
+    await act(async () => { await screen.root.findByProps({ testID: 'commission-assignment-save' }).props.onPress(); });
+    expect(api.createAssignment).toHaveBeenCalledWith('token', 7, {
+      employeeId: 3, effectiveFrom: '2027-01-05', effectiveTo: '2027-01-31', autoAssignOwnPos: false
+    });
   });
 
   it('opens issues and ledger operations, retries and reassigns with an audit reason', async () => {

@@ -46,11 +46,21 @@ async function writeIssue(
   });
 }
 
-async function resolveIssue(tx: Prisma.TransactionClient, orderItemId: number, actor?: Actor) {
+async function resolveIssue(tx: Prisma.TransactionClient, orderItemId: number, actor?: Actor, resolutionCode = 'RECOGNIZED') {
   const issue = await tx.commissionRecognitionIssue.findUnique({ where: { orderItemId } });
   if (issue?.status === 'OPEN') await tx.commissionRecognitionIssue.update({
-    where: { id: issue.id }, data: { status: 'RESOLVED', resolutionCode: 'RECOGNIZED', resolvedAt: new Date(), resolvedByUserId: actor?.id ?? null }
+    where: { id: issue.id }, data: { status: 'RESOLVED', resolutionCode, resolvedAt: new Date(), resolvedByUserId: actor?.id ?? null }
   });
+}
+
+function resolutionSnapshot(resolution: {
+  id: number; eventKey: string; type: string; reason: string; createdByUserId: number; createdByName: string; createdAt: Date; resolution: Prisma.JsonValue;
+} | undefined) {
+  return resolution ? {
+    id: resolution.id, eventKey: resolution.eventKey, type: resolution.type, reason: resolution.reason,
+    createdByUserId: resolution.createdByUserId, createdByName: resolution.createdByName,
+    createdAt: resolution.createdAt.toISOString(), resolution: resolution.resolution
+  } : null;
 }
 
 async function returnedQuantity(tx: Prisma.TransactionClient, orderItemId: number) {
@@ -75,7 +85,7 @@ async function recognizeBasis(tx: Prisma.TransactionClient, basisId: number, act
   const returned = await returnedQuantity(tx, basis.orderItemId);
   const quantity = Math.max(0, basis.soldQuantity - returned);
   if (quantity === 0) {
-    await resolveIssue(tx, basis.orderItemId, actor);
+    await resolveIssue(tx, basis.orderItemId, actor, 'NO_REMAINING_QUANTITY');
     return null;
   }
   const employeeId = basis.orderItem.commissionEmployeeId;
@@ -83,15 +93,23 @@ async function recognizeBasis(tx: Prisma.TransactionClient, basisId: number, act
     await writeIssue(tx, basis, 'UNASSIGNED_EMPLOYEE');
     return null;
   }
-  const employee = await tx.employee.findUnique({ where: { id: employeeId }, select: { id: true, code: true, name: true, status: true } });
-  if (!employee || employee.status !== 'WORKING') {
-    await writeIssue(tx, basis, 'UNASSIGNED_EMPLOYEE', { employeeId });
-    return null;
+  let employeeSnapshot: { id: number; code: string; name: string };
+  if (employeeId === basis.commissionEmployeeIdAtPayment && basis.employeeCodeAtPayment && basis.employeeNameAtPayment) {
+    employeeSnapshot = { id: employeeId, code: basis.employeeCodeAtPayment, name: basis.employeeNameAtPayment };
+  } else {
+    const employee = await tx.employee.findUnique({ where: { id: employeeId }, select: { id: true, code: true, name: true, status: true } });
+    if (!employee || employee.status !== 'WORKING') {
+      await writeIssue(tx, basis, 'UNASSIGNED_EMPLOYEE', { employeeId });
+      return null;
+    }
+    employeeSnapshot = { id: employee.id, code: employee.code, name: employee.name };
   }
 
   const resolutions = await tx.commissionBasisResolution.findMany({ where: { saleBasisId: basis.id }, orderBy: { id: 'asc' } });
-  const costOverride = [...resolutions].reverse().find(item => item.type === 'COST_OVERRIDE')?.resolution as { unitCost?: number } | undefined;
-  const ruleOverride = [...resolutions].reverse().find(item => item.type === 'RULE_OVERRIDE')?.resolution as {
+  const costResolution = [...resolutions].reverse().find(item => item.type === 'COST_OVERRIDE');
+  const ruleResolution = [...resolutions].reverse().find(item => item.type === 'RULE_OVERRIDE');
+  const costOverride = costResolution?.resolution as { unitCost?: number } | undefined;
+  const ruleOverride = ruleResolution?.resolution as {
     planId?: number; planCode?: string; planName?: string; planRevision?: number;
     type?: 'FIXED_PER_UNIT' | 'PERCENT_NET_REVENUE' | 'PERCENT_GROSS_PROFIT'; fixedAmount?: number | null; rateBps?: number | null;
   } | undefined;
@@ -141,9 +159,13 @@ async function recognizeBasis(tx: Prisma.TransactionClient, basisId: number, act
     netRevenueDelta: grossRevenue - allocatedDiscount, costAmountDelta: totalCost,
     grossProfitDelta: Math.max(0, grossRevenue - allocatedDiscount - totalCost),
     commissionAmountDelta: calculation.commissionAmount!,
-    employeeSnapshot: { id: employee.id, code: employee.code, name: employee.name },
+    employeeSnapshot,
     itemSnapshot: { id: basis.menuItemId, sku: basis.itemSku, name: basis.itemName, unitPrice: basis.unitPrice },
-    ruleSnapshot: { planId: candidate.planId, planCode: candidate.planCode, planName: candidate.planName, planRevision: candidate.planRevision, ...rule, costOverride: costOverride ?? null, ruleOverride: overrideApplies ? ruleOverride : null },
+    ruleSnapshot: {
+      planId: candidate.planId, planCode: candidate.planCode, planName: candidate.planName, planRevision: candidate.planRevision, ...rule,
+      costOverride: costOverride ?? null, ruleOverride: overrideApplies ? ruleOverride : null,
+      costResolution: resolutionSnapshot(costResolution), ruleResolution: overrideApplies ? resolutionSnapshot(ruleResolution) : null
+    },
     createdByUserId: actor?.id ?? null, createdByName: actor?.name ?? null
   } });
   await AuditService.logInTransaction(tx, {
