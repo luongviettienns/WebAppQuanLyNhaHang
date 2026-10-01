@@ -28,6 +28,7 @@ import {
 import { MenuItemDto, OrderDto, OrderType, VoucherValidationResultDto } from '../../api/contracts';
 import { validateVoucherApi } from '../../api/vouchers';
 import { DeliveryPartnerDto, fetchSelectableDeliveryPartnersApi } from '../../api/deliveryPartners';
+import { fetchCommissionAssigneesApi, type CommissionAssigneeDto } from '../../api/employeeCommissions';
 import { fetchSelectableCustomersApi, SelectableCustomerDto } from '../../api/customers';
 import { useAuth } from '../../contexts/AuthContext';
 import { CartItem, useRestaurant } from '../../contexts/RestaurantContext';
@@ -40,6 +41,7 @@ import { MenuItemCard } from './MenuItemCard';
 import { ModifierModal } from './ModifierModal';
 import { ReceiptModal } from './ReceiptModal';
 import { deliveryOrderTotal, validateDeliveryDraft } from '../orders/deliveryPartnerViewModel';
+import { CommissionAssigneePicker } from './CommissionAssigneePicker';
 
 const formatVND = (amount: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -56,6 +58,8 @@ interface CartPanelProps {
   onCheckout: () => void;
   onRemove: (index: number) => void;
   onUpdateQuantity: (index: number, quantity: number) => void;
+  assignees: CommissionAssigneeDto[];
+  onUpdateAssignee: (index: number, employeeId: number | null) => void;
 }
 
 const CartPanel: React.FC<CartPanelProps> = ({
@@ -69,7 +73,9 @@ const CartPanel: React.FC<CartPanelProps> = ({
   onClear,
   onCheckout,
   onRemove,
-  onUpdateQuantity
+  onUpdateQuantity,
+  assignees,
+  onUpdateAssignee
 }) => {
   const { theme } = useTheme();
   const [voucherInput, setVoucherInput] = useState('');
@@ -120,6 +126,7 @@ const CartPanel: React.FC<CartPanelProps> = ({
                     </Text>
                   ))}
                   {item.notes && <Text style={[styles.cartItemMeta, { color: theme.textSecondary }]}>Ghi chú: {item.notes}</Text>}
+                  <CommissionAssigneePicker lineIndex={index} value={item.commissionEmployeeId} assignees={assignees} onChange={employeeId => onUpdateAssignee(index, employeeId)} />
                 </View>
                 <Pressable
                   accessibilityRole="button"
@@ -271,6 +278,7 @@ export const POSScreen: React.FC = () => {
     cartTotal,
     addToCart,
     updateCartQuantity,
+    updateCartCommissionEmployee,
     removeFromCart,
     clearCart,
     tables,
@@ -293,12 +301,28 @@ export const POSScreen: React.FC = () => {
   const [successOrderCode, setSuccessOrderCode] = useState<string | null>(null);
   const [createdOrder, setCreatedOrder] = useState<OrderDto | null>(null);
   const [isReceiptModalOpen, setIsReceiptModalOpen] = useState(false);
+  const [commissionAssignees, setCommissionAssignees] = useState<CommissionAssigneeDto[]>([]);
+  const [safeDefaultCommissionEmployeeId, setSafeDefaultCommissionEmployeeId] = useState<number | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    void fetchCommissionAssigneesApi(token, 1).then(result => {
+      if (!active) return;
+      setCommissionAssignees(result.assignees);
+      setSafeDefaultCommissionEmployeeId(result.safeDefaultEmployeeId);
+    }).catch(() => {
+      if (!active) return;
+      setCommissionAssignees([]);
+      setSafeDefaultCommissionEmployeeId(null);
+    });
+    return () => { active = false; };
+  }, [token]);
 
   const handleCardPress = (item: MenuItemDto) => {
     if (item.modifierGroups && item.modifierGroups.length > 0) {
       openModifierModal(item);
     } else {
-      addToCart(item, 1, []);
+      addToCart(item, 1, [], undefined, safeDefaultCommissionEmployeeId);
       showToast({
         type: 'success',
         message: `Đã thêm "${item.name}" vào giỏ hàng`
@@ -444,6 +468,8 @@ export const POSScreen: React.FC = () => {
             onCheckout={handleOpenConfirmModal}
             onRemove={removeFromCart}
             onUpdateQuantity={updateCartQuantity}
+            assignees={commissionAssignees}
+            onUpdateAssignee={updateCartCommissionEmployee}
           />
         )}
       </View>
@@ -601,7 +627,7 @@ export const POSScreen: React.FC = () => {
         </View>
       </Modal>
 
-      <ModifierModal visible={isModifierModalOpen} item={selectedMenuItemForModal} onClose={closeModifierModal} onAddToCart={addToCart} />
+      <ModifierModal visible={isModifierModalOpen} item={selectedMenuItemForModal} onClose={closeModifierModal} onAddToCart={(item, quantity, modifiers, notes) => addToCart(item, quantity, modifiers, notes, safeDefaultCommissionEmployeeId)} />
       <ReceiptModal visible={isReceiptModalOpen} order={createdOrder} onClose={() => setIsReceiptModalOpen(false)} />
     </SafeAreaView>
   );

@@ -48,6 +48,7 @@ import {
 } from '../lib/employeeCommissionRealtime';
 import { subscribeToEmployeeSettingsWorkspaceInvalidation, type EmployeeSettingsRealtimeSocket } from '../lib/employeeSettingsRealtime';
 import { bulkUpdateMenuItemsApi } from '../api/menuBulk';
+import { appendOrMergeCommissionCartLine, cartToOrderItems, type CommissionCartLine } from '../features/pos/commissionCart';
 import {
   bulkUpdatePriceListApi,
   commitPriceListImportApi,
@@ -57,14 +58,7 @@ import {
   updatePriceListItemApi
 } from '../api/priceList';
 
-export interface CartItem {
-  menuItem: MenuItemDto;
-  quantity: number;
-  selectedModifiers: SelectedModifierDto[];
-  unitPrice: number;
-  subtotal: number;
-  notes?: string;
-}
+export interface CartItem extends CommissionCartLine {}
 
 interface RestaurantContextType {
   // Menu State
@@ -97,9 +91,11 @@ interface RestaurantContextType {
     item: MenuItemDto,
     quantity: number,
     selectedModifiers: SelectedModifierDto[],
-    notes?: string
+    notes?: string,
+    commissionEmployeeId?: number | null
   ) => void;
   updateCartQuantity: (index: number, quantity: number) => void;
+  updateCartCommissionEmployee: (index: number, employeeId: number | null) => void;
   removeFromCart: (index: number) => void;
   clearCart: () => void;
 
@@ -801,7 +797,8 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     item: MenuItemDto,
     quantity: number,
     selectedModifiers: SelectedModifierDto[],
-    notes?: string
+    notes?: string,
+    commissionEmployeeId: number | null = null
   ) => {
     const modifierPriceTotal = selectedModifiers.reduce((sum, mod) => sum + mod.priceDelta, 0);
     const unitPrice = item.basePrice + modifierPriceTotal;
@@ -813,10 +810,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       selectedModifiers,
       unitPrice,
       subtotal,
-      notes
+      notes,
+      commissionEmployeeId
     };
 
-    setCart((prev) => [...prev, newItem]);
+    setCart((prev) => appendOrMergeCommissionCartLine(prev, newItem));
     closeModifierModal();
   };
 
@@ -839,6 +837,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const removeFromCart = (index: number) => {
     setCart((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const updateCartCommissionEmployee = (index: number, employeeId: number | null) => {
+    setCart(previous => previous.map((item, itemIndex) => itemIndex === index ? { ...item, commissionEmployeeId: employeeId } : item));
   };
 
   const clearCart = () => {
@@ -890,15 +892,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       return { success: false, error: 'Vui lòng chọn bàn ăn cho đơn tại chỗ' };
     }
 
-    const itemsPayload: OrderItemCreateDto[] = cart.map((c) => ({
-      menuItemId: c.menuItem.id,
-      quantity: c.quantity,
-      selectedModifiers: c.selectedModifiers.map(m => ({
-        modifierGroupId: m.modifierGroupId,
-        optionId: m.optionId
-      })) as any,
-      notes: c.notes
-    }));
+    const itemsPayload: OrderItemCreateDto[] = cartToOrderItems(cart, Boolean(qrCodeToken));
 
     const orderPayload = {
       ...(orderType === 'DINE_IN' && tableId ? { tableId } : {}),
@@ -1322,6 +1316,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         cartItemCount,
         addToCart,
         updateCartQuantity,
+        updateCartCommissionEmployee,
         removeFromCart,
         clearCart,
         tables,
