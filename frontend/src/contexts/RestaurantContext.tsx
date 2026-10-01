@@ -41,6 +41,11 @@ import {
   subscribeToEmployeePayrollInvalidation,
   type EmployeePayrollRealtimeSocket
 } from '../lib/employeePayrollRealtime';
+import {
+  nextEmployeeCommissionRevision,
+  subscribeToEmployeeCommissionInvalidation,
+  type EmployeeCommissionRealtimeSocket
+} from '../lib/employeeCommissionRealtime';
 import { subscribeToEmployeeSettingsWorkspaceInvalidation, type EmployeeSettingsRealtimeSocket } from '../lib/employeeSettingsRealtime';
 import { bulkUpdateMenuItemsApi } from '../api/menuBulk';
 import {
@@ -131,6 +136,7 @@ interface RestaurantContextType {
   employeeSchedulesRevision: number;
   employeeAttendanceRevision: number;
   employeePayrollRevision: number;
+  employeeCommissionRevision: number;
   employeeSettingsRevision: number;
   reservationsRevision: number;
   orderPaymentsRevision: number;
@@ -229,6 +235,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [employeeSchedulesRevision, setEmployeeSchedulesRevision] = useState(0);
   const [employeeAttendanceRevision, setEmployeeAttendanceRevision] = useState(0);
   const [employeePayrollRevision, setEmployeePayrollRevision] = useState(0);
+  const [employeeCommissionRevision, setEmployeeCommissionRevision] = useState(0);
   const [employeeSettingsRevision, setEmployeeSettingsRevision] = useState(0);
   const [reservationsRevision, setReservationsRevision] = useState(0);
   const [orderPaymentsRevision, setOrderPaymentsRevision] = useState(0);
@@ -543,6 +550,13 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       socket as unknown as EmployeePayrollRealtimeSocket,
       () => setEmployeePayrollRevision(nextEmployeePayrollRevision)
     );
+    const unsubscribeEmployeeCommissionInvalidation = subscribeToEmployeeCommissionInvalidation(
+      socket as unknown as EmployeeCommissionRealtimeSocket,
+      1,
+      (payload) => setEmployeeCommissionRevision((current) =>
+        nextEmployeeCommissionRevision(current, payload?.revision)
+      )
+    );
     const unsubscribeEmployeeSettingsInvalidation = subscribeToEmployeeSettingsWorkspaceInvalidation(
       socket as unknown as EmployeeSettingsRealtimeSocket,
       1,
@@ -754,6 +768,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       unsubscribeEmployeeScheduleInvalidation();
       unsubscribeEmployeeAttendanceInvalidation();
       unsubscribeEmployeePayrollInvalidation();
+      unsubscribeEmployeeCommissionInvalidation();
       unsubscribeEmployeeSettingsInvalidation();
       socket.disconnect();
     };
@@ -1329,6 +1344,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         employeeSchedulesRevision,
         employeeAttendanceRevision,
         employeePayrollRevision,
+        employeeCommissionRevision,
         employeeSettingsRevision,
         reservationsRevision,
         orderPaymentsRevision,
