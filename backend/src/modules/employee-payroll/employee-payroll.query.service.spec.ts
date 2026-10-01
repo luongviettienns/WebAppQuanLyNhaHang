@@ -15,6 +15,8 @@ const batch = (overrides: Record<string, unknown> = {}) => ({
   totalNetAmount: 12_500_000,
   totalPaidAmount: 2_000_000,
   totalRemainingAmount: 10_500_000,
+  totalCommissionAmount: 250_000,
+  totalCommissionDeferredDebitAmount: 0,
   createdAt: new Date('2026-09-30T08:00:00.000Z'),
   updatedAt: new Date('2026-09-30T08:00:00.000Z'),
   _count: { lines: 2 },
@@ -118,6 +120,8 @@ describe('EmployeePayrollQueryService', () => {
         missingCheckouts: 0,
         reviewRequiredCount: 0,
         grossAmount: 12_000_000,
+        commissionAmount: 250_000,
+        commissionDeferredDebitAmount: 0,
         bonusAmount: 500_000,
         deductionAmount: 0,
         netAmount: 12_500_000,
@@ -151,7 +155,8 @@ describe('EmployeePayrollQueryService', () => {
       employee: { findMany: vi.fn().mockResolvedValue([{ id: 8, updatedAt: new Date('2026-09-30T09:00:00.000Z') }]) },
       employeeCompensation: { findMany: vi.fn().mockResolvedValue([{ id: 4, createdAt: new Date('2026-01-01T00:00:00.000Z') }]) },
       employeeAttendanceSession: { findMany: vi.fn().mockResolvedValue([{ id: 71, updatedAt: new Date('2026-09-30T07:00:00.000Z') }]) },
-      employeeScheduleRule: { findMany: vi.fn().mockResolvedValue([]) }
+      employeeScheduleRule: { findMany: vi.fn().mockResolvedValue([]) },
+      commissionEntry: { count: vi.fn().mockResolvedValue(0) }
     } as never);
 
     const result = await service.detail(3);
@@ -212,6 +217,7 @@ describe('EmployeePayrollQueryService', () => {
         employmentStartDate: new Date('2026-01-01T00:00:00.000Z'), employmentEndDate: null,
         activeCalendarDays: 30, periodCalendarDays: 30, scheduledShifts: 0, completedSessions: 0, actualMinutes: 0,
         confirmedAbsences: 0, missingCheckouts: 0, reviewRequiredCount: 0, grossAmount: 0, bonusAmount: 0,
+        commissionAmount: 0, commissionDeferredDebitAmount: 0,
         deductionAmount: 0, netAmount: 0, paidAmount: 0, remainingAmount: 0, calculationStatus: 'READY', warningCodes: [],
         sourceSnapshot: { settings }, calculatedAt, createdAt: calculatedAt, updatedAt: calculatedAt, adjustments: [], payments: []
       }]
@@ -240,7 +246,8 @@ describe('EmployeePayrollQueryService', () => {
         { id: 6, revision: 2, effectiveFrom: new Date('2026-10-01T00:00:00.000Z'), monday: false, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: false, sunday: false },
         { id: 2, revision: 1, effectiveFrom: new Date('1970-01-01T00:00:00.000Z'), monday: true, tuesday: true, wednesday: true, thursday: true, friday: true, saturday: true, sunday: true }
       ]) },
-      branchHolidayPeriod: { findMany: holidayFindMany }
+      branchHolidayPeriod: { findMany: holidayFindMany },
+      commissionEntry: { count: vi.fn().mockResolvedValue(0) }
     } as never);
 
     expect((await service.detail(3)).sourceStale).toBe(false);
