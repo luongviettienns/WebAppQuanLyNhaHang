@@ -93,7 +93,11 @@ export async function truncateAllTables() {
     try {
       await prismaTest.$executeRawUnsafe(`TRUNCATE TABLE \`${table}\`;`);
     } catch {
-      // Bang co the chua ton tai neu chua migrate
+      try {
+        await prismaTest.$executeRawUnsafe(`DELETE FROM \`${table}\`;`);
+      } catch {
+        // Bang co the chua ton tai neu chua migrate
+      }
     }
   }
   try {
