@@ -23,14 +23,14 @@ vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ theme: {
 } }) }));
 
 const api = vi.hoisted(() => ({
-  workspace: vi.fn(), issues: vi.fn(), ledger: vi.fn(), createPlan: vi.fn(), updatePlan: vi.fn(), activatePlan: vi.fn(), archivePlan: vi.fn(), createRule: vi.fn(), createAssignment: vi.fn(), assignees: vi.fn(), retryIssue: vi.fn(), reassign: vi.fn()
+  workspace: vi.fn(), issues: vi.fn(), ledger: vi.fn(), createPlan: vi.fn(), updatePlan: vi.fn(), activatePlan: vi.fn(), archivePlan: vi.fn(), createRule: vi.fn(), createAssignment: vi.fn(), assignOrderItem: vi.fn(), assignees: vi.fn(), retryIssue: vi.fn(), resolveIssue: vi.fn(), reassign: vi.fn()
 }));
 vi.mock('../../api/employeeCommissions', () => ({
   fetchEmployeeCommissionWorkspaceApi: api.workspace, fetchCommissionIssuesApi: api.issues,
   fetchCommissionLedgerApi: api.ledger, createCommissionPlanApi: api.createPlan, updateCommissionPlanApi: api.updatePlan,
   activateCommissionPlanApi: api.activatePlan, archiveCommissionPlanApi: api.archivePlan, createCommissionRuleApi: api.createRule,
-  createCommissionEmployeeAssignmentApi: api.createAssignment, fetchCommissionAssigneesApi: api.assignees,
-  retryCommissionIssueApi: api.retryIssue, reassignCommissionOrderItemApi: api.reassign
+  createCommissionEmployeeAssignmentApi: api.createAssignment, assignCommissionOrderItemApi: api.assignOrderItem, fetchCommissionAssigneesApi: api.assignees,
+  retryCommissionIssueApi: api.retryIssue, resolveCommissionSaleBasisApi: api.resolveIssue, reassignCommissionOrderItemApi: api.reassign
 }));
 
 import { EmployeeCommissionScreen } from './EmployeeCommissionScreen';
@@ -55,11 +55,11 @@ describe('EmployeeCommissionScreen', () => {
   beforeEach(() => {
     vi.clearAllMocks(); screenState.width = 1280;
     api.workspace.mockImplementation((_token: string, query: any) => Promise.resolve(query.mode === 'EMPLOYEE' ? employeeWorkspace : itemWorkspace));
-    api.issues.mockResolvedValue({ rows: [{ id: 21, reasonCode: 'MISSING_EMPLOYEE', orderItemId: 44, status: 'OPEN' }], pagination: { page: 1, total: 1, totalPages: 1 } });
-    api.ledger.mockResolvedValue({ rows: [{ id: 31, orderItemId: 44, employeeId: 3, employeeNameSnapshot: 'An', menuItemNameSnapshot: 'Cà phê sữa', entryType: 'EARNING', signedAmount: 3000, accountingDate: '2026-10-01' }], pagination: { page: 1, total: 1, totalPages: 1 } });
+    api.issues.mockResolvedValue({ rows: [{ id: 21, type: 'COST_MISSING', orderItemId: 44, saleBasisId: 81, status: 'OPEN' }], pagination: { page: 1, total: 1, totalPages: 1 } });
+    api.ledger.mockResolvedValue({ rows: [{ id: 31, orderItemId: 44, employeeId: 3, employeeSnapshot: { id: 3, code: 'NV003', name: 'An' }, itemSnapshot: { id: 4, sku: 'CF01', name: 'Cà phê sữa' }, type: 'EARNING', commissionAmountDelta: 3000, accountingDate: '2026-10-01', allocations: [{ id: 91, type: 'FINALIZED', payrollBatch: { id: 12, code: 'BL000012' } }] }], pagination: { page: 1, total: 1, totalPages: 1 } });
     api.assignees.mockResolvedValue({ assignees: [{ id: 3, code: 'NV003', name: 'An' }, { id: 6, code: 'NV006', name: 'Bình' }], safeDefaultEmployeeId: null });
     api.createRule.mockResolvedValue({ rule: itemWorkspace.rows[0].rules['7'] });
-    api.retryIssue.mockResolvedValue({}); api.reassign.mockResolvedValue({});
+    api.assignOrderItem.mockResolvedValue({}); api.retryIssue.mockResolvedValue({}); api.resolveIssue.mockResolvedValue({}); api.reassign.mockResolvedValue({});
   });
 
   it('renders the item matrix, plan rail and switches to the employee matrix', async () => {
@@ -68,6 +68,8 @@ describe('EmployeeCommissionScreen', () => {
     expect(screen.root.findByProps({ testID: 'commission-item-row-4' })).toBeDefined();
     expect(screen.root.findByProps({ testID: 'commission-rule-4-7' }).findByType('Text').props.children).toContain('3.000đ/sp');
     expect(screen.root.findAllByProps({ testID: 'commission-issues-count' }).some((node: any) => node.props.children === 2)).toBe(true);
+    await act(async () => { screen.root.findByProps({ testID: 'commission-plan-7' }).props.onPress(); await Promise.resolve(); });
+    expect(api.workspace).toHaveBeenLastCalledWith('token', expect.objectContaining({ planIds: [7] }));
     await act(async () => { screen.root.findByProps({ testID: 'commission-mode-employee' }).props.onPress(); await Promise.resolve(); });
     expect(api.workspace).toHaveBeenLastCalledWith('token', expect.objectContaining({ branchId: 1, mode: 'EMPLOYEE' }));
     expect(screen.root.findByProps({ testID: 'commission-employee-row-3' })).toBeDefined();
@@ -92,6 +94,8 @@ describe('EmployeeCommissionScreen', () => {
     expect(api.retryIssue).toHaveBeenCalledWith('token', 21, expect.stringMatching(/^commission-issue-/));
     await act(async () => { await screen.root.findByProps({ testID: 'commission-open-ledger' }).props.onPress(); });
     expect(screen.root.findByProps({ testID: 'commission-ledger-31' })).toBeDefined();
+    expect(screen.root.findByProps({ testID: 'commission-ledger-amount-31' }).props.children).toContain('3.000');
+    expect(screen.root.findByProps({ testID: 'commission-ledger-allocation-31' }).props.children).toContain('BL000012');
     await act(async () => screen.root.findByProps({ testID: 'commission-ledger-reassign-31' }).props.onPress());
     await act(async () => screen.root.findByProps({ testID: 'commission-reassign-employee-6' }).props.onPress());
     await act(async () => screen.root.findByProps({ testID: 'commission-reassign-reason' }).props.onChangeText('Chuyển đúng người phục vụ'));
@@ -99,12 +103,38 @@ describe('EmployeeCommissionScreen', () => {
     expect(api.reassign).toHaveBeenCalledWith('token', 44, expect.objectContaining({ employeeId: 6, reason: 'Chuyển đúng người phục vụ' }));
   });
 
+  it('resolves a historical cost issue with an audited override instead of current BOM data', async () => {
+    const screen = await renderScreen();
+    await act(async () => { await screen.root.findByProps({ testID: 'commission-open-issues' }).props.onPress(); });
+    await act(async () => screen.root.findByProps({ testID: 'commission-issue-resolve-21' }).props.onPress());
+    await act(async () => screen.root.findByProps({ testID: 'commission-resolution-value' }).props.onChangeText('10000'));
+    await act(async () => screen.root.findByProps({ testID: 'commission-resolution-reason' }).props.onChangeText('Theo phiếu nhập tại ngày bán'));
+    await act(async () => { await screen.root.findByProps({ testID: 'commission-resolution-save' }).props.onPress(); });
+    expect(api.resolveIssue).toHaveBeenCalledWith('token', 81, expect.objectContaining({ type: 'COST_OVERRIDE', resolution: { unitCost: 10000 }, reason: 'Theo phiếu nhập tại ngày bán' }));
+  });
+
+  it('bulk assigns selected unassigned lines only to an eligible assignee', async () => {
+    api.issues.mockResolvedValue({ rows: [
+      { id: 41, type: 'UNASSIGNED_EMPLOYEE', orderItemId: 141, saleBasisId: 241, status: 'OPEN' },
+      { id: 42, type: 'UNASSIGNED_EMPLOYEE', orderItemId: 142, saleBasisId: 242, status: 'OPEN' }
+    ], pagination: { page: 1, pageSize: 50, total: 2, totalPages: 1 } });
+    const screen = await renderScreen();
+    await act(async () => { await screen.root.findByProps({ testID: 'commission-open-issues' }).props.onPress(); });
+    await act(async () => screen.root.findByProps({ testID: 'commission-issue-select-41' }).props.onPress());
+    await act(async () => screen.root.findByProps({ testID: 'commission-issue-select-42' }).props.onPress());
+    await act(async () => screen.root.findByProps({ testID: 'commission-bulk-employee-3' }).props.onPress());
+    await act(async () => { await screen.root.findByProps({ testID: 'commission-bulk-assign' }).props.onPress(); });
+    expect(api.assignOrderItem.mock.calls).toEqual(expect.arrayContaining([
+      ['token', 141, 3], ['token', 142, 3]
+    ]));
+  });
+
   it('shows a compact filter drawer and truthful error/empty states', async () => {
     screenState.width = 600; api.workspace.mockRejectedValueOnce(new Error('Mất kết nối'));
     const errorScreen = await renderScreen();
     expect(errorScreen.root.findByProps({ testID: 'commission-error' }).props.children).toContain('Mất kết nối');
     await act(async () => errorScreen.unmount());
-    api.workspace.mockResolvedValueOnce({ ...itemWorkspace, rows: [], pagination: { ...itemWorkspace.pagination, total: 0 } });
+    api.workspace.mockResolvedValue({ ...itemWorkspace, rows: [], pagination: { ...itemWorkspace.pagination, total: 0 } });
     const emptyScreen = await renderScreen();
     expect(emptyScreen.root.findByProps({ testID: 'commission-filters-toggle' })).toBeDefined();
     expect(emptyScreen.root.findByProps({ testID: 'commission-empty' }).props.children).toContain('Chưa có hàng hóa');

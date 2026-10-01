@@ -28,8 +28,8 @@ const planArchiveSchema = z.object({ reason }).strict();
 const ruleCreateSchema = z.object({
   menuItemId: positiveId,
   type: z.enum(['FIXED_PER_UNIT', 'PERCENT_NET_REVENUE', 'PERCENT_GROSS_PROFIT']),
-  fixedAmount: z.number().int().positive().nullable().optional(),
-  rateBps: z.number().int().min(1).max(10_000).nullable().optional(),
+  fixedAmount: z.number().int().min(0).nullable().optional(),
+  rateBps: z.number().int().min(0).max(10_000).nullable().optional(),
   effectiveFrom: isoDate
 }).strict().superRefine((value, context) => {
   const fixed = value.fixedAmount != null;
@@ -111,4 +111,3 @@ export function parseCommissionWorkspaceQuery(value: unknown): CommissionWorkspa
   return { ...parsed, selectedPlanIds: parsed.planIds?.split(',').map(Number) };
 }
 export const parseCommissionListQuery = (value: unknown) => listQuerySchema.parse(value);
-

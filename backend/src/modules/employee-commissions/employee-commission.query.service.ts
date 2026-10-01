@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import type { CommissionListQuery, CommissionWorkspaceQuery } from './employee-commission.schemas';
+import { commissionBusinessDate } from './employee-commission.eligibility';
 
 function isoDate(value: Date | null): string | null {
   return value?.toISOString().slice(0, 10) ?? null;
@@ -100,8 +101,7 @@ export class EmployeeCommissionQueryService {
 
   static async assignees(branchId: number, currentUserId: number) {
     await assertMainBranch(branchId);
-    const now = new Date();
-    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const today = commissionBusinessDate();
     const assignments = await prisma.commissionPlanEmployee.findMany({
       where: {
         plan: { branchId, status: 'ACTIVE', effectiveFrom: { lte: today }, OR: [{ effectiveTo: null }, { effectiveTo: { gte: today } }] },
@@ -134,7 +134,11 @@ export class EmployeeCommissionQueryService {
     };
     const [total, rows] = await Promise.all([
       prisma.commissionEntry.count({ where }),
-      prisma.commissionEntry.findMany({ where, skip: (query.page - 1) * query.pageSize, take: query.pageSize, orderBy: [{ accountingDate: 'desc' }, { id: 'desc' }] })
+      prisma.commissionEntry.findMany({
+        where, skip: (query.page - 1) * query.pageSize, take: query.pageSize,
+        orderBy: [{ accountingDate: 'desc' }, { id: 'desc' }],
+        include: { allocations: { orderBy: { createdAt: 'asc' }, include: { payrollBatch: { select: { id: true, code: true, status: true } } } } }
+      })
     ]);
     return { rows, pagination: pagination(query.page, query.pageSize, total) };
   }

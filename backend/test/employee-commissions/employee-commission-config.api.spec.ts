@@ -130,6 +130,17 @@ describe('employee commission configuration API', () => {
     ]);
   });
 
+  it('accepts zero-valued rules as an explicit no-commission configuration', async () => {
+    const plan = (await createPlan({ code: 'PLAN-ZERO' })).body.data.plan;
+    const fixed = await request(app).post(`/api/employee-commissions/plans/${plan.id}/rules`).set(auth()).send({
+      menuItemId, type: 'FIXED_PER_UNIT', fixedAmount: 0, effectiveFrom: '2026-10-01'
+    });
+    const percent = await request(app).post(`/api/employee-commissions/plans/${plan.id}/rules`).set(auth()).send({
+      menuItemId, type: 'PERCENT_NET_REVENUE', rateBps: 0, effectiveFrom: '2026-11-01'
+    });
+    expect([fixed.status, percent.status]).toEqual([201, 201]);
+  });
+
   it('rejects overlapping employee plan assignments in one branch', async () => {
     const firstPlan = (await createPlan({ code: 'PLAN-A' })).body.data.plan;
     const secondPlan = (await createPlan({ code: 'PLAN-B' })).body.data.plan;
@@ -146,6 +157,9 @@ describe('employee commission configuration API', () => {
   });
 
   it('supports explicit nullable pre-recognition order-item assignment', async () => {
+    const plan = (await createPlan({ code: 'PLAN-ASSIGN' })).body.data.plan;
+    await prismaTest.commissionPlan.update({ where: { id: plan.id }, data: { status: 'ACTIVE' } });
+    await prismaTest.commissionPlanEmployee.create({ data: { planId: plan.id, employeeId, effectiveFrom: new Date('2026-10-01T00:00:00.000Z') } });
     const order = await prismaTest.order.create({
       data: { code: `ORDER-${Date.now()}`, totalAmount: 30_000, vatAmount: 0, finalAmount: 30_000, createdByUserId: adminId }
     });
@@ -153,11 +167,23 @@ describe('employee commission configuration API', () => {
       data: { orderId: order.id, menuItemId, quantity: 1, unitPrice: 30_000, subtotal: 30_000 }
     });
     const assigned = await request(app).patch(`/api/employee-commissions/order-items/${item.id}/assignment`).set(auth(cashierToken)).send({ commissionEmployeeId: employeeId });
+    const ineligible = await request(app).patch(`/api/employee-commissions/order-items/${item.id}/assignment`).set(auth(cashierToken)).send({ commissionEmployeeId: cashierEmployeeId });
     const cleared = await request(app).patch(`/api/employee-commissions/order-items/${item.id}/assignment`).set(auth(cashierToken)).send({ commissionEmployeeId: null });
 
     expect(assigned.status).toBe(200);
+    expect(ineligible.status).toBe(409);
+    expect(ineligible.body.error.code).toBe('COMMISSION_EMPLOYEE_NOT_ELIGIBLE');
     expect(cleared.status).toBe(200);
     expect((await prismaTest.orderItem.findUniqueOrThrow({ where: { id: item.id } })).commissionEmployeeId).toBeNull();
+  });
+
+  it('rejects a staff order line assigned to a working employee outside every active plan', async () => {
+    const response = await request(app).post('/api/orders').set(auth(cashierToken)).send({
+      orderType: 'TAKE_AWAY', idempotencyKey: `commission-order-${Date.now()}`,
+      items: [{ menuItemId, quantity: 1, commissionEmployeeId: employeeId }]
+    });
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe('COMMISSION_EMPLOYEE_NOT_ELIGIBLE');
   });
 
   it('filters and paginates the item workspace with matrix cells', async () => {

@@ -127,6 +127,13 @@ describe('employee commission recognition ledger', () => {
     await EmployeeCommissionRecognitionService.reassignOrderItem(order.items[0].id, {
       employeeId: secondEmployeeId, reason: 'Đổi nhân viên phục vụ', idempotencyKey: 'reassign-owner-001'
     }, { id: adminId, name: 'Ledger Admin' });
+    await expect(EmployeeCommissionRecognitionService.reassignOrderItem(order.items[0].id, {
+      employeeId: secondEmployeeId, reason: 'Lý do khác với lần đầu', idempotencyKey: 'reassign-owner-001'
+    }, { id: adminId, name: 'Ledger Admin' })).rejects.toMatchObject({ statusCode: 409, code: 'IDEMPOTENCY_KEY_REUSED' });
+    const reassignmentPair = await prismaTest.commissionEntry.findMany({ where: { orderItemId: order.items[0].id, type: { in: ['REASSIGNMENT_REVERSAL', 'REASSIGNMENT_EARNING'] } } });
+    expect(reassignmentPair).toHaveLength(2);
+    expect(reassignmentPair[0].correlationKey).toBeTruthy();
+    expect(reassignmentPair[1].correlationKey).toBe(reassignmentPair[0].correlationKey);
     const returned = await prismaTest.orderReturn.create({ data: {
       returnCode: `RETURN-OWNER-${Date.now()}`, orderId: order.id, totalRefundDue: 30_000, refundedAmount: 30_000,
       completedAt: new Date('2026-10-02T00:00:00.000Z'), createdByUserId: adminId,
@@ -138,5 +145,14 @@ describe('employee commission recognition ledger', () => {
     const reversal = await prismaTest.commissionEntry.findFirstOrThrow({ where: { orderReturnId: returned.id, type: 'RETURN_REVERSAL' } });
     expect(reversal.employeeId).toBe(secondEmployeeId);
     expect(reversal.commissionAmountDelta).toBe(-5_000);
+  });
+
+  it('rejects reassignment to a working employee outside every active effective plan', async () => {
+    const outsider = await prismaTest.employee.create({ data: { code: `NV-X-${Date.now()}`, attendanceCode: `CC-X-${Date.now()}`, name: 'Ngoài bảng', phone: '0900000099' } });
+    const order = await paidOrder(employeeId, 1);
+    await prisma.$transaction(tx => EmployeeCommissionRecognitionService.recognizePaidOrder(tx, order.id, order.paidAt!, { id: adminId }));
+    await expect(EmployeeCommissionRecognitionService.reassignOrderItem(order.items[0].id, {
+      employeeId: outsider.id, reason: 'Không hợp lệ', idempotencyKey: 'reassign-outsider-001'
+    }, { id: adminId, name: 'Ledger Admin' })).rejects.toMatchObject({ statusCode: 409, code: 'COMMISSION_EMPLOYEE_NOT_ELIGIBLE' });
   });
 });

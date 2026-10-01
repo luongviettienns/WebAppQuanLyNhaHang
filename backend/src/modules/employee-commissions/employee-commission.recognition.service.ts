@@ -6,6 +6,7 @@ import { AuditService } from '../audit/audit.service';
 import { businessDateAt } from '../employee-attendance/attendance-domain';
 import { allocateDiscountLargestRemainder, calculateCommissionSnapshot, prorateSnapshot, resolveCurrentOwner } from './employee-commission.domain';
 import type { CommissionReassignInput } from './employee-commission.schemas';
+import { assertCommissionEmployeeEligible } from './employee-commission.eligibility';
 
 type Actor = { id?: number; name?: string | null };
 type RuleCandidate = {
@@ -270,10 +271,13 @@ export class EmployeeCommissionRecognitionService {
     const committed = await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM OrderItem WHERE id = ${orderItemId} FOR UPDATE`;
       const replay = await tx.commissionEntry.findUnique({ where: { eventKey: `REASSIGN_EARNING:${orderItemId}:${input.idempotencyKey}` } });
-      if (replay) return { earning: replay, changed: false };
-      const employee = await tx.employee.findUnique({ where: { id: input.employeeId }, select: { id: true, code: true, name: true, status: true } });
-      if (!employee) throw ApiError.notFound('Không tìm thấy nhân viên.', 'EMPLOYEE_NOT_FOUND');
-      if (employee.status !== 'WORKING') throw ApiError.conflict('Nhân viên không còn làm việc.', 'EMPLOYEE_NOT_WORKING');
+      if (replay) {
+        if (replay.employeeId !== input.employeeId || replay.reason !== input.reason) {
+          throw ApiError.conflict('Idempotency key đã được dùng với nội dung khác.', 'IDEMPOTENCY_KEY_REUSED');
+        }
+        return { earning: replay, changed: false };
+      }
+      const employee = await assertCommissionEmployeeEligible(tx, input.employeeId);
       const entries = await tx.commissionEntry.findMany({ where: { orderItemId }, orderBy: { id: 'asc' } });
       const owner = resolveCurrentOwner(entries.map(item => ({ id: item.id, type: item.type, employeeId: item.employeeId, quantityDelta: item.quantityDelta, sourceEntryId: item.sourceEntryId })));
       if (!owner.ok) throw ApiError.conflict('Không xác định được người đang hưởng hoa hồng.', 'COMMISSION_ENTRY_NOT_FOUND');
@@ -282,8 +286,9 @@ export class EmployeeCommissionRecognitionService {
       const consumed = await directConsumed(tx, source.id);
       const remaining = (field: 'grossRevenueDelta' | 'allocatedDiscountDelta' | 'netRevenueDelta' | 'costAmountDelta' | 'grossProfitDelta' | 'commissionAmountDelta', used: number) => Math.abs(source[field]) - used;
       const rootId = source.originalEntryId ?? source.id;
+      const correlationKey = `REASSIGN:${orderItemId}:${input.idempotencyKey}`;
       const common = {
-        originalEntryId: rootId, sourceEntryId: source.id, saleBasisId: source.saleBasisId, orderId: source.orderId, orderItemId,
+        correlationKey, originalEntryId: rootId, sourceEntryId: source.id, saleBasisId: source.saleBasisId, orderId: source.orderId, orderItemId,
         commissionPlanId: source.commissionPlanId, commissionRuleId: source.commissionRuleId,
         saleBusinessDate: source.saleBusinessDate, accountingDate: dateOnly(businessDateAt(new Date())), occurredAt: new Date(),
         itemSnapshot: inputJson(source.itemSnapshot), ruleSnapshot: inputJson(source.ruleSnapshot), reason: input.reason,

@@ -13,6 +13,7 @@ import type {
   CommissionRuleCreateInput
 } from './employee-commission.schemas';
 import { EmployeeCommissionRecognitionService } from './employee-commission.recognition.service';
+import { assertCommissionEmployeeEligible } from './employee-commission.eligibility';
 
 export interface CommissionActor { id: number; name?: string | null }
 type ChangeReason = 'PLAN_CHANGED' | 'RULE_CHANGED' | 'ASSIGNMENT_CHANGED' | 'ISSUE_CHANGED' | 'LEDGER_CHANGED';
@@ -199,9 +200,7 @@ export class EmployeeCommissionMutationService {
           throw ApiError.conflict('Dòng món đã ghi nhận hoa hồng; hãy dùng thao tác đổi người có lý do.', 'COMMISSION_HISTORY_LOCKED');
         }
         if (commissionEmployeeId != null) {
-          const employee = await tx.employee.findUnique({ where: { id: commissionEmployeeId } });
-          if (!employee) throw ApiError.notFound('Không tìm thấy nhân viên.', 'EMPLOYEE_NOT_FOUND');
-          if (employee.status !== 'WORKING') throw ApiError.conflict('Nhân viên không còn làm việc.', 'EMPLOYEE_NOT_WORKING');
+          await assertCommissionEmployeeEligible(tx, commissionEmployeeId);
         }
         const updated = await tx.orderItem.update({ where: { id: orderItemId }, data: { commissionEmployeeId } });
         if (current.order.paymentStatus === 'PAID' && commissionEmployeeId != null) {
@@ -230,8 +229,8 @@ export class EmployeeCommissionMutationService {
       const validType = ['FIXED_PER_UNIT', 'PERCENT_NET_REVENUE', 'PERCENT_GROSS_PROFIT'].includes(String(type));
       const validPlan = Number.isSafeInteger(values.planId) && Number(values.planId) > 0;
       const validLevel = type === 'FIXED_PER_UNIT'
-        ? Number.isSafeInteger(fixed) && Number(fixed) > 0 && rate == null
-        : Number.isSafeInteger(rate) && Number(rate) > 0 && Number(rate) <= 10_000 && fixed == null;
+        ? Number.isSafeInteger(fixed) && Number(fixed) >= 0 && rate == null
+        : Number.isSafeInteger(rate) && Number(rate) >= 0 && Number(rate) <= 10_000 && fixed == null;
       if (!validType || !validPlan || !validLevel) throw ApiError.badRequest('RULE_OVERRIDE cần planId, loại và mức hoa hồng hợp lệ.');
     }
     const digest = crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex');

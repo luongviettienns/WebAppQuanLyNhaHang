@@ -20,6 +20,7 @@ import { createHash } from 'crypto';
 import { ReservationsService } from '../reservations/reservations.service';
 import { getVietQrInstructions } from '../../lib/vietqr';
 import { EmployeeCommissionRecognitionService } from '../employee-commissions/employee-commission.recognition.service';
+import { assertCommissionEmployeeEligible } from '../employee-commissions/employee-commission.eligibility';
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -359,10 +360,7 @@ export class OrdersService {
           .map(item => item.commissionEmployeeId as number | null)
           .filter((id): id is number => id !== null))];
         if (commissionEmployeeIds.length) {
-          const workingEmployees = await tx.employee.count({ where: { id: { in: commissionEmployeeIds }, status: 'WORKING' } });
-          if (workingEmployees !== commissionEmployeeIds.length) {
-            throw ApiError.badRequest('Nhân viên phụ trách hoa hồng không tồn tại hoặc đã nghỉ việc');
-          }
+          for (const employeeId of commissionEmployeeIds) await assertCommissionEmployeeEligible(tx, employeeId);
         }
         let reservationContext: { id: number; customerId: number } | null = null;
         if (input.orderType === 'DINE_IN' && resolvedTableId) {

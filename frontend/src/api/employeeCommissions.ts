@@ -32,6 +32,20 @@ export interface CommissionWorkspaceQuery {
 }
 export interface CommissionAssigneeDto { id: number; code: string; name: string }
 export interface CommissionAssigneesDto { assignees: CommissionAssigneeDto[]; safeDefaultEmployeeId: number | null }
+export type CommissionIssueType = 'UNASSIGNED_EMPLOYEE' | 'PLAN_MISSING' | 'PLAN_CONFLICT' | 'RULE_MISSING' | 'RULE_CONFLICT' | 'COST_MISSING' | 'LEDGER_CONFLICT';
+export interface CommissionIssueDto {
+  id: number; orderItemId: number; saleBasisId: number; type: CommissionIssueType; status: 'OPEN' | 'RESOLVED';
+  diagnostic?: Record<string, unknown> | null; firstDetectedAt?: string; lastDetectedAt?: string;
+}
+export interface CommissionLedgerAllocationDto {
+  id: number; type: 'RESERVED' | 'FINALIZED' | 'RELEASED'; allocatedAmount: number;
+  payrollBatch: { id: number; code: string; status: string };
+}
+export interface CommissionLedgerRowDto {
+  id: number; orderItemId: number; employeeId: number; type: string; commissionAmountDelta: number;
+  accountingDate: string; employeeSnapshot: { id?: number; code?: string; name?: string };
+  itemSnapshot: { id?: number; sku?: string; name?: string }; allocations: CommissionLedgerAllocationDto[];
+}
 export interface CommissionPlanInput { branchId: number; code: string; name: string; effectiveFrom: string; effectiveTo?: string | null }
 export interface CommissionRuleInput { menuItemId: number; type: CommissionRuleType; fixedAmount?: number | null; rateBps?: number | null; effectiveFrom: string }
 export interface CommissionEmployeeAssignmentInput { employeeId: number; effectiveFrom: string; effectiveTo?: string | null; autoAssignOwnPos: boolean }
@@ -70,8 +84,8 @@ async function request<T>(token: string | null, path: string, method = 'GET', bo
 export const fetchEmployeeCommissionWorkspaceApi = (token: string | null, query: CommissionWorkspaceQuery = {}) =>
   request<EmployeeCommissionWorkspaceDto>(token, `/workspace${queryString(query as Record<string, unknown>)}`);
 export const fetchCommissionAssigneesApi = (token: string | null, branchId = 1) => request<CommissionAssigneesDto>(token, `/assignees?branchId=${branchId}`);
-export const fetchCommissionIssuesApi = (token: string | null, query: Record<string, unknown> = {}) => request<{ rows: unknown[]; pagination: unknown }>(token, `/issues${queryString(query)}`);
-export const fetchCommissionLedgerApi = (token: string | null, query: Record<string, unknown> = {}) => request<{ rows: unknown[]; pagination: unknown }>(token, `/ledger${queryString(query)}`);
+export const fetchCommissionIssuesApi = (token: string | null, query: Record<string, unknown> = {}) => request<{ rows: CommissionIssueDto[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } }>(token, `/issues${queryString(query)}`);
+export const fetchCommissionLedgerApi = (token: string | null, query: Record<string, unknown> = {}) => request<{ rows: CommissionLedgerRowDto[]; pagination: { page: number; pageSize: number; total: number; totalPages: number } }>(token, `/ledger${queryString(query)}`);
 export const createCommissionPlanApi = (token: string | null, input: CommissionPlanInput) => request<{ plan: CommissionPlanDto }>(token, '/plans', 'POST', input);
 export const updateCommissionPlanApi = (token: string | null, planId: number, input: { name: string }) => request<{ plan: CommissionPlanDto }>(token, `/plans/${planId}`, 'PATCH', input);
 export const activateCommissionPlanApi = (token: string | null, planId: number) => request<{ plan: CommissionPlanDto }>(token, `/plans/${planId}/activate`, 'POST', {});
@@ -82,4 +96,3 @@ export const assignCommissionOrderItemApi = (token: string | null, orderItemId: 
 export const reassignCommissionOrderItemApi = (token: string | null, orderItemId: number, input: CommissionReassignInput) => request<unknown>(token, `/order-items/${orderItemId}/reassign`, 'POST', input);
 export const retryCommissionIssueApi = (token: string | null, issueId: number, idempotencyKey: string) => request<unknown>(token, `/issues/${issueId}/retry`, 'POST', { idempotencyKey });
 export const resolveCommissionSaleBasisApi = (token: string | null, saleBasisId: number, input: CommissionResolutionInput) => request<unknown>(token, `/sale-bases/${saleBasisId}/resolutions`, 'POST', input);
-
