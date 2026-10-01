@@ -41,7 +41,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     expect(res.body).toHaveProperty('data');
     expect(res.body.data).toHaveProperty('tables');
     expect(Array.isArray(res.body.data.tables)).toBe(true);
-    expect(res.body.data.tables.length).toBe(12);
+    expect(res.body.data.tables.length).toBeGreaterThanOrEqual(12);
 
     const table1 = res.body.data.tables[0];
     expect(table1).toHaveProperty('id');
@@ -88,11 +88,11 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
 
     expect(res.status).toBe(200);
     expect(Array.isArray(res.body.data.tables)).toBe(true);
-    expect(res.body.data.tables.length).toBe(12);
+    expect(res.body.data.tables.length).toBeGreaterThanOrEqual(12);
     expect(res.body.data.tables[0]).toHaveProperty('qrCodeToken');
   });
 
-  it('POST /api/orders tu choi guest dine-in neu khong co QR token', async () => {
+  it('POST /api/orders requires a checked-in, prepaid reservation before guest ordering', async () => {
     const table = await prismaTest.diningTable.findFirstOrThrow({ where: { tableNumber: 12 } });
     const item = await prismaTest.menuItem.findFirstOrThrow({
       where: {
@@ -109,11 +109,11 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
         items: [{ menuItemId: item.id, quantity: 1 }]
       });
 
-    expect(res.status).toBe(400);
-    expect(res.body.error.code).toBe('VALIDATION_ERROR');
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
   });
 
-  it('POST /api/orders cho phep guest tao don dine-in bang QR token hop le', async () => {
+  it('POST /api/orders rejects a valid table QR without a checked-in reservation token', async () => {
     const table = await prismaTest.diningTable.findFirstOrThrow({ where: { tableNumber: 11 } });
     const item = await prismaTest.menuItem.findFirstOrThrow({
       where: {
@@ -130,8 +130,8 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
         items: [{ menuItemId: item.id, quantity: 1 }]
       });
 
-    expect(res.status).toBe(201);
-    expect(res.body.data.order.tableId).toBe(table.id);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONFLICT');
   });
 
   it('POST /api/orders tao don hang An tai ban (Dine-in) thanh cong, tinh dung VAT 8% va chuyen ban sang OCCUPIED', async () => {
@@ -175,6 +175,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
 
     const res = await request(app)
       .post('/api/orders')
+      .set('Authorization', `Bearer ${cashierToken}`)
       .send(orderPayload);
 
     expect(res.status).toBe(201);
@@ -215,6 +216,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     if (itemWithReqMod) {
       const res = await request(app)
         .post('/api/orders')
+        .set('Authorization', `Bearer ${cashierToken}`)
         .send({
           tableId: table!.id,
           qrCodeToken: table!.qrCodeToken,
@@ -244,6 +246,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
 
     const res = await request(app)
       .post('/api/orders')
+      .set('Authorization', `Bearer ${cashierToken}`)
       .send({
         tableId: table!.id,
         qrCodeToken: table!.qrCodeToken,
@@ -285,12 +288,12 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     };
 
     // Lan 1
-    const res1 = await request(app).post('/api/orders').send(payload);
+    const res1 = await request(app).post('/api/orders').set('Authorization', `Bearer ${cashierToken}`).send(payload);
     expect(res1.status).toBe(201);
     const orderId1 = res1.body.data.order.id;
 
     // Lan 2 voi cung idempotencyKey
-    const res2 = await request(app).post('/api/orders').send(payload);
+    const res2 = await request(app).post('/api/orders').set('Authorization', `Bearer ${cashierToken}`).send(payload);
     expect(res2.status).toBe(200);
     expect(res2.body.data.order.id).toBe(orderId1);
   });

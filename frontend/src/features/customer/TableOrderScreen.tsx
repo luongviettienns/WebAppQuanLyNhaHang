@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   ActivityIndicator,
   FlatList,
+  Image,
   Modal,
   Platform,
   Pressable,
@@ -25,10 +26,12 @@ import { MenuItemCard } from '../pos/MenuItemCard';
 import { ModifierModal } from '../pos/ModifierModal';
 import { CustomerCartModal } from './CustomerCartModal';
 import { notificationHelper } from '../../lib/notificationHelper';
+import { declareReservationOrderPaymentApi, ReservationOrderPaymentDeclaration } from '../../api/reservations';
 
 interface Props {
   tableNumber?: number;
   qrCodeToken?: string;
+  reservationAccessToken?: string;
 }
 
 const formatVND = (amount: number) =>
@@ -50,7 +53,7 @@ const orderSteps = [
   { title: 'Sẵn sàng phục vụ', description: 'Nhân viên sẽ mang món đến bàn ngay.', icon: UtensilsCrossed }
 ] as const;
 
-export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken }) => {
+export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken, reservationAccessToken }) => {
   const { theme } = useTheme();
   const { showToast } = useToast();
   const {
@@ -77,10 +80,12 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     tables,
     fetchTables,
     activeTableOrder,
-    latestOrderStatusChanged
+    latestOrderStatusChanged,
+    orderPaymentsRevision
   } = useRestaurant();
 
   const [currentOrder, setCurrentOrder] = useState<OrderDto | null>(null);
+  const [paymentDeclaration, setPaymentDeclaration] = useState<ReservationOrderPaymentDeclaration | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [isVietQRModalOpen, setIsVietQRModalOpen] = useState(false);
@@ -236,7 +241,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
         setSelectedOrderId(latestTableOrder.id);
       }
       setCurrentOrder((prev) => {
-        if (!prev || prev.id !== latestTableOrder.id || prev.status !== latestTableOrder.status) {
+        if (!prev || prev.id !== latestTableOrder.id || prev.status !== latestTableOrder.status || prev.paymentStatus !== latestTableOrder.paymentStatus || prev.payLaterAuthorized !== latestTableOrder.payLaterAuthorized) {
           return latestTableOrder;
         }
         return prev;
@@ -248,6 +253,15 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
       }
     }
   }, [table?.orders, selectedOrderId, notifyStatusTransition]);
+
+  useEffect(() => {
+    if (orderPaymentsRevision > 0) void fetchTables();
+  }, [orderPaymentsRevision, fetchTables]);
+
+  useEffect(() => {
+    if (!currentOrder || (!currentOrder.payLaterAuthorized && currentOrder.paymentStatus !== 'PAID')) return;
+    setPaymentDeclaration(null);
+  }, [currentOrder?.payLaterAuthorized, currentOrder?.paymentStatus]);
 
   // Lang nghe socket cap nhat tien do don hang theo thoi gian thuc cho khach
   useEffect(() => {
@@ -322,20 +336,38 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     notificationHelper.requestPermission().catch(() => {});
 
     const tokenToSend = effectiveQrToken || (table as any)?.qrCodeToken || undefined;
-    const result = await createDineInOrder(tableId, orderNotes.trim() || undefined, tokenToSend, appliedVoucher?.code);
+    if (!reservationAccessToken) {
+      const message = 'Đặt bàn cần được nhân viên check-in trước khi gọi món. Hãy đưa mã đặt chỗ cho nhân viên.';
+      setOrderError(message); setIsSubmitting(false); return;
+    }
+    const result = await createDineInOrder(tableId, orderNotes.trim() || undefined, tokenToSend, appliedVoucher?.code, reservationAccessToken);
     setIsSubmitting(false);
 
     if (result.success && result.order) {
-      setCurrentOrder(result.order);
+      let order = result.order;
+      let declaration: ReservationOrderPaymentDeclaration;
+      try {
+        declaration = await declareReservationOrderPaymentApi(order.id, reservationAccessToken);
+        setPaymentDeclaration(declaration);
+        order = declaration.order;
+      } catch (failure: any) {
+        setCurrentOrder(order);
+        setOrderError(failure.message || 'Order đã tạo nhưng chưa thể khai báo thanh toán. Vui lòng nhờ thu ngân kiểm tra.');
+        setIsBrowsingMenu(false); setIsCartModalOpen(false); setOrderNotes('');
+        return;
+      }
+      setCurrentOrder(order);
       setSelectedOrderId(result.order.id);
       setIsBrowsingMenu(false);
       setIsCartModalOpen(false);
       setOrderNotes('');
       setAppliedVoucher(null);
-      showToast({
-        type: 'success',
-        title: 'Đặt món thành công! 🚀',
-        message: `Đơn hàng Bàn ${formatTableNumber(displayTableNumber)} đã được gửi xuống Bếp.`
+      showToast(declaration.amountDue > 0 ? {
+        type: 'info', title: 'Order đang chờ thanh toán',
+        message: `Chuyển ${formatVND(declaration.amountDue)} và chờ thu ngân xác nhận. Bếp chưa nhận order.`
+      } : {
+        type: 'success', title: 'Đặt món thành công!',
+        message: `Tiền cọc đã đủ thanh toán; order bàn ${formatTableNumber(displayTableNumber)} đã được gửi xuống bếp.`
       });
 
       // Sau khi dat mon thanh cong, hoi khach co muon nhan thong bao va rung chuong khong
@@ -1060,14 +1092,32 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
           setAppliedVoucher(null);
         }}
         onSubmitOrder={() => void handleSendToKitchen()}
+        submitLabel={`Tạo order & thanh toán trước (${formatVND(cartTotal)})`}
         isSubmitting={isSubmitting}
         onClose={() => setIsCartModalOpen(false)}
       />
+      <Modal visible={!!paymentDeclaration && paymentDeclaration.amountDue > 0} transparent animationType="fade" onRequestClose={() => setPaymentDeclaration(null)}>
+        <View style={[styles.paymentBackdrop, { backgroundColor: theme.overlay }]}>
+          <View style={[styles.paymentModal, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
+            <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Thanh toán order {paymentDeclaration?.order.code}</Text>
+            <Text style={{ color: theme.textSecondary }}>Order chưa được chuyển xuống bếp. Chuyển khoản và nhập đúng nội dung bên dưới; nhân viên sẽ đối chiếu trước khi bếp nhận món.</Text>
+            <Text style={[styles.depositAmount, { color: theme.primary }]}>{formatVND(paymentDeclaration?.amountDue || 0)}</Text>
+            {paymentDeclaration?.paymentInstructions ? <Image source={{ uri: paymentDeclaration.paymentInstructions.qrUrl }} accessibilityLabel="Mã VietQR thanh toán order" style={styles.paymentQr} /> : <Text style={{ color: theme.textSecondary }}>Nhà hàng chưa cấu hình QR nhận tiền. Vui lòng hỏi thu ngân thông tin chuyển khoản.</Text>}
+            <Text selectable style={[styles.transferCode, { backgroundColor: theme.surfaceSunken, color: theme.textPrimary }]}>{paymentDeclaration?.transferContent}</Text>
+            <Button variant="primary" label="Đã hiểu" onPress={() => setPaymentDeclaration(null)} />
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  paymentBackdrop: { alignItems: 'center', flex: 1, justifyContent: 'center', padding: spacing.md },
+  paymentModal: { alignItems: 'center', borderRadius: radii.lg, borderWidth: 1, gap: spacing.md, maxWidth: 460, padding: spacing.lg, width: '100%' },
+  depositAmount: { fontFamily: typography.families.bodyBold, fontSize: typography.sizes.xxl },
+  paymentQr: { height: 220, width: 220 },
+  transferCode: { borderRadius: radii.sm, fontFamily: typography.families.bodyBold, padding: spacing.md, textAlign: 'center', width: '100%' },
   container: { flex: 1 },
   customerHeader: {
     alignItems: 'center',

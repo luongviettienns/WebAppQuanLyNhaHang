@@ -5,16 +5,24 @@ import { useTheme } from '../contexts/ThemeContext';
 import { LoginScreen } from '../features/auth/LoginScreen';
 import { TableOrderScreen } from '../features/customer/TableOrderScreen';
 import { RoleTabs } from './RoleTabs';
+import { ReservationBookingScreen } from '../features/customer/ReservationBookingScreen';
+import { EmployeeAttendanceKioskScreen } from '../features/attendance-kiosk/EmployeeAttendanceKioskScreen';
 
 export const RootNavigator: React.FC = () => {
   const { user, isRestoringSession } = useAuth();
   const { theme } = useTheme();
 
   // Tu dong phat hien QR token/so ban khi khach quet ma QR
-  const [guestQrContext] = useState<{ tableNumber: number | null; qrCodeToken: string | null }>(() => {
+  const [guestQrContext] = useState<{ tableNumber: number | null; qrCodeToken: string | null; reservationAccessToken: string | null; bookingAccessToken: string | null; bookingRoute: boolean; kioskRoute: boolean }>(() => {
     if (typeof window !== 'undefined' && window.location) {
+      const pathname = window.location.pathname.replace(/\/+$/, '');
+      if (pathname === '/kiosk-cham-cong') {
+        return { tableNumber: null, qrCodeToken: null, reservationAccessToken: null, bookingAccessToken: null, bookingRoute: false, kioskRoute: true };
+      }
       const searchParams = new URLSearchParams(window.location.search);
       const rawToken = searchParams.get('token') || searchParams.get('qr') || searchParams.get('tableToken');
+      const bookingAccessToken = searchParams.get('bookingToken');
+      const reservationAccessToken = searchParams.get('reservationToken');
       const tableParam = searchParams.get('table');
       let tableNumber: number | null = null;
       if (tableParam && !isNaN(Number(tableParam))) {
@@ -28,13 +36,24 @@ export const RootNavigator: React.FC = () => {
       const tokenMatch = hash.match(/(?:token|qr|tableToken)[=/]([^&]+)/i);
       const parsedToken = rawToken || (tokenMatch?.[1] ? decodeURIComponent(tokenMatch[1]) : null);
       const validToken = parsedToken && parsedToken !== 'undefined' && parsedToken !== 'null' ? parsedToken : null;
+      const bookingRoute = searchParams.get('booking') === '1' || window.location.pathname.replace(/\/+$/, '').endsWith('/dat-ban');
       return {
         tableNumber,
-        qrCodeToken: validToken
+        qrCodeToken: validToken,
+        reservationAccessToken,
+        bookingAccessToken,
+        bookingRoute,
+        kioskRoute: false
       };
     }
-    return { tableNumber: null, qrCodeToken: null };
+    return { tableNumber: null, qrCodeToken: null, reservationAccessToken: null, bookingAccessToken: null, bookingRoute: false, kioskRoute: false };
   });
+
+  if (guestQrContext.kioskRoute) return <EmployeeAttendanceKioskScreen />;
+
+  if (!user && (guestQrContext.bookingRoute || guestQrContext.bookingAccessToken)) {
+    return <ReservationBookingScreen accessToken={guestQrContext.bookingAccessToken || undefined} />;
+  }
 
   if ((guestQrContext.qrCodeToken || guestQrContext.tableNumber) && !user) {
     const finalToken = guestQrContext.qrCodeToken || (guestQrContext.tableNumber ? String(guestQrContext.tableNumber) : '1');
@@ -43,6 +62,7 @@ export const RootNavigator: React.FC = () => {
       <TableOrderScreen
         tableNumber={finalTableNum}
         qrCodeToken={finalToken}
+        reservationAccessToken={guestQrContext.reservationAccessToken || undefined}
       />
     );
   }

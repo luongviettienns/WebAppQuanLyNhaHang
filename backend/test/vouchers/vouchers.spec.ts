@@ -276,6 +276,7 @@ describe('Voucher & Coupon Engine (Phase 10 - Slice 10.2)', () => {
 
     const res = await request(app)
       .post('/api/orders')
+      .set('Authorization', `Bearer ${cashierToken}`)
       .send({
         orderType: 'DINE_IN',
         tableId: testTable.id,
@@ -365,6 +366,7 @@ describe('Voucher & Coupon Engine (Phase 10 - Slice 10.2)', () => {
     const [res1, res2] = await Promise.all([
       request(app)
         .post('/api/orders')
+        .set('Authorization', `Bearer ${cashierToken}`)
         .send({
           orderType: 'DINE_IN',
           tableId: testTable.id,
@@ -374,6 +376,7 @@ describe('Voucher & Coupon Engine (Phase 10 - Slice 10.2)', () => {
         }),
       request(app)
         .post('/api/orders')
+        .set('Authorization', `Bearer ${cashierToken}`)
         .send({
           orderType: 'DINE_IN',
           tableId: testTable.id,

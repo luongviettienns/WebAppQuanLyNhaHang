@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -20,11 +20,16 @@ import {
   ShoppingBag,
   ShoppingCart,
   Trash2,
+  Truck,
   Utensils,
+  UserRound,
   X
 } from 'lucide-react-native';
 import { MenuItemDto, OrderDto, OrderType, VoucherValidationResultDto } from '../../api/contracts';
 import { validateVoucherApi } from '../../api/vouchers';
+import { DeliveryPartnerDto, fetchSelectableDeliveryPartnersApi } from '../../api/deliveryPartners';
+import { fetchSelectableCustomersApi, SelectableCustomerDto } from '../../api/customers';
+import { useAuth } from '../../contexts/AuthContext';
 import { CartItem, useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -34,6 +39,7 @@ import { MenuCategoryPills } from './MenuCategoryPills';
 import { MenuItemCard } from './MenuItemCard';
 import { ModifierModal } from './ModifierModal';
 import { ReceiptModal } from './ReceiptModal';
+import { deliveryOrderTotal, validateDeliveryDraft } from '../orders/deliveryPartnerViewModel';
 
 const formatVND = (amount: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
@@ -240,6 +246,7 @@ const CartPanel: React.FC<CartPanelProps> = ({
 
 export const POSScreen: React.FC = () => {
   const { theme } = useTheme();
+  const { token } = useAuth();
   const { showToast } = useToast();
   const { width } = useWindowDimensions();
   const isSplitLayout = width >= 900;
@@ -274,6 +281,13 @@ export const POSScreen: React.FC = () => {
   const [orderType, setOrderType] = useState<OrderType>('DINE_IN');
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [appliedVoucher, setAppliedVoucher] = useState<VoucherValidationResultDto | null>(null);
+  const [deliveryPartners, setDeliveryPartners] = useState<DeliveryPartnerDto[]>([]);
+  const [selectedDeliveryPartnerId, setSelectedDeliveryPartnerId] = useState<number | null>(null);
+  const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryFeeText, setDeliveryFeeText] = useState('0');
+  const [customerSearch, setCustomerSearch] = useState('');
+  const [customerSuggestions, setCustomerSuggestions] = useState<SelectableCustomerDto[]>([]);
+  const [selectedCustomer, setSelectedCustomer] = useState<SelectableCustomerDto | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [successOrderCode, setSuccessOrderCode] = useState<string | null>(null);
@@ -293,6 +307,23 @@ export const POSScreen: React.FC = () => {
   };
 
   const selectableTables = tables.filter((table) => table.status !== 'NEED_CLEANING');
+  const deliveryFee = Number(deliveryFeeText || 0);
+  const checkoutTotal = orderType === 'DELIVERY' ? deliveryOrderTotal(cartSubtotal, Number.isFinite(deliveryFee) ? deliveryFee : 0).finalAmount : cartTotal;
+
+  useEffect(() => {
+    if (!isConfirmModalOpen || orderType !== 'DELIVERY') return;
+    void fetchSelectableDeliveryPartnersApi(token).then(setDeliveryPartners).catch(error => setSubmitError(error.message || 'Không thể tải đối tác giao hàng.'));
+  }, [isConfirmModalOpen, orderType, token]);
+
+  useEffect(() => {
+    const search = customerSearch.trim();
+    if (!isConfirmModalOpen || search.length < 2) { setCustomerSuggestions([]); return; }
+    let active = true;
+    const timer = setTimeout(() => {
+      void fetchSelectableCustomersApi(token, search).then(result => { if (active) setCustomerSuggestions(result); }).catch(error => { if (active) setSubmitError(error.message || 'Không thể tra cứu khách hàng.'); });
+    }, 220);
+    return () => { active = false; clearTimeout(timer); };
+  }, [customerSearch, isConfirmModalOpen, token]);
 
   const handleOpenConfirmModal = () => {
     setSubmitError(null);
@@ -307,13 +338,21 @@ export const POSScreen: React.FC = () => {
       setSubmitError('Vui lòng chọn bàn ăn cho đơn phục vụ tại chỗ.');
       return;
     }
+    if (orderType === 'DELIVERY') {
+      const deliveryError = validateDeliveryDraft({ partnerId: selectedDeliveryPartnerId, address: deliveryAddress, fee: deliveryFee });
+      if (deliveryError) { setSubmitError(deliveryError); return; }
+    }
 
     setIsSubmitting(true);
     setSubmitError(null);
     const result = await createOrder({
       orderType,
       tableId: orderType === 'DINE_IN' ? selectedTableId : undefined,
-      voucherCode: appliedVoucher?.code
+      customerId: selectedCustomer?.id,
+      voucherCode: appliedVoucher?.code,
+      deliveryPartnerId: orderType === 'DELIVERY' ? selectedDeliveryPartnerId ?? undefined : undefined,
+      deliveryAddress: orderType === 'DELIVERY' ? deliveryAddress.trim() : undefined,
+      deliveryFee: orderType === 'DELIVERY' ? deliveryFee : undefined
     });
     setIsSubmitting(false);
 
@@ -321,11 +360,12 @@ export const POSScreen: React.FC = () => {
       setSuccessOrderCode(result.order.code);
       setCreatedOrder(result.order);
       setAppliedVoucher(null);
+      setSelectedCustomer(null); setCustomerSearch('');
       const chosenTable = tables.find((t) => t.id === selectedTableId);
       showToast({
         type: 'success',
         title: 'Tạo đơn thành công! 🎉',
-        message: `Đơn ${result.order.code} (${orderType === 'DINE_IN' ? `Bàn ${chosenTable?.tableNumber ?? ''}` : 'Mang đi'}) đã được gửi xuống bếp.`
+        message: `Đơn ${result.order.code} (${orderType === 'DINE_IN' ? `Bàn ${chosenTable?.tableNumber ?? ''}` : orderType === 'DELIVERY' ? 'Giao hàng' : 'Mang đi'}) đã được gửi xuống bếp.`
       });
     } else {
       setSubmitError(result.error || 'Gửi đơn thất bại. Vui lòng thử lại.');
@@ -426,7 +466,7 @@ export const POSScreen: React.FC = () => {
             <View style={[styles.modalHeader, { borderBottomColor: theme.borderSubtle }]}>
               <View style={styles.modalHeadingCopy}>
                 <Text accessibilityRole="header" style={[styles.modalTitle, { color: theme.textPrimary }]}>Xác nhận đơn</Text>
-                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>{cartItemCount} món · {formatVND(cartTotal)}</Text>
+                <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>{cartItemCount} món · {formatVND(checkoutTotal)}</Text>
               </View>
               <Pressable
                 accessibilityRole="button"
@@ -468,6 +508,20 @@ export const POSScreen: React.FC = () => {
                       <Text style={[styles.typeButtonText, { color: orderType === 'DINE_IN' ? theme.primary : theme.textPrimary }]}>Tại bàn</Text>
                     </Pressable>
                     <Pressable
+                      testID="btn-delivery"
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: orderType === 'DELIVERY' }}
+                      onPress={() => { setOrderType('DELIVERY'); setSubmitError(null); }}
+                      style={({ pressed }) => [
+                        styles.typeButton,
+                        { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase, borderColor: theme.borderSubtle },
+                        orderType === 'DELIVERY' && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }
+                      ]}
+                    >
+                      <AppIcon icon={Truck} color={orderType === 'DELIVERY' ? theme.primary : theme.textSecondary} />
+                      <Text style={[styles.typeButtonText, { color: orderType === 'DELIVERY' ? theme.primary : theme.textPrimary }]}>Giao hàng</Text>
+                    </Pressable>
+                    <Pressable
                       testID="btn-takeaway"
                       accessibilityRole="radio"
                       accessibilityState={{ selected: orderType === 'TAKE_AWAY' }}
@@ -484,32 +538,58 @@ export const POSScreen: React.FC = () => {
                   </View>
                 </View>
 
+                <View style={styles.checkoutSection}>
+                  <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Khách hàng (không bắt buộc)</Text>
+                  {selectedCustomer ? <View style={[styles.selectedCustomer, { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}>
+                    <AppIcon icon={UserRound} color={theme.primary} size={17} /><View style={{ flex: 1 }}><Text style={{ color: theme.textPrimary, fontFamily: typography.families.bodySemibold }}>{selectedCustomer.name}</Text><Text style={{ color: theme.textSecondary }}>{selectedCustomer.code}{selectedCustomer.phone ? ` · ${selectedCustomer.phone}` : ''}</Text></View><Pressable accessibilityRole="button" accessibilityLabel="Bỏ chọn khách hàng" onPress={() => { setSelectedCustomer(null); setCustomerSearch(''); }}><AppIcon icon={X} color={theme.textSecondary} size={18} /></Pressable>
+                  </View> : <TextInput accessibilityLabel="Tìm khách theo mã, tên, số điện thoại" value={customerSearch} onChangeText={setCustomerSearch} placeholder="Tìm theo mã, tên, số điện thoại" placeholderTextColor={theme.textSecondary} style={[styles.customerInput, { color: theme.textPrimary, borderColor: theme.borderSubtle }]} />}
+                  {!selectedCustomer && customerSuggestions.map(customer => <Pressable key={customer.id} accessibilityRole="button" onPress={() => { setSelectedCustomer(customer); setCustomerSuggestions([]); setSubmitError(null); }} style={[styles.customerSuggestion, { borderBottomColor: theme.borderSubtle }]}><View style={{ flex: 1 }}><Text style={{ color: theme.textPrimary, fontFamily: typography.families.bodySemibold }}>{customer.name}</Text><Text style={{ color: theme.textSecondary }}>{customer.code}{customer.phone ? ` · ${customer.phone}` : ''}{customer.group?.name ? ` · ${customer.group.name}` : ''}</Text></View><AppIcon icon={UserRound} color={theme.primary} size={17} /></Pressable>)}
+                  {!!customerSearch.trim() && customerSearch.trim().length >= 2 && !customerSuggestions.length && <Text style={{ color: theme.textSecondary }}>Không tìm thấy khách hàng phù hợp.</Text>}
+                </View>
+
                 {orderType === 'DINE_IN' && (
                   <View style={styles.checkoutSection}>
-                    <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Chọn bàn</Text>
-                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tableList}>
-                      {selectableTables.map((table) => {
-                        const isSelected = selectedTableId === table.id;
-                        return (
-                          <Pressable
-                            testID={`pos-table-option-${table.tableNumber}`}
-                            key={table.id}
-                            accessibilityRole="radio"
-                            accessibilityState={{ selected: isSelected }}
-                            onPress={() => { setSelectedTableId(table.id); setSubmitError(null); }}
-                            style={({ pressed }) => [
-                              styles.tableButton,
-                              { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase, borderColor: theme.borderSubtle },
-                              isSelected && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }
-                            ]}
-                          >
-                            <Text style={[styles.tableNumber, { color: isSelected ? theme.primary : theme.textPrimary }]}>Bàn {table.tableNumber.toString().padStart(2, '0')}</Text>
-                            <Text style={[styles.tableStatus, { color: theme.textSecondary }]}>{table.status === 'OCCUPIED' ? 'Đang phục vụ' : 'Sẵn sàng'}</Text>
-                          </Pressable>
-                        );
-                      })}
+                    <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Chọn bàn ({selectableTables.length} bàn)</Text>
+                    <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                      <View style={styles.tableGrid}>
+                        {selectableTables.map((table) => {
+                          const isSelected = selectedTableId === table.id;
+                          return (
+                            <Pressable
+                              testID={`pos-table-option-${table.tableNumber}`}
+                              key={table.id}
+                              accessibilityRole="radio"
+                              accessibilityState={{ selected: isSelected }}
+                              onPress={() => { setSelectedTableId(table.id); setSubmitError(null); }}
+                              style={({ pressed }) => [
+                                styles.tableButton,
+                                { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase, borderColor: theme.borderSubtle },
+                                isSelected && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }
+                              ]}
+                            >
+                              <Text style={[styles.tableNumber, { color: isSelected ? theme.primary : theme.textPrimary }]}>Bàn {table.tableNumber.toString().padStart(2, '0')}</Text>
+                              <Text style={[styles.tableStatus, { color: theme.textSecondary }]}>{table.status === 'OCCUPIED' ? 'Đang phục vụ' : 'Sẵn sàng'}</Text>
+                            </Pressable>
+                          );
+                        })}
+                      </View>
                     </ScrollView>
                     {selectableTables.length === 0 && <InlineAlert message="Hiện không có bàn sẵn sàng nhận đơn." tone="warning" />}
+                  </View>
+                )}
+
+                {orderType === 'DELIVERY' && (
+                  <View style={styles.checkoutSection}>
+                    <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Thông tin giao hàng</Text>
+                    <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+                      <View style={styles.tableGrid}>
+                        {deliveryPartners.map(partner => <Pressable key={partner.id} accessibilityRole="radio" accessibilityState={{ selected: selectedDeliveryPartnerId === partner.id }} onPress={() => { setSelectedDeliveryPartnerId(partner.id); setSubmitError(null); }} style={({ pressed }) => [styles.tableButton, { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceBase, borderColor: theme.borderSubtle }, selectedDeliveryPartnerId === partner.id && { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }]}><Text style={[styles.tableNumber, { color: selectedDeliveryPartnerId === partner.id ? theme.primary : theme.textPrimary }]}>{partner.name}</Text><Text style={[styles.tableStatus, { color: theme.textSecondary }]}>{partner.code}{partner.phone ? ` · ${partner.phone}` : ''}</Text></Pressable>)}
+                      </View>
+                    </ScrollView>
+                    {deliveryPartners.length === 0 && <InlineAlert message="Chưa có đối tác giao hàng đang hoạt động." tone="warning" />}
+                    <TextInput accessibilityLabel="Địa chỉ giao hàng" value={deliveryAddress} onChangeText={setDeliveryAddress} placeholder="Địa chỉ giao hàng" placeholderTextColor={theme.textSecondary} style={[styles.deliveryInput, { color: theme.textPrimary, borderColor: theme.borderSubtle }]} />
+                    <TextInput accessibilityLabel="Phí giao hàng" value={deliveryFeeText} onChangeText={value => setDeliveryFeeText(value.replace(/[^0-9]/g, ''))} keyboardType="numeric" placeholder="Phí giao hàng" placeholderTextColor={theme.textSecondary} style={[styles.deliveryInput, { color: theme.textPrimary, borderColor: theme.borderSubtle }]} />
+                    <Text style={[styles.tableStatus, { color: theme.textSecondary }]}>Tổng đơn giao: {formatVND(checkoutTotal)} (VAT chỉ tính trên tiền món)</Text>
                   </View>
                 )}
 
@@ -581,14 +661,19 @@ const styles = StyleSheet.create({
   modalClose: { alignItems: 'center', borderRadius: radii.sm, height: 44, justifyContent: 'center', width: 44 },
   checkoutBody: { gap: spacing.lg, padding: spacing.lg },
   checkoutSection: { gap: spacing.sm },
+  customerInput: { borderRadius: radii.sm, borderWidth: 1, minHeight: 44, paddingHorizontal: spacing.md },
+  customerSuggestion: { alignItems: 'center', borderBottomWidth: 1, flexDirection: 'row', minHeight: 48, paddingVertical: spacing.xs },
+  selectedCustomer: { alignItems: 'center', borderRadius: radii.sm, borderWidth: 1, flexDirection: 'row', gap: spacing.sm, minHeight: 54, paddingHorizontal: spacing.md },
   sectionTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
-  orderTypeRow: { flexDirection: 'row', gap: spacing.sm },
+  orderTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
   typeButton: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flex: 1, flexDirection: 'row', gap: spacing.sm, minHeight: spacing.touchTargetPOS, paddingHorizontal: spacing.md },
   typeButtonText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
   tableList: { gap: spacing.sm, paddingBottom: spacing.xs },
+  tableGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, paddingVertical: spacing.xs },
   tableButton: { borderRadius: radii.md, borderWidth: 1, minHeight: spacing.touchTargetPOS, minWidth: 104, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
   tableNumber: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg },
   tableStatus: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
+  deliveryInput: { borderRadius: radii.sm, borderWidth: 1, fontFamily: typography.families.body, minHeight: 44, paddingHorizontal: spacing.md },
   successPanel: { alignItems: 'center', gap: spacing.sm, padding: spacing.xl },
   successTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl, textAlign: 'center' },
   successDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm, maxWidth: 420, textAlign: 'center' },

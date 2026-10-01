@@ -14,9 +14,106 @@ enum Role {
   ADMIN
 }
 
+enum EmployeeStatus {
+  WORKING
+  RESIGNED
+}
+
+enum EmployeeGender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum EmployeePayBasis {
+  MONTHLY
+  HOURLY
+  PER_SHIFT
+}
+
+enum EmployeeAttendanceMode {
+  SHIFT
+}
+
+enum EmployeePayrollFrequency {
+  MONTHLY
+}
+
+enum EmployeePayrollHourlySource {
+  ACTUAL_ATTENDANCE
+}
+
+enum PayrollFrequency {
+  MONTHLY
+}
+
+enum PayrollBatchStatus {
+  DRAFT
+  CALCULATED
+  FINALIZED
+  CANCELLED
+}
+
+enum PayrollCalculationStatus {
+  READY
+  REVIEW_REQUIRED
+}
+
+enum PayrollAdjustmentType {
+  BONUS
+  DEDUCTION
+}
+
+enum PayrollPaymentMethod {
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+enum PayrollPaymentStatus {
+  SUCCESS
+  REVERSED
+}
+
+enum ScheduleRecurrenceType {
+  ONCE
+  WEEKLY
+}
+
+enum ScheduleExceptionType {
+  CANCELLED
+}
+
+enum AttendancePunchSource {
+  KIOSK
+  ADMIN_MANUAL
+}
+
+enum AttendanceScheduleLinkStatus {
+  SCHEDULED
+  UNSCHEDULED
+  NEEDS_REVIEW
+}
+
+enum AttendanceDispositionType {
+  ABSENT
+}
+
+enum AttendanceRateLimitBucketType {
+  KIOSK_SESSION
+  ATTENDANCE_CODE
+  IP_ADDRESS
+}
+
 enum OrderType {
   DINE_IN
   TAKE_AWAY
+  DELIVERY
+}
+
+enum DeliveryPartnerType {
+  INDIVIDUAL
+  COMPANY
 }
 
 enum OrderStatus {
@@ -42,8 +139,15 @@ enum PaymentMethod {
 
 enum PaymentStatus {
   UNPAID
+  WAITING_CONFIRMATION
   PAID
   VOIDED
+}
+
+enum OrderPaymentTransactionStatus {
+  PENDING
+  SUCCESS
+  REJECTED
 }
 
 enum MenuType {
@@ -82,6 +186,50 @@ enum PriceListScopeType {
   CUSTOMER_GROUP
 }
 
+enum CustomerType {
+  INDIVIDUAL
+  COMPANY
+}
+
+enum CustomerGender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum ReservationStatus {
+  PENDING_DEPOSIT
+  CONFIRMED
+  CHECKED_IN
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum DepositStatus {
+  UNPAID
+  WAITING_CONFIRMATION
+  PAID
+  REFUND_PENDING
+  REFUNDED
+  FORFEITED
+  APPLIED_TO_BILL
+}
+
+enum ReservationDepositTransactionType {
+  DEPOSIT
+  REFUND
+  PARTIAL_REFUND
+  FORFEIT
+  APPLY_TO_BILL
+}
+
+enum ReservationDepositTransactionStatus {
+  PENDING
+  SUCCESS
+  REJECTED
+}
+
 model User {
   id           Int      @id @default(autoincrement())
   username     String   @unique
@@ -91,9 +239,701 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  createdOrders Order[]    @relation("CreatedOrders")
-  voidedOrders  Order[]    @relation("VoidedOrders")
-  auditLogs     AuditLog[] @relation("AuditLogs")
+  createdOrders                     Order[]                         @relation("CreatedOrders")
+  voidedOrders                      Order[]                         @relation("VoidedOrders")
+  auditLogs                         AuditLog[]                      @relation("AuditLogs")
+  confirmedOrderPaymentTransactions OrderPaymentTransaction[]       @relation("OrderPaymentConfirmer")
+  employeeProfile                   Employee?
+  createdEmployeeCompensations      EmployeeCompensation[]          @relation("EmployeeCompensationCreator")
+  createdWorkShifts                 WorkShift[]                     @relation("WorkShiftCreator")
+  createdEmployeeScheduleRules      EmployeeScheduleRule[]          @relation("EmployeeScheduleRuleCreator")
+  cancelledEmployeeScheduleRules    EmployeeScheduleRule[]          @relation("EmployeeScheduleRuleCanceller")
+  createdEmployeeScheduleExceptions EmployeeScheduleException[]     @relation("EmployeeScheduleExceptionCreator")
+  createdAttendanceKioskSessions    AttendanceKioskSession[]        @relation("AttendanceKioskSessionCreator")
+  createdAttendanceDispositions     EmployeeAttendanceDisposition[] @relation("AttendanceDispositionCreator")
+  revokedAttendanceDispositions     EmployeeAttendanceDisposition[] @relation("AttendanceDispositionRevoker")
+  createdPayrollBatches             EmployeePayrollBatch[]          @relation("EmployeePayrollBatchCreator")
+  calculatedPayrollBatches          EmployeePayrollBatch[]          @relation("EmployeePayrollBatchCalculator")
+  finalizedPayrollBatches           EmployeePayrollBatch[]          @relation("EmployeePayrollBatchFinalizer")
+  cancelledPayrollBatches           EmployeePayrollBatch[]          @relation("EmployeePayrollBatchCanceller")
+  createdPayrollAdjustments         EmployeePayrollAdjustment[]     @relation("EmployeePayrollAdjustmentCreator")
+  reversedPayrollAdjustments        EmployeePayrollAdjustment[]     @relation("EmployeePayrollAdjustmentReverser")
+  createdPayrollPayments            EmployeePayrollPayment[]        @relation("EmployeePayrollPaymentCreator")
+  reversedPayrollPayments           EmployeePayrollPayment[]        @relation("EmployeePayrollPaymentReverser")
+  payrollIdempotencies              EmployeePayrollIdempotency[]
+  createdAttendancePolicies         BranchAttendancePolicyVersion[] @relation("AttendancePolicyCreator")
+  createdPayrollPolicies            BranchPayrollPolicyVersion[]    @relation("PayrollPolicyCreator")
+  createdWorkweekPolicies           BranchWorkweekPolicyVersion[]   @relation("WorkweekPolicyCreator")
+  createdHolidayPeriods             BranchHolidayPeriod[]           @relation("HolidayPeriodCreator")
+  archivedHolidayPeriods            BranchHolidayPeriod[]           @relation("HolidayPeriodArchiver")
+  scheduleIdempotencies             EmployeeScheduleIdempotency[]
+}
+
+model Branch {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique @db.VarChar(40)
+  name      String   @db.VarChar(120)
+  isActive  Boolean  @default(true)
+  isDefault Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  scheduleRules             EmployeeScheduleRule[]
+  kioskSessions             AttendanceKioskSession[]
+  attendanceSessions        EmployeeAttendanceSession[]     @relation("AttendanceBranch")
+  plannedAttendanceSessions EmployeeAttendanceSession[]     @relation("AttendancePlannedBranch")
+  attendanceDispositions    EmployeeAttendanceDisposition[]
+  payrollBatches            EmployeePayrollBatch[]
+  attendancePolicyVersions  BranchAttendancePolicyVersion[]
+  payrollPolicyVersions     BranchPayrollPolicyVersion[]
+  workweekPolicyVersions    BranchWorkweekPolicyVersion[]
+  holidayPeriods            BranchHolidayPeriod[]
+  employeeSettingsRevision  BranchEmployeeSettingsRevision?
+
+  @@index([isActive, isDefault])
+}
+
+model BranchEmployeeSettingsRevision {
+  branchId           Int      @id
+  attendanceRevision Int      @default(1)
+  payrollRevision    Int      @default(1)
+  workweekRevision   Int      @default(1)
+  holidayRevision    Int      @default(0)
+  updatedAt          DateTime @updatedAt
+
+  branch Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+}
+
+model BranchAttendancePolicyVersion {
+  id                         Int                    @id @default(autoincrement())
+  branchId                   Int
+  effectiveFrom              DateTime               @db.Date
+  revision                   Int
+  attendanceMode             EmployeeAttendanceMode @default(SHIFT)
+  standardDayMinutes         Int                    @default(480)
+  lateThresholdMinutes       Int                    @default(0)
+  earlyLeaveThresholdMinutes Int                    @default(0)
+  allowUnscheduledAttendance Boolean                @default(true)
+  createdByUserId            Int?
+  createdAt                  DateTime               @default(now())
+
+  branch             Branch                      @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy          User?                       @relation("AttendancePolicyCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  attendanceSessions EmployeeAttendanceSession[]
+
+  @@unique([branchId, effectiveFrom], map: "AttendancePolicy_branch_effective_key")
+  @@unique([branchId, revision], map: "AttendancePolicy_branch_revision_key")
+  @@index([branchId, effectiveFrom])
+}
+
+model BranchPayrollPolicyVersion {
+  id                      Int                         @id @default(autoincrement())
+  branchId                Int
+  effectiveFrom           DateTime                    @db.Date
+  revision                Int
+  frequency               EmployeePayrollFrequency    @default(MONTHLY)
+  periodStartDay          Int                         @default(1)
+  hourlyCalculationSource EmployeePayrollHourlySource @default(ACTUAL_ATTENDANCE)
+  createdByUserId         Int?
+  createdAt               DateTime                    @default(now())
+
+  branch    Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy User?  @relation("PayrollPolicyCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, effectiveFrom], map: "PayrollPolicy_branch_effective_key")
+  @@unique([branchId, revision], map: "PayrollPolicy_branch_revision_key")
+  @@index([branchId, effectiveFrom])
+}
+
+model BranchWorkweekPolicyVersion {
+  id              Int      @id @default(autoincrement())
+  branchId        Int
+  effectiveFrom   DateTime @db.Date
+  revision        Int
+  monday          Boolean  @default(true)
+  tuesday         Boolean  @default(true)
+  wednesday       Boolean  @default(true)
+  thursday        Boolean  @default(true)
+  friday          Boolean  @default(true)
+  saturday        Boolean  @default(true)
+  sunday          Boolean  @default(true)
+  createdByUserId Int?
+  createdAt       DateTime @default(now())
+
+  branch    Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy User?  @relation("WorkweekPolicyCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([branchId, effectiveFrom], map: "WorkweekPolicy_branch_effective_key")
+  @@unique([branchId, revision], map: "WorkweekPolicy_branch_revision_key")
+  @@index([branchId, effectiveFrom])
+}
+
+model BranchHolidayPeriod {
+  id               Int       @id @default(autoincrement())
+  branchId         Int
+  name             String    @db.VarChar(160)
+  startDate        DateTime  @db.Date
+  endDate          DateTime  @db.Date
+  note             String?   @db.VarChar(500)
+  revision         Int       @default(1)
+  archivedAt       DateTime?
+  archivedByUserId Int?
+  createdByUserId  Int?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  branch     Branch @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy  User?  @relation("HolidayPeriodCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  archivedBy User?  @relation("HolidayPeriodArchiver", fields: [archivedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([branchId, startDate, endDate, archivedAt])
+}
+
+model Department {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(120)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+}
+
+model JobTitle {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique @db.VarChar(120)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employees Employee[]
+}
+
+model Employee {
+  id                Int             @id @default(autoincrement())
+  code              String          @unique @db.VarChar(32)
+  attendanceCode    String          @unique @db.VarChar(32)
+  name              String          @db.VarChar(160)
+  phone             String          @db.VarChar(30)
+  status            EmployeeStatus  @default(WORKING)
+  userId            Int?            @unique
+  avatarUrl         String?         @db.VarChar(500)
+  departmentId      Int?
+  jobTitleId        Int?
+  startDate         DateTime?       @db.Date
+  endDate           DateTime?       @db.Date
+  note              String?         @db.VarChar(500)
+  nationalId        String?         @unique @db.VarChar(32)
+  birthDate         DateTime?       @db.Date
+  gender            EmployeeGender?
+  address           String?         @db.VarChar(255)
+  province          String?         @db.VarChar(120)
+  ward              String?         @db.VarChar(120)
+  email             String?         @db.VarChar(160)
+  facebook          String?         @db.VarChar(255)
+  bankName          String?         @db.VarChar(120)
+  bankAccountNumber String?         @db.VarChar(80)
+  bankAccountName   String?         @db.VarChar(120)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  user                   User?                           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  department             Department?                     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  jobTitle               JobTitle?                       @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  compensations          EmployeeCompensation[]
+  scheduleRules          EmployeeScheduleRule[]
+  attendanceSessions     EmployeeAttendanceSession[]
+  attendanceDispositions EmployeeAttendanceDisposition[]
+  payrollLines           EmployeePayrollLine[]
+  payrollPayments        EmployeePayrollPayment[]
+
+  @@index([status, createdAt])
+  @@index([name])
+  @@index([departmentId, status])
+  @@index([jobTitleId, status])
+}
+
+model EmployeeCompensation {
+  id              Int              @id @default(autoincrement())
+  employeeId      Int
+  payBasis        EmployeePayBasis
+  baseRate        Int
+  effectiveFrom   DateTime         @db.Date
+  note            String?          @db.VarChar(500)
+  createdByUserId Int?
+  createdAt       DateTime         @default(now())
+
+  employee  Employee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy User?    @relation("EmployeeCompensationCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom])
+}
+
+model EmployeePayrollBatch {
+  id                    Int                @id @default(autoincrement())
+  code                  String             @unique @db.VarChar(32)
+  name                  String             @db.VarChar(160)
+  branchId              Int                @default(1)
+  frequency             PayrollFrequency   @default(MONTHLY)
+  periodStart           DateTime           @db.Date
+  periodEnd             DateTime           @db.Date
+  status                PayrollBatchStatus @default(DRAFT)
+  totalGrossAmount      Int                @default(0)
+  totalAdjustmentAmount Int                @default(0)
+  totalNetAmount        Int                @default(0)
+  totalPaidAmount       Int                @default(0)
+  totalRemainingAmount  Int                @default(0)
+  createdByUserId       Int
+  calculatedByUserId    Int?
+  calculatedAt          DateTime?
+  finalizedByUserId     Int?
+  finalizedAt           DateTime?
+  cancelledByUserId     Int?
+  cancelledAt           DateTime?
+  cancelReason          String?            @db.VarChar(500)
+  version               Int                @default(1)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  branch        Branch                       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy     User                         @relation("EmployeePayrollBatchCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  calculatedBy  User?                        @relation("EmployeePayrollBatchCalculator", fields: [calculatedByUserId], references: [id], onDelete: Restrict)
+  finalizedBy   User?                        @relation("EmployeePayrollBatchFinalizer", fields: [finalizedByUserId], references: [id], onDelete: Restrict)
+  cancelledBy   User?                        @relation("EmployeePayrollBatchCanceller", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+  lines         EmployeePayrollLine[]
+  payments      EmployeePayrollPayment[]
+  idempotencies EmployeePayrollIdempotency[]
+
+  @@index([branchId, periodStart, periodEnd, status])
+  @@index([status, createdAt])
+}
+
+model EmployeePayrollLine {
+  id                  Int                      @id @default(autoincrement())
+  payrollBatchId      Int
+  employeeId          Int
+  employeeCode        String                   @db.VarChar(32)
+  employeeName        String                   @db.VarChar(160)
+  departmentName      String?                  @db.VarChar(120)
+  jobTitleName        String?                  @db.VarChar(120)
+  bankName            String?                  @db.VarChar(120)
+  bankAccountNumber   String?                  @db.VarChar(80)
+  bankAccountName     String?                  @db.VarChar(120)
+  employmentStartDate DateTime?                @db.Date
+  employmentEndDate   DateTime?                @db.Date
+  activeCalendarDays  Int                      @default(0)
+  periodCalendarDays  Int                      @default(0)
+  scheduledShifts     Int                      @default(0)
+  completedSessions   Int                      @default(0)
+  actualMinutes       Int                      @default(0)
+  confirmedAbsences   Int                      @default(0)
+  missingCheckouts    Int                      @default(0)
+  reviewRequiredCount Int                      @default(0)
+  grossAmount         Int                      @default(0)
+  bonusAmount         Int                      @default(0)
+  deductionAmount     Int                      @default(0)
+  netAmount           Int                      @default(0)
+  paidAmount          Int                      @default(0)
+  remainingAmount     Int                      @default(0)
+  calculationStatus   PayrollCalculationStatus @default(READY)
+  warningCodes        Json
+  sourceSnapshot      Json
+  calculatedAt        DateTime
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+
+  payrollBatch EmployeePayrollBatch        @relation(fields: [payrollBatchId], references: [id], onDelete: Restrict)
+  employee     Employee                    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  adjustments  EmployeePayrollAdjustment[]
+  payments     EmployeePayrollPayment[]
+
+  @@unique([payrollBatchId, employeeId], map: "EmployeePayrollLine_batch_employee_key")
+  @@index([employeeId, calculatedAt])
+  @@index([payrollBatchId, calculationStatus])
+}
+
+model EmployeePayrollAdjustment {
+  id               Int                   @id @default(autoincrement())
+  payrollLineId    Int
+  type             PayrollAdjustmentType
+  amount           Int
+  reason           String                @db.VarChar(500)
+  createdByUserId  Int
+  createdAt        DateTime              @default(now())
+  reversedAt       DateTime?
+  reversedByUserId Int?
+  reverseReason    String?               @db.VarChar(500)
+
+  payrollLine EmployeePayrollLine @relation(fields: [payrollLineId], references: [id], onDelete: Restrict)
+  createdBy   User                @relation("EmployeePayrollAdjustmentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  reversedBy  User?               @relation("EmployeePayrollAdjustmentReverser", fields: [reversedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([payrollLineId, reversedAt, createdAt])
+}
+
+model EmployeePayrollPayment {
+  id                Int                  @id @default(autoincrement())
+  payrollBatchId    Int
+  payrollLineId     Int
+  employeeId        Int
+  amount            Int
+  method            PayrollPaymentMethod
+  externalReference String?              @db.VarChar(120)
+  note              String?              @db.VarChar(500)
+  status            PayrollPaymentStatus @default(SUCCESS)
+  paidAt            DateTime
+  createdByUserId   Int
+  createdAt         DateTime             @default(now())
+  reversedAt        DateTime?
+  reversedByUserId  Int?
+  reverseReason     String?              @db.VarChar(500)
+
+  payrollBatch EmployeePayrollBatch @relation(fields: [payrollBatchId], references: [id], onDelete: Restrict)
+  payrollLine  EmployeePayrollLine  @relation(fields: [payrollLineId], references: [id], onDelete: Restrict)
+  employee     Employee             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy    User                 @relation("EmployeePayrollPaymentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  reversedBy   User?                @relation("EmployeePayrollPaymentReverser", fields: [reversedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([payrollLineId, status, paidAt])
+  @@index([payrollBatchId, status, paidAt])
+  @@index([employeeId, paidAt])
+}
+
+model EmployeePayrollIdempotency {
+  id             Int      @id @default(autoincrement())
+  actorId        Int
+  operation      String   @db.VarChar(80)
+  idempotencyKey String   @db.VarChar(128)
+  requestDigest  String   @db.Char(64)
+  response       Json
+  payrollBatchId Int?
+  createdAt      DateTime @default(now())
+
+  actor        User                  @relation(fields: [actorId], references: [id], onDelete: Restrict)
+  payrollBatch EmployeePayrollBatch? @relation(fields: [payrollBatchId], references: [id], onDelete: Restrict)
+
+  @@unique([actorId, operation, idempotencyKey], map: "EmployeePayrollIdempotency_actor_operation_key")
+  @@index([payrollBatchId])
+}
+
+model EmployeeScheduleIdempotency {
+  id             Int      @id @default(autoincrement())
+  actorId        Int
+  operation      String   @db.VarChar(80)
+  idempotencyKey String   @db.VarChar(128)
+  requestDigest  String   @db.Char(64)
+  response       Json
+  createdAt      DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Restrict)
+
+  @@unique([actorId, operation, idempotencyKey], map: "EmployeeScheduleIdempotency_actor_operation_key")
+}
+
+model WorkShift {
+  id              Int      @id @default(autoincrement())
+  code            String   @unique @db.VarChar(40)
+  name            String   @unique @db.VarChar(120)
+  startMinute     Int
+  endMinute       Int
+  isActive        Boolean  @default(true)
+  createdByUserId Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  createdBy User?                  @relation("WorkShiftCreator", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  rules     EmployeeScheduleRule[]
+
+  @@index([isActive, name])
+}
+
+model EmployeeScheduleRule {
+  id                      Int                    @id @default(autoincrement())
+  employeeId              Int
+  branchId                Int                    @default(1)
+  shiftId                 Int
+  recurrenceType          ScheduleRecurrenceType
+  startDate               DateTime               @db.Date
+  endDate                 DateTime?              @db.Date
+  dayOfWeek               Int?
+  cancelledAt             DateTime?
+  cancelledByUserId       Int?
+  createdByUserId         Int
+  createdAt               DateTime               @default(now())
+  updatedAt               DateTime               @updatedAt
+  calendarWarningSnapshot Json?
+
+  employee               Employee                        @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  branch                 Branch                          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  shift                  WorkShift                       @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  createdBy              User                            @relation("EmployeeScheduleRuleCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  cancelledBy            User?                           @relation("EmployeeScheduleRuleCanceller", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  exceptions             EmployeeScheduleException[]
+  attendanceSessions     EmployeeAttendanceSession[]
+  attendanceDispositions EmployeeAttendanceDisposition[]
+
+  @@unique([branchId, employeeId, shiftId, recurrenceType, startDate, dayOfWeek], map: "EmployeeScheduleRule_duplicate_key")
+  @@index([employeeId, startDate, endDate])
+  @@index([branchId, employeeId, startDate])
+  @@index([shiftId, startDate])
+  @@index([cancelledAt, startDate])
+}
+
+model EmployeeScheduleException {
+  id              Int                   @id @default(autoincrement())
+  scheduleRuleId  Int
+  workDate        DateTime              @db.Date
+  type            ScheduleExceptionType @default(CANCELLED)
+  reason          String?               @db.VarChar(255)
+  createdByUserId Int
+  createdAt       DateTime              @default(now())
+
+  scheduleRule EmployeeScheduleRule @relation(fields: [scheduleRuleId], references: [id], onDelete: Restrict)
+  createdBy    User                 @relation("EmployeeScheduleExceptionCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([scheduleRuleId, workDate])
+  @@index([workDate, type])
+}
+
+model AttendanceKioskSession {
+  id              Int       @id @default(autoincrement())
+  branchId        Int
+  tokenHash       String    @unique @db.Char(64)
+  createdByUserId Int
+  deviceName      String?   @db.VarChar(120)
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime
+  revokedAt       DateTime?
+  lastUsedAt      DateTime?
+
+  branch        Branch                       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy     User                         @relation("AttendanceKioskSessionCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  checkIns      EmployeeAttendanceSession[]  @relation("AttendanceCheckInKiosk")
+  checkOuts     EmployeeAttendanceSession[]  @relation("AttendanceCheckOutKiosk")
+  idempotencies AttendanceKioskIdempotency[]
+
+  @@index([branchId, revokedAt, expiresAt])
+}
+
+model EmployeeAttendanceSession {
+  id                                 Int                          @id @default(autoincrement())
+  employeeId                         Int
+  branchId                           Int
+  scheduleRuleId                     Int?
+  scheduleDate                       DateTime?                    @db.Date
+  checkInAt                          DateTime
+  checkOutAt                         DateTime?
+  checkInSource                      AttendancePunchSource
+  checkOutSource                     AttendancePunchSource?
+  checkInKioskSessionId              Int?
+  checkOutKioskSessionId             Int?
+  scheduleLinkStatus                 AttendanceScheduleLinkStatus @default(UNSCHEDULED)
+  plannedBranchId                    Int?
+  plannedWorkDate                    DateTime?                    @db.Date
+  plannedShiftName                   String?                      @db.VarChar(120)
+  plannedStartMinute                 Int?
+  plannedEndMinute                   Int?
+  attendancePolicyVersionId          Int?
+  standardDayMinutesSnapshot         Int                          @default(480)
+  lateThresholdMinutesSnapshot       Int                          @default(0)
+  earlyLeaveThresholdMinutesSnapshot Int                          @default(0)
+  allowUnscheduledAttendanceSnapshot Boolean                      @default(true)
+  createdAt                          DateTime                     @default(now())
+  updatedAt                          DateTime                     @updatedAt
+
+  employee                Employee                       @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  branch                  Branch                         @relation("AttendanceBranch", fields: [branchId], references: [id], onDelete: Restrict)
+  scheduleRule            EmployeeScheduleRule?          @relation(fields: [scheduleRuleId], references: [id], onDelete: Restrict)
+  checkInKiosk            AttendanceKioskSession?        @relation("AttendanceCheckInKiosk", fields: [checkInKioskSessionId], references: [id], onDelete: Restrict)
+  checkOutKiosk           AttendanceKioskSession?        @relation("AttendanceCheckOutKiosk", fields: [checkOutKioskSessionId], references: [id], onDelete: Restrict)
+  plannedBranch           Branch?                        @relation("AttendancePlannedBranch", fields: [plannedBranchId], references: [id], onDelete: Restrict)
+  attendancePolicyVersion BranchAttendancePolicyVersion? @relation(fields: [attendancePolicyVersionId], references: [id], onDelete: Restrict)
+  idempotencies           AttendanceKioskIdempotency[]
+
+  @@index([employeeId, branchId, checkInAt])
+  @@index([branchId, checkInAt, checkOutAt])
+  @@index([branchId, scheduleRuleId, scheduleDate], map: "AttendanceSession_schedule_occurrence_idx")
+  @@index([checkOutAt])
+  @@index([attendancePolicyVersionId])
+}
+
+model AttendanceKioskIdempotency {
+  id                  Int      @id @default(autoincrement())
+  kioskSessionId      Int
+  idempotencyKey      String   @db.VarChar(128)
+  requestDigest       String   @db.Char(64)
+  attendanceSessionId Int?
+  response            Json
+  createdAt           DateTime @default(now())
+
+  kioskSession      AttendanceKioskSession     @relation(fields: [kioskSessionId], references: [id], onDelete: Restrict)
+  attendanceSession EmployeeAttendanceSession? @relation(fields: [attendanceSessionId], references: [id], onDelete: Restrict)
+
+  @@unique([kioskSessionId, idempotencyKey], map: "AttendanceKioskIdempotency_session_key")
+  @@index([attendanceSessionId])
+}
+
+model EmployeeAttendanceDisposition {
+  id              Int                       @id @default(autoincrement())
+  branchId        Int
+  employeeId      Int
+  scheduleRuleId  Int
+  workDate        DateTime                  @db.Date
+  type            AttendanceDispositionType @default(ABSENT)
+  reason          String                    @db.VarChar(500)
+  actorId         Int
+  createdAt       DateTime                  @default(now())
+  revokedAt       DateTime?
+  revokedByUserId Int?
+
+  branch       Branch               @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  employee     Employee             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  scheduleRule EmployeeScheduleRule @relation(fields: [scheduleRuleId], references: [id], onDelete: Restrict)
+  actor        User                 @relation("AttendanceDispositionCreator", fields: [actorId], references: [id], onDelete: Restrict)
+  revokedBy    User?                @relation("AttendanceDispositionRevoker", fields: [revokedByUserId], references: [id], onDelete: Restrict)
+
+  @@unique([branchId, scheduleRuleId, workDate], map: "AttendanceDisposition_occurrence_key")
+  @@index([employeeId, workDate])
+  @@index([branchId, workDate, revokedAt])
+}
+
+model AttendanceKioskRateLimitBucket {
+  id              Int                           @id @default(autoincrement())
+  bucketHash      String                        @unique @db.Char(64)
+  bucketType      AttendanceRateLimitBucketType
+  requestCount    Int                           @default(0)
+  windowStartedAt DateTime
+  expiresAt       DateTime
+  createdAt       DateTime                      @default(now())
+  updatedAt       DateTime                      @updatedAt
+
+  @@index([expiresAt])
+  @@index([bucketType, windowStartedAt])
+}
+
+model CustomerGroup {
+  id          Int        @id @default(autoincrement())
+  code        String     @unique @db.VarChar(40)
+  name        String     @unique @db.VarChar(120)
+  description String?    @db.VarChar(500)
+  isActive    Boolean    @default(true)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  customers   Customer[]
+}
+
+model Customer {
+  id        Int             @id @default(autoincrement())
+  code      String          @unique @db.VarChar(40)
+  name      String          @db.VarChar(160)
+  phone     String?         @unique @db.VarChar(30)
+  email     String?         @db.VarChar(160)
+  type      CustomerType    @default(INDIVIDUAL)
+  gender    CustomerGender?
+  birthDate DateTime?       @db.Date
+  province  String?         @db.VarChar(120)
+  address   String?         @db.VarChar(255)
+  groupId   Int?
+  isActive  Boolean         @default(true)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  group        CustomerGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  orders       Order[]
+  reservations Reservation[]
+
+  @@index([groupId, isActive])
+  @@index([name])
+}
+
+model ReservationPolicy {
+  id                      Int           @id @default(autoincrement())
+  name                    String        @unique @db.VarChar(120)
+  depositAmount           Int           @default(300000)
+  freeCancelBeforeMinutes Int           @default(120)
+  lateCancelRefundPercent Int           @default(0)
+  noShowRefundPercent     Int           @default(0)
+  gracePeriodMinutes      Int           @default(30)
+  isActive                Boolean       @default(true)
+  createdAt               DateTime      @default(now())
+  updatedAt               DateTime      @updatedAt
+  reservations            Reservation[]
+
+  @@index([isActive])
+}
+
+model Reservation {
+  id                              Int               @id @default(autoincrement())
+  code                            String            @unique @db.VarChar(40)
+  accessToken                     String            @unique @db.VarChar(96)
+  customerId                      Int
+  tableId                         Int?
+  policyId                        Int?
+  scheduledAt                     DateTime
+  partySize                       Int
+  contactName                     String            @db.VarChar(160)
+  contactPhone                    String            @db.VarChar(30)
+  note                            String?           @db.VarChar(1000)
+  status                          ReservationStatus @default(PENDING_DEPOSIT)
+  depositStatus                   DepositStatus     @default(UNPAID)
+  depositAmount                   Int               @default(0)
+  freeCancelBeforeMinutesSnapshot Int               @default(120)
+  lateCancelRefundPercentSnapshot Int               @default(0)
+  noShowRefundPercentSnapshot     Int               @default(0)
+  gracePeriodMinutesSnapshot      Int               @default(30)
+  paymentDeclaredAt               DateTime?
+  checkedInAt                     DateTime?
+  checkedInByUserId               Int?
+  cancelledAt                     DateTime?
+  cancelReason                    String?           @db.VarChar(500)
+  createdAt                       DateTime          @default(now())
+  updatedAt                       DateTime          @updatedAt
+
+  customer     Customer                        @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  table        DiningTable?                    @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  policy       ReservationPolicy?              @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  transactions ReservationDepositTransaction[]
+  changes      ReservationChange[]
+  orders       Order[]
+
+  @@index([status, scheduledAt])
+  @@index([tableId, scheduledAt])
+  @@index([customerId, scheduledAt])
+}
+
+model ReservationDepositTransaction {
+  id                Int                                 @id @default(autoincrement())
+  reservationId     Int
+  orderId           Int?
+  type              ReservationDepositTransactionType
+  status            ReservationDepositTransactionStatus @default(PENDING)
+  amount            Int
+  paymentMethod     PaymentMethod?
+  externalReference String?                             @unique @db.VarChar(120)
+  reason            String?                             @db.VarChar(500)
+  confirmedByUserId Int?
+  confirmedAt       DateTime?
+  createdAt         DateTime                            @default(now())
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+
+  @@unique([reservationId, orderId])
+  @@index([reservationId, createdAt])
+}
+
+model ReservationChange {
+  id              Int      @id @default(autoincrement())
+  reservationId   Int
+  oldScheduledAt  DateTime
+  newScheduledAt  DateTime
+  reason          String?  @db.VarChar(500)
+  changedByUserId Int?
+  createdAt       DateTime @default(now())
+
+  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Cascade)
+
+  @@index([reservationId, createdAt])
 }
 
 model Category {
@@ -106,21 +946,21 @@ model Category {
 }
 
 model PriceList {
-  id              Int                 @id @default(autoincrement())
-  code            String              @unique
+  id              Int                @id @default(autoincrement())
+  code            String             @unique
   name            String
-  type            PriceListType       @default(GENERAL)
-  scopeType       PriceListScopeType  @default(GLOBAL)
+  type            PriceListType      @default(GENERAL)
+  scopeType       PriceListScopeType @default(GLOBAL)
   scopeKey        String?
-  isDefault       Boolean             @default(false)
-  isActive        Boolean             @default(true)
+  isDefault       Boolean            @default(false)
+  isActive        Boolean            @default(true)
   effectiveFrom   DateTime?
   effectiveTo     DateTime?
   createdByUserId Int?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
-  items PriceListItem[]
+  items  PriceListItem[]
   orders Order[]
 
   @@index([scopeType, scopeKey])
@@ -146,10 +986,10 @@ model MenuItem {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  category       Category        @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-  modifierGroups ModifierGroup[]
-  orderItems     OrderItem[]
-  priceListItems PriceListItem[]
+  category            Category             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  modifierGroups      ModifierGroup[]
+  orderItems          OrderItem[]
+  priceListItems      PriceListItem[]
   menuItemIngredients MenuItemIngredient[]
 }
 
@@ -210,43 +1050,51 @@ model DiningTable {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  orders Order[]
-  area   TableArea? @relation(fields: [areaId], references: [id], onDelete: Restrict)
+  orders       Order[]
+  reservations Reservation[]
+  area         TableArea?    @relation(fields: [areaId], references: [id], onDelete: Restrict)
 
   @@index([areaId])
   @@index([isActive])
 }
 
 model TableArea {
-  id           Int      @id @default(autoincrement())
-  name         String   @unique @db.VarChar(100)
-  displayOrder Int      @default(0)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id           Int           @id @default(autoincrement())
+  name         String        @unique @db.VarChar(100)
+  displayOrder Int           @default(0)
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
   tables       DiningTable[]
 
   @@index([isActive, displayOrder])
 }
 
 model Order {
-  id            Int            @id @default(autoincrement())
-  code          String         @unique // Ma don CRISPY-YYYYMMDD-XXXX
-  orderType     OrderType      @default(DINE_IN)
-  status        OrderStatus    @default(PENDING)
-  tableId       Int?
-  priceListId   Int?
-  buzzerNumber  Int?
-  totalAmount    Int // Tong tien truoc thue (VND)
-  discountAmount Int            @default(0) // Tien giam gia tu voucher (VND)
-  vatAmount      Int // Tien thue VAT 8% (VND)
-  finalAmount    Int // Tong thanh toan (VND)
-  voucherId      Int?
-  voucherCode    String?
-  paymentMethod  PaymentMethod?
-  paymentStatus PaymentStatus  @default(UNPAID)
-  paidAt        DateTime?
-  notes         String?
+  id                 Int            @id @default(autoincrement())
+  code               String         @unique // Ma don CRISPY-YYYYMMDD-XXXX
+  orderType          OrderType      @default(DINE_IN)
+  status             OrderStatus    @default(PENDING)
+  tableId            Int?
+  customerId         Int?
+  reservationId      Int?
+  deliveryPartnerId  Int?
+  deliveryAddress    String?        @db.VarChar(255)
+  deliveryFee        Int            @default(0)
+  deliveryFeePaid    Int            @default(0)
+  priceListId        Int?
+  buzzerNumber       Int?
+  totalAmount        Int // Tong tien truoc thue (VND)
+  discountAmount     Int            @default(0) // Tien giam gia tu voucher (VND)
+  vatAmount          Int // Tien thue VAT 8% (VND)
+  finalAmount        Int // Tong thanh toan (VND)
+  voucherId          Int?
+  voucherCode        String?
+  paymentMethod      PaymentMethod?
+  paymentStatus      PaymentStatus  @default(UNPAID)
+  payLaterAuthorized Boolean        @default(false)
+  paidAt             DateTime?
+  notes              String?
 
   // Audit fields
   createdByUserId Int?
@@ -268,17 +1116,42 @@ model Order {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  table         DiningTable? @relation(fields: [tableId], references: [id], onDelete: SetNull)
-  priceList     PriceList?   @relation(fields: [priceListId], references: [id], onDelete: SetNull)
-  createdByUser User?        @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
-  voidedByUser  User?        @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
-  voucher       Voucher?     @relation(fields: [voucherId], references: [id], onDelete: SetNull)
-  items         OrderItem[]
+  table                 DiningTable?              @relation(fields: [tableId], references: [id], onDelete: SetNull)
+  customer              Customer?                 @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  reservation           Reservation?              @relation(fields: [reservationId], references: [id], onDelete: SetNull)
+  deliveryPartner       DeliveryPartner?          @relation(fields: [deliveryPartnerId], references: [id], onDelete: Restrict)
+  priceList             PriceList?                @relation(fields: [priceListId], references: [id], onDelete: SetNull)
+  createdByUser         User?                     @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  voidedByUser          User?                     @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
+  voucher               Voucher?                  @relation(fields: [voucherId], references: [id], onDelete: SetNull)
+  items                 OrderItem[]
   inventoryTransactions InventoryTransaction[]
-  returns       OrderReturn[]
+  returns               OrderReturn[]
+  paymentTransactions   OrderPaymentTransaction[]
 
-  @@index([voucherId])
   @@unique([idempotencyScope, idempotencyKey])
+  @@index([voucherId])
+  @@index([deliveryPartnerId, status])
+  @@index([customerId, createdAt])
+  @@index([reservationId])
+}
+
+model OrderPaymentTransaction {
+  id                Int                           @id @default(autoincrement())
+  orderId           Int
+  status            OrderPaymentTransactionStatus @default(PENDING)
+  amount            Int
+  paymentMethod     PaymentMethod                 @default(BANK_TRANSFER)
+  externalReference String?                       @unique @db.VarChar(120)
+  reason            String?                       @db.VarChar(500)
+  confirmedByUserId Int?
+  confirmedAt       DateTime?
+  createdAt         DateTime                      @default(now())
+
+  order           Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  confirmedByUser User? @relation("OrderPaymentConfirmer", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([orderId, status, createdAt])
 }
 
 model OrderItem {
@@ -293,31 +1166,31 @@ model OrderItem {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  order    Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  menuItem MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem    MenuItem          @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
   returnLines OrderReturnLine[]
 }
 
 model OrderReturn {
-  id                Int              @id @default(autoincrement())
-  returnCode        String           @unique
+  id                Int               @id @default(autoincrement())
+  returnCode        String            @unique
   orderId           Int
   status            OrderReturnStatus @default(COMPLETED)
-  returnedAt        DateTime         @default(now())
-  totalRefundDue    Int              @default(0)
-  refundedAmount    Int              @default(0)
-  refundMethod      PaymentMethod    @default(CASH)
-  note              String?          @db.VarChar(1000)
+  returnedAt        DateTime          @default(now())
+  totalRefundDue    Int               @default(0)
+  refundedAmount    Int               @default(0)
+  refundMethod      PaymentMethod     @default(CASH)
+  note              String?           @db.VarChar(1000)
   createdByUserId   Int?
-  createdByName     String?          @db.VarChar(120)
+  createdByName     String?           @db.VarChar(120)
   completedAt       DateTime?
   cancelledByUserId Int?
   cancelledAt       DateTime?
-  createdAt         DateTime         @default(now())
-  updatedAt         DateTime         @updatedAt
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 
-  order Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  lines OrderReturnLine[]
+  order                 Order                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  lines                 OrderReturnLine[]
   inventoryTransactions InventoryTransaction[]
 
   @@index([status, returnedAt])
@@ -325,7 +1198,7 @@ model OrderReturn {
 }
 
 model OrderReturnLine {
-  id            Int @id @default(autoincrement())
+  id            Int      @id @default(autoincrement())
   orderReturnId Int
   orderItemId   Int
   menuItemId    Int
@@ -337,7 +1210,7 @@ model OrderReturnLine {
   createdAt     DateTime @default(now())
 
   orderReturn OrderReturn @relation(fields: [orderReturnId], references: [id], onDelete: Cascade)
-  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  orderItem   OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
 
   @@unique([orderReturnId, orderItemId])
   @@index([orderItemId])
@@ -346,12 +1219,12 @@ model OrderReturnLine {
 
 model AuditLog {
   id         Int      @id @default(autoincrement())
-  action     String   // MENU_ITEM_CREATED | MENU_ITEM_UPDATED | MENU_ITEM_AVAILABILITY_CHANGED | MENU_IMAGE_UPLOADED | ORDER_VOIDED
-  targetType String   // MenuItem | Order
+  action     String // MENU_ITEM_CREATED | MENU_ITEM_UPDATED | MENU_ITEM_AVAILABILITY_CHANGED | MENU_IMAGE_UPLOADED | ORDER_VOIDED
+  targetType String // MenuItem | Order
   targetId   Int?
   actorId    Int?
-  actorName  String?  // Snapshot ten user tai thoi diem log
-  metadata   Json?    // Chi tiet thay doi (ten cu, ten moi, gia cu, gia moi...)
+  actorName  String? // Snapshot ten user tai thoi diem log
+  metadata   Json? // Chi tiet thay doi (ten cu, ten moi, gia cu, gia moi...)
   createdAt  DateTime @default(now())
 
   actor User? @relation("AuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
@@ -387,8 +1260,8 @@ enum InventoryWasteStatus {
 model Ingredient {
   id           Int      @id @default(autoincrement())
   sku          String   @unique // Ma nguyen lieu (VD: ING-CHICKEN-01)
-  name         String   // Ten nguyen lieu
-  unit         String   // Don vi: gram, ml, piece, can...
+  name         String // Ten nguyen lieu
+  unit         String // Don vi: gram, ml, piece, can...
   currentStock Float    @default(0) // Ton kho thuc te
   minThreshold Float    @default(0) // Nguong canh bao do
   costPerUnit  Int      @default(0) // Gia von trung binh (VND / don vi tinh)
@@ -408,10 +1281,10 @@ model Ingredient {
 }
 
 model MenuItemIngredient {
-  id               Int      @id @default(autoincrement())
+  id               Int   @id @default(autoincrement())
   menuItemId       Int
   ingredientId     Int
-  quantityRequired Float    // Dinh luong tieu hao cho 1 phan mon an
+  quantityRequired Float // Dinh luong tieu hao cho 1 phan mon an
 
   menuItem   MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
   ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
@@ -422,53 +1295,53 @@ model MenuItemIngredient {
 }
 
 model InventoryTransaction {
-  id              Int                      @id @default(autoincrement())
-  ingredientId    Int
-  type            InventoryTransactionType
-  quantity        Float                    // + khi nhap kho, - khi xuat/hao hut
-  costAmount      Int                      @default(0) // Gia tri VND giao dich
-  orderId         Int?                     // Don hang lien quan (khi auto-deduct)
-  purchaseReceiptId Int?                   // Chung tu nhap; null cho ledger cu
-  inventoryCheckId Int?                    // Chung tu kiem kho; null cho ledger khac
-  inventoryWasteId Int?                    // Chung tu xuat huy; null cho ledger khac
-  purchaseReturnId Int?
-  orderReturnId Int?
-  note            String?                  // Ghi chu
-  createdByUserId Int?
-  createdAt       DateTime                 @default(now())
+  id                Int                      @id @default(autoincrement())
+  ingredientId      Int
+  type              InventoryTransactionType
+  quantity          Float // + khi nhap kho, - khi xuat/hao hut
+  costAmount        Int                      @default(0) // Gia tri VND giao dich
+  orderId           Int? // Don hang lien quan (khi auto-deduct)
+  purchaseReceiptId Int? // Chung tu nhap; null cho ledger cu
+  inventoryCheckId  Int? // Chung tu kiem kho; null cho ledger khac
+  inventoryWasteId  Int? // Chung tu xuat huy; null cho ledger khac
+  purchaseReturnId  Int?
+  orderReturnId     Int?
+  note              String? // Ghi chu
+  createdByUserId   Int?
+  createdAt         DateTime                 @default(now())
 
-  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
-  order      Order?     @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  ingredient      Ingredient       @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  order           Order?           @relation(fields: [orderId], references: [id], onDelete: SetNull)
   purchaseReceipt PurchaseReceipt? @relation(fields: [purchaseReceiptId], references: [id], onDelete: Restrict)
-  inventoryCheck InventoryCheck? @relation(fields: [inventoryCheckId], references: [id], onDelete: Restrict)
-  inventoryWaste InventoryWaste? @relation(fields: [inventoryWasteId], references: [id], onDelete: Restrict)
-  purchaseReturn PurchaseReturn? @relation(fields: [purchaseReturnId], references: [id], onDelete: Restrict)
-  orderReturn OrderReturn? @relation(fields: [orderReturnId], references: [id], onDelete: Restrict)
+  inventoryCheck  InventoryCheck?  @relation(fields: [inventoryCheckId], references: [id], onDelete: Restrict)
+  inventoryWaste  InventoryWaste?  @relation(fields: [inventoryWasteId], references: [id], onDelete: Restrict)
+  purchaseReturn  PurchaseReturn?  @relation(fields: [purchaseReturnId], references: [id], onDelete: Restrict)
+  orderReturn     OrderReturn?     @relation(fields: [orderReturnId], references: [id], onDelete: Restrict)
 
+  @@unique([purchaseReturnId, ingredientId])
+  @@unique([orderReturnId, ingredientId])
   @@index([ingredientId])
   @@index([type])
   @@index([createdAt])
   @@index([purchaseReceiptId])
   @@index([inventoryCheckId])
   @@index([inventoryWasteId])
-  @@unique([purchaseReturnId, ingredientId])
-  @@unique([orderReturnId, ingredientId])
   @@index([orderReturnId])
 }
 
 model InventoryCheck {
-  id                  Int                  @id @default(autoincrement())
-  checkCode           String               @unique
-  status              InventoryCheckStatus @default(DRAFT)
-  countedAt           DateTime             @default(now())
-  balancedAt          DateTime?
-  note                String?              @db.VarChar(1000)
-  createdByUserId     Int?
-  balancedByUserId    Int?
-  cancelledByUserId   Int?
-  cancelledAt         DateTime?
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
+  id                Int                  @id @default(autoincrement())
+  checkCode         String               @unique
+  status            InventoryCheckStatus @default(DRAFT)
+  countedAt         DateTime             @default(now())
+  balancedAt        DateTime?
+  note              String?              @db.VarChar(1000)
+  createdByUserId   Int?
+  balancedByUserId  Int?
+  cancelledByUserId Int?
+  cancelledAt       DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   lines                 InventoryCheckLine[]
   inventoryTransactions InventoryTransaction[]
@@ -500,19 +1373,19 @@ model InventoryCheckLine {
 }
 
 model InventoryWaste {
-  id                    Int                  @id @default(autoincrement())
-  wasteCode             String               @unique
-  status                InventoryWasteStatus @default(DRAFT)
-  wastedAt              DateTime             @default(now())
-  completedAt           DateTime?
-  note                  String?              @db.VarChar(1000)
-  totalValue            Int                  @default(0)
-  createdByUserId       Int?
-  completedByUserId     Int?
-  cancelledByUserId     Int?
-  cancelledAt           DateTime?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
+  id                Int                  @id @default(autoincrement())
+  wasteCode         String               @unique
+  status            InventoryWasteStatus @default(DRAFT)
+  wastedAt          DateTime             @default(now())
+  completedAt       DateTime?
+  note              String?              @db.VarChar(1000)
+  totalValue        Int                  @default(0)
+  createdByUserId   Int?
+  completedByUserId Int?
+  cancelledByUserId Int?
+  cancelledAt       DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   lines                 InventoryWasteLine[]
   inventoryTransactions InventoryTransaction[]
@@ -549,27 +1422,27 @@ enum PurchaseReceiptStatus {
 }
 
 model Supplier {
-  id        Int      @id @default(autoincrement())
-  code      String   @unique
-  name      String
-  phone     String?
-  email     String?
-  address   String?  @db.VarChar(255)
-  taxCode   String?
-  note      String?  @db.VarChar(1000)
-  identityNumber String? @db.VarChar(20)
-  province       String? @db.VarChar(100)
-  district       String? @db.VarChar(100)
-  ward           String? @db.VarChar(100)
-  companyName    String? @db.VarChar(200)
+  id             Int      @id @default(autoincrement())
+  code           String   @unique
+  name           String
+  phone          String?
+  email          String?
+  address        String?  @db.VarChar(255)
+  taxCode        String?
+  note           String?  @db.VarChar(1000)
+  identityNumber String?  @db.VarChar(20)
+  province       String?  @db.VarChar(100)
+  district       String?  @db.VarChar(100)
+  ward           String?  @db.VarChar(100)
+  companyName    String?  @db.VarChar(200)
   groupId        Int?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
   purchaseReceipts PurchaseReceipt[]
-  purchaseReturns PurchaseReturn[]
-  group SupplierGroup? @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  purchaseReturns  PurchaseReturn[]
+  group            SupplierGroup?    @relation(fields: [groupId], references: [id], onDelete: Restrict)
 
   @@index([name])
   @@index([isActive])
@@ -577,11 +1450,44 @@ model Supplier {
 }
 
 model SupplierGroup {
-  id        Int @id @default(autoincrement())
-  name      String @unique @db.VarChar(100)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        Int        @id @default(autoincrement())
+  name      String     @unique @db.VarChar(100)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
   suppliers Supplier[]
+}
+
+model DeliveryPartner {
+  id          Int                 @id @default(autoincrement())
+  code        String              @unique
+  name        String
+  phone       String?
+  email       String?
+  partnerType DeliveryPartnerType @default(INDIVIDUAL)
+  address     String?             @db.VarChar(255)
+  province    String?             @db.VarChar(100)
+  district    String?             @db.VarChar(100)
+  ward        String?             @db.VarChar(100)
+  note        String?             @db.VarChar(1000)
+  groupId     Int?
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  group  DeliveryPartnerGroup? @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  orders Order[]
+
+  @@index([name])
+  @@index([isActive])
+  @@index([groupId])
+}
+
+model DeliveryPartnerGroup {
+  id        Int               @id @default(autoincrement())
+  name      String            @unique @db.VarChar(100)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+  partners  DeliveryPartner[]
 }
 
 model PurchaseReceipt {
@@ -604,7 +1510,7 @@ model PurchaseReceipt {
   createdAt         DateTime              @default(now())
   updatedAt         DateTime              @updatedAt
 
-  supplier              Supplier?            @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  supplier              Supplier?              @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   lines                 PurchaseReceiptLine[]
   purchaseReturns       PurchaseReturn[]
   inventoryTransactions InventoryTransaction[]
@@ -641,9 +1547,9 @@ model Voucher {
   code          String       @unique
   title         String
   discountType  DiscountType
-  discountValue Int          // Ti le % (1-100) hoac so tien VND
+  discountValue Int // Ti le % (1-100) hoac so tien VND
   minOrderValue Int          @default(0) // Don hang toi thieu (VND)
-  maxDiscount   Int?         // Giam toi da doi voi % (VND)
+  maxDiscount   Int? // Giam toi da doi voi % (VND)
   usageLimit    Int          @default(100)
   usedCount     Int          @default(0)
   isActive      Boolean      @default(true)
@@ -652,7 +1558,7 @@ model Voucher {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  orders        Order[]
+  orders Order[]
 
   @@index([code, isActive])
 }
@@ -664,31 +1570,31 @@ enum PurchaseReturnStatus {
 }
 
 model PurchaseReturn {
-  id                  Int @id @default(autoincrement())
-  returnCode          String @unique
-  supplierId          Int?
-  sourceReceiptId     Int?
-  returnedAt          DateTime @default(now())
-  status              PurchaseReturnStatus @default(DRAFT)
-  version             Int @default(1)
-  subtotalAmount      Int @default(0)
-  discountAmount      Int @default(0)
-  vatAmount           Int @default(0)
-  refundAmount        Int @default(0)
-  refundMethod        String @default("CASH") @db.VarChar(20)
-  note                String? @db.VarChar(1000)
-  createdByUserId     Int?
-  createdByName       String? @db.VarChar(120)
-  completedByUserId   Int?
-  completedAt         DateTime?
-  cancelledByUserId   Int?
-  cancelledAt         DateTime?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                Int                  @id @default(autoincrement())
+  returnCode        String               @unique
+  supplierId        Int?
+  sourceReceiptId   Int?
+  returnedAt        DateTime             @default(now())
+  status            PurchaseReturnStatus @default(DRAFT)
+  version           Int                  @default(1)
+  subtotalAmount    Int                  @default(0)
+  discountAmount    Int                  @default(0)
+  vatAmount         Int                  @default(0)
+  refundAmount      Int                  @default(0)
+  refundMethod      String               @default("CASH") @db.VarChar(20)
+  note              String?              @db.VarChar(1000)
+  createdByUserId   Int?
+  createdByName     String?              @db.VarChar(120)
+  completedByUserId Int?
+  completedAt       DateTime?
+  cancelledByUserId Int?
+  cancelledAt       DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
-  supplier Supplier? @relation(fields: [supplierId], references: [id], onDelete: Restrict)
-  sourceReceipt PurchaseReceipt? @relation(fields: [sourceReceiptId], references: [id], onDelete: Restrict)
-  lines PurchaseReturnLine[]
+  supplier              Supplier?              @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  sourceReceipt         PurchaseReceipt?       @relation(fields: [sourceReceiptId], references: [id], onDelete: Restrict)
+  lines                 PurchaseReturnLine[]
   inventoryTransactions InventoryTransaction[]
 
   @@index([status, returnedAt])
@@ -697,7 +1603,7 @@ model PurchaseReturn {
 }
 
 model PurchaseReturnLine {
-  id                  Int @id @default(autoincrement())
+  id                  Int                  @id @default(autoincrement())
   purchaseReturnId    Int
   ingredientId        Int
   sourceReceiptLineId Int?
@@ -708,14 +1614,13 @@ model PurchaseReturnLine {
   purchaseUnitCost    Int
   returnUnitPrice     Int
   lineAmount          Int
-  stockCostPerUnit    Int @default(0)
-  stockCostAmount     Int @default(0)
-  purchaseReturn PurchaseReturn @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
-  ingredient Ingredient @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
-  sourceReceiptLine PurchaseReceiptLine? @relation(fields: [sourceReceiptLineId], references: [id], onDelete: Restrict)
+  stockCostPerUnit    Int                  @default(0)
+  stockCostAmount     Int                  @default(0)
+  purchaseReturn      PurchaseReturn       @relation(fields: [purchaseReturnId], references: [id], onDelete: Cascade)
+  ingredient          Ingredient           @relation(fields: [ingredientId], references: [id], onDelete: Restrict)
+  sourceReceiptLine   PurchaseReceiptLine? @relation(fields: [sourceReceiptLineId], references: [id], onDelete: Restrict)
 
   @@unique([purchaseReturnId, ingredientId])
   @@index([ingredientId])
   @@index([sourceReceiptLineId])
 }
-

@@ -34,6 +34,14 @@ import { fetchLowStockAlertsApi } from '../api/inventory';
 import { useAuth } from './AuthContext';
 import { getApiBaseUrl, getSocketBaseUrl, onServerConfigChanged } from '../api/config';
 import { IdempotencyKeyStore } from '../lib/idempotency';
+import { subscribeToEmployeeScheduleInvalidation } from '../lib/employeeScheduleRealtime';
+import { subscribeToEmployeeAttendanceInvalidation, type AttendanceRealtimeSocket } from '../lib/employeeAttendanceRealtime';
+import {
+  nextEmployeePayrollRevision,
+  subscribeToEmployeePayrollInvalidation,
+  type EmployeePayrollRealtimeSocket
+} from '../lib/employeePayrollRealtime';
+import { subscribeToEmployeeSettingsWorkspaceInvalidation, type EmployeeSettingsRealtimeSocket } from '../lib/employeeSettingsRealtime';
 import { bulkUpdateMenuItemsApi } from '../api/menuBulk';
 import {
   bulkUpdatePriceListApi,
@@ -100,11 +108,15 @@ interface RestaurantContextType {
   createOrder: (payload: {
     orderType: OrderType;
     tableId?: number | null;
+    customerId?: number | null;
     qrCodeToken?: string;
     voucherCode?: string;
+    deliveryPartnerId?: number;
+    deliveryAddress?: string;
+    deliveryFee?: number;
     notes?: string;
   }) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
-  createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string, voucherCode?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
+  createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string, voucherCode?: string, reservationAccessToken?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   payOrder: (orderId: number, paymentMethod: PaymentMethod) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   updateTableStatus: (tableId: number, status: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') => Promise<{ success: boolean; table?: DiningTableDto; error?: string }>;
   transferTable: (fromTableId: number, toTableId: number) => Promise<{ success: boolean; data?: { fromTable: DiningTableDto; toTable: DiningTableDto }; error?: string }>;
@@ -114,6 +126,14 @@ interface RestaurantContextType {
   latestOrderStatusChanged?: SocketOrderStatusChangedPayload | null;
   inventoryRevision: number;
   tablesRevision: number;
+  customersRevision: number;
+  employeesRevision: number;
+  employeeSchedulesRevision: number;
+  employeeAttendanceRevision: number;
+  employeePayrollRevision: number;
+  employeeSettingsRevision: number;
+  reservationsRevision: number;
+  orderPaymentsRevision: number;
 
   // KDS State (Bếp thời gian thực)
   kdsOrders: OrderDto[];
@@ -204,6 +224,14 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [priceListError, setPriceListError] = useState<string | null>(null);
   const [inventoryRevision, setInventoryRevision] = useState(0);
   const [tablesRevision, setTablesRevision] = useState(0);
+  const [customersRevision, setCustomersRevision] = useState(0);
+  const [employeesRevision, setEmployeesRevision] = useState(0);
+  const [employeeSchedulesRevision, setEmployeeSchedulesRevision] = useState(0);
+  const [employeeAttendanceRevision, setEmployeeAttendanceRevision] = useState(0);
+  const [employeePayrollRevision, setEmployeePayrollRevision] = useState(0);
+  const [employeeSettingsRevision, setEmployeeSettingsRevision] = useState(0);
+  const [reservationsRevision, setReservationsRevision] = useState(0);
+  const [orderPaymentsRevision, setOrderPaymentsRevision] = useState(0);
 
   // 1. Fetch Menu from Backend API
   const fetchMenu = useCallback(async () => {
@@ -503,6 +531,23 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       autoConnect: true,
       auth: token ? { token } : undefined
     });
+    const unsubscribeEmployeeScheduleInvalidation = subscribeToEmployeeScheduleInvalidation(
+      socket,
+      () => setEmployeeSchedulesRevision(revision => revision + 1)
+    );
+    const unsubscribeEmployeeAttendanceInvalidation = subscribeToEmployeeAttendanceInvalidation(
+      socket as unknown as AttendanceRealtimeSocket,
+      () => setEmployeeAttendanceRevision(revision => revision + 1)
+    );
+    const unsubscribeEmployeePayrollInvalidation = subscribeToEmployeePayrollInvalidation(
+      socket as unknown as EmployeePayrollRealtimeSocket,
+      () => setEmployeePayrollRevision(nextEmployeePayrollRevision)
+    );
+    const unsubscribeEmployeeSettingsInvalidation = subscribeToEmployeeSettingsWorkspaceInvalidation(
+      socket as unknown as EmployeeSettingsRealtimeSocket,
+      1,
+      () => setEmployeeSettingsRevision(revision => revision + 1)
+    );
 
     socket.on('connect', () => {
       console.log('⚡ Socket connected to Crispy Bite Server:', socketUrl);
@@ -583,6 +628,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     socket.on('inventory:changed', (_payload: SocketInventoryChangedPayload) => {
       setInventoryRevision((revision) => revision + 1);
     });
+
+    socket.on('customers:changed', () => setCustomersRevision(revision => revision + 1));
+    socket.on('employees:changed', () => setEmployeesRevision(revision => revision + 1));
+    socket.on('reservations:changed', () => setReservationsRevision(revision => revision + 1));
+    socket.on('order:paymentChanged', () => setOrderPaymentsRevision(revision => revision + 1));
 
     // Table Status Changed
     socket.on('table:statusChanged', (payload: SocketTableStatusChangedPayload) => {
@@ -701,6 +751,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     });
 
     return () => {
+      unsubscribeEmployeeScheduleInvalidation();
+      unsubscribeEmployeeAttendanceInvalidation();
+      unsubscribeEmployeePayrollInvalidation();
+      unsubscribeEmployeeSettingsInvalidation();
       socket.disconnect();
     };
   }, [token, fetchTables, fetchKDSOrders, fetchPriceList, fetchMenu, user?.role]);
@@ -793,14 +847,24 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const createOrder = async ({
     orderType,
     tableId,
+    customerId,
     qrCodeToken,
+    reservationAccessToken,
     voucherCode,
+    deliveryPartnerId,
+    deliveryAddress,
+    deliveryFee,
     notes
   }: {
     orderType: OrderType;
     tableId?: number | null;
+    customerId?: number | null;
     qrCodeToken?: string;
+    reservationAccessToken?: string;
     voucherCode?: string;
+    deliveryPartnerId?: number;
+    deliveryAddress?: string;
+    deliveryFee?: number;
     notes?: string;
   }): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
     if (cart.length === 0) {
@@ -823,8 +887,11 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
     const orderPayload = {
       ...(orderType === 'DINE_IN' && tableId ? { tableId } : {}),
+      ...(customerId ? { customerId } : {}),
       ...(orderType === 'DINE_IN' && qrCodeToken ? { qrCodeToken } : {}),
+      ...(orderType === 'DINE_IN' && reservationAccessToken ? { reservationAccessToken } : {}),
       ...(voucherCode ? { voucherCode } : {}),
+      ...(orderType === 'DELIVERY' ? { deliveryPartnerId, deliveryAddress, deliveryFee } : {}),
       orderType,
       items: itemsPayload,
       notes
@@ -870,9 +937,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     tableId: number,
     notes?: string,
     qrCodeToken?: string,
-    voucherCode?: string
+    voucherCode?: string,
+    reservationAccessToken?: string
   ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
-    return createOrder({ orderType: 'DINE_IN', tableId, notes, qrCodeToken, voucherCode });
+    return createOrder({ orderType: 'DINE_IN', tableId, notes, qrCodeToken, voucherCode, reservationAccessToken });
   };
 
   const payOrder = async (
@@ -1256,6 +1324,14 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         latestOrderStatusChanged,
         inventoryRevision,
         tablesRevision,
+        customersRevision,
+        employeesRevision,
+        employeeSchedulesRevision,
+        employeeAttendanceRevision,
+        employeePayrollRevision,
+        employeeSettingsRevision,
+        reservationsRevision,
+        orderPaymentsRevision,
         kdsOrders,
         isLoadingKDS,
         kdsError,

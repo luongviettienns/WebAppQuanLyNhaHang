@@ -12,6 +12,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1, 'DATABASE_URL khong duoc de trong'),
   TEST_DATABASE_URL: z.string().optional(),
   JWT_SECRET: z.string().min(32, 'JWT_SECRET phai dai it nhat 32 ky tu de dam bao an toan'),
+  ATTENDANCE_RATE_LIMIT_HMAC_SECRET: z.string().min(32).optional(),
   JWT_EXPIRES_IN: z.string().default('8h'),
   JWT_ISSUER: z.string().default('crispy-bite-api'),
   JWT_AUDIENCE: z.string().default('crispy-bite-client'),
@@ -20,6 +21,9 @@ const envSchema = z.object({
   EXPO_PUBLIC_SOCKET_URL: z.string().optional(),
   VAT_RATE_BPS: z.coerce.number().default(800), // 8% = 800 basis points
   BUSINESS_TIMEZONE: z.string().default('Asia/Ho_Chi_Minh'),
+  DEPOSIT_VIETQR_BANK_ID: z.string().trim().optional(),
+  DEPOSIT_BANK_ACCOUNT: z.string().trim().optional(),
+  DEPOSIT_ACCOUNT_NAME: z.string().trim().optional(),
   SEED_CASHIER_PASSWORD: z.string().default('cashier123'),
   SEED_KITCHEN_PASSWORD: z.string().default('kitchen123'),
   SEED_ADMIN_PASSWORD: z.string().default('admin123')
@@ -34,3 +38,4 @@ if (!parsedEnv.success) {
 }
 
 export const env = parsedEnv.data;
+export const attendanceRateLimitHmacSecret = env.ATTENDANCE_RATE_LIMIT_HMAC_SECRET ?? env.JWT_SECRET;

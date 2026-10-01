@@ -14,19 +14,82 @@ export type ErrorCode =
   | 'VOUCHER_NOT_STARTED'
   | 'VOUCHER_USAGE_EXHAUSTED'
   | 'MIN_ORDER_VALUE_NOT_MET'
-  | 'VOUCHER_INACTIVE';
+  | 'VOUCHER_INACTIVE'
+  | 'EMPLOYEE_NOT_FOUND'
+  | 'EMPLOYEE_NOT_WORKING'
+  | 'SHIFT_NOT_FOUND'
+  | 'SHIFT_INACTIVE'
+  | 'SCHEDULE_DATE_INVALID'
+  | 'SCHEDULE_TIME_INVALID'
+  | 'SCHEDULE_RECURRENCE_INVALID'
+  | 'SCHEDULE_DUPLICATE'
+  | 'SCHEDULE_OVERLAP'
+  | 'SCHEDULE_IMPORT_FILE_INVALID'
+  | 'SCHEDULE_IMPORT_FILE_TOO_LARGE'
+  | 'SCHEDULE_IMPORT_FORMULA_NOT_ALLOWED'
+  | 'SCHEDULE_IMPORT_ROW_LIMIT'
+  | 'SCHEDULE_IMPORT_HEADERS_INVALID'
+  | 'SCHEDULE_IMPORT_ROWS_INVALID'
+  | 'SCHEDULE_IMPORT_EMPTY'
+  | 'ATTENDANCE_DATE_INVALID'
+  | 'ATTENDANCE_REASON_REQUIRED'
+  | 'KIOSK_SESSION_INVALID'
+  | 'KIOSK_SESSION_EXPIRED'
+  | 'KIOSK_SESSION_REVOKED'
+  | 'ATTENDANCE_CREDENTIAL_INVALID'
+  | 'IDEMPOTENCY_KEY_REUSED'
+  | 'ATTENDANCE_SESSION_ALREADY_OPEN'
+  | 'NO_OPEN_ATTENDANCE_SESSION'
+  | 'MULTIPLE_OPEN_ATTENDANCE_SESSIONS'
+  | 'SCHEDULE_SELECTION_REQUIRED'
+  | 'SCHEDULE_NOT_AVAILABLE'
+  | 'OUTSIDE_SCHEDULE_CONFIRMATION_REQUIRED'
+  | 'ATTENDANCE_BRANCH_MISMATCH'
+  | 'ATTENDANCE_SESSION_NOT_FOUND'
+  | 'ATTENDANCE_OCCURRENCE_ALREADY_RECORDED'
+  | 'ATTENDANCE_ABSENCE_ALREADY_CONFIRMED'
+  | 'ATTENDANCE_SHIFT_NOT_ENDED'
+  | 'ATTENDANCE_DISPOSITION_NOT_FOUND'
+  | 'ATTENDANCE_DISPOSITION_HAS_NO_SESSION'
+  | 'ATTENDANCE_DISPOSITION_ALREADY_REVOKED'
+  | 'PAYROLL_PERIOD_INVALID'
+  | 'PAYROLL_OVERLAP'
+  | 'PAYROLL_COMPENSATION_MISSING'
+  | 'PAYROLL_ATTENDANCE_UNRESOLVED'
+  | 'PAYROLL_STATE_INVALID'
+  | 'PAYROLL_PAYMENT_EXCEEDS_REMAINING'
+  | 'PAYROLL_IDEMPOTENCY_KEY_REUSED'
+  | 'PAYROLL_CONCURRENCY_CONFLICT'
+  | 'EMPLOYEE_SETTINGS_EFFECTIVE_DATE_INVALID'
+  | 'EMPLOYEE_SETTINGS_EFFECTIVE_DATE_IN_PAST'
+  | 'EMPLOYEE_SETTINGS_VALUE_INVALID'
+  | 'EMPLOYEE_SETTINGS_CAPABILITY_UNSUPPORTED'
+  | 'EMPLOYEE_SETTINGS_WORKWEEK_EMPTY'
+  | 'EMPLOYEE_SETTINGS_REVISION_CONFLICT'
+  | 'EMPLOYEE_SETTINGS_BRANCH_NOT_FOUND'
+  | 'BRANCH_ACCESS_DENIED'
+  | 'EMPLOYEE_SETTINGS_VERSION_DUPLICATE'
+  | 'EMPLOYEE_SETTINGS_BASELINE_MISSING'
+  | 'EMPLOYEE_HOLIDAY_DATE_INVALID'
+  | 'EMPLOYEE_HOLIDAY_OVERLAP'
+  | 'EMPLOYEE_HOLIDAY_NOT_FOUND'
+  | 'EMPLOYEE_HOLIDAY_ARCHIVED'
+  | 'EMPLOYEE_HOLIDAY_HISTORY_LOCKED'
+  | 'EMPLOYEE_HOLIDAY_REVISION_CONFLICT'
+  | 'SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED'
+  | 'ATTENDANCE_SCHEDULE_REQUIRED';
 
 export class ApiError extends Error {
   public readonly statusCode: number;
   public readonly code: ErrorCode;
-  public readonly details?: Record<string, string>;
+  public readonly details?: Record<string, unknown>;
   public readonly retryAfterSec?: number;
 
   constructor(
     statusCode: number,
     code: ErrorCode,
     message: string,
-    details?: Record<string, string>,
+    details?: Record<string, unknown>,
     retryAfterSec?: number
   ) {
     super(message);
@@ -38,7 +101,7 @@ export class ApiError extends Error {
     Object.setPrototypeOf(this, new.target.prototype);
   }
 
-  static badRequest(message: string, details?: Record<string, string>, code: ErrorCode = 'VALIDATION_ERROR') {
+  static badRequest(message: string, details?: Record<string, unknown>, code: ErrorCode = 'VALIDATION_ERROR') {
     return new ApiError(400, code, message, details);
   }
 
@@ -50,12 +113,12 @@ export class ApiError extends Error {
     return new ApiError(403, code, message);
   }
 
-  static notFound(message = 'Tai nguyen yeu cau khong ton tai', code: ErrorCode = 'NOT_FOUND') {
-    return new ApiError(404, code, message);
+  static notFound(message = 'Tai nguyen yeu cau khong ton tai', code: ErrorCode = 'NOT_FOUND', details?: Record<string, unknown>) {
+    return new ApiError(404, code, message, details);
   }
 
-  static conflict(message: string, code: ErrorCode = 'CONFLICT') {
-    return new ApiError(409, code, message);
+  static conflict(message: string, code: ErrorCode = 'CONFLICT', details?: Record<string, unknown>) {
+    return new ApiError(409, code, message, details);
   }
 
   static orderStateInvalid(message: string) {

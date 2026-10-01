@@ -14,6 +14,14 @@ import { auditRouter } from './modules/audit/audit.routes';
 import { inventoryRouter } from './modules/inventory/inventory.routes';
 import { vouchersRouter } from './modules/vouchers/vouchers.routes';
 import { priceListRouter } from './modules/price-lists/price-list.routes';
+import { customersRouter } from './modules/customers/customers.routes';
+import { reservationsRouter } from './modules/reservations/reservations.routes';
+import { employeesRouter } from './modules/employees/employees.routes';
+import { employeeSchedulesRouter } from './modules/employee-schedules/employee-schedules.routes';
+import { employeeAttendanceRouter } from './modules/employee-attendance/employee-attendance.routes';
+import { attendanceKioskRouter } from './modules/employee-attendance/attendance-kiosk.routes';
+import { employeePayrollRouter } from './modules/employee-payroll/employee-payroll.routes';
+import { employeeSettingsRouter } from './modules/employee-settings/employee-settings.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
 import { getUploadsDir } from './lib/uploads';
@@ -85,6 +93,28 @@ app.use('/api/vouchers', vouchersRouter);
 
 // General price list management (Admin only)
 app.use('/api/price-lists', priceListRouter);
+
+// Customer profiles and groups (Admin management; staff selection is limited)
+app.use('/api/customers', customersRouter);
+
+// Public booking and manual-deposit declaration endpoints
+app.use('/api/reservations', reservationsRouter);
+
+// Employee profiles and workforce master data (Admin only)
+app.use('/api/employees', employeesRouter);
+
+// Employee schedule management (Admin only)
+app.use('/api/employee-schedules', employeeSchedulesRouter);
+
+// Admin attendance operations use the full Admin session; kiosk punches use only their scoped credential.
+app.use('/api/employee-attendance', employeeAttendanceRouter);
+app.use('/api/attendance-kiosk', attendanceKioskRouter);
+
+// Employee payroll read/write workspace (Admin only).
+app.use('/api/employee-payrolls', employeePayrollRouter);
+
+// Versioned branch-aware employee settings (Admin only).
+app.use('/api/employee-settings', employeeSettingsRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);

@@ -5,11 +5,12 @@
 // 1. ENUMS
 // ==========================================
 export type Role = 'CASHIER' | 'KITCHEN' | 'ADMIN';
-export type OrderType = 'DINE_IN' | 'TAKE_AWAY';
+export type OrderType = 'DINE_IN' | 'TAKE_AWAY' | 'DELIVERY';
+export type DeliveryPartnerType = 'INDIVIDUAL' | 'COMPANY';
 export type OrderStatus = 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
 export type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'NEED_CLEANING' | 'DIRTY';
 export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD';
-export type PaymentStatus = 'UNPAID' | 'PAID' | 'VOIDED';
+export type PaymentStatus = 'UNPAID' | 'WAITING_CONFIRMATION' | 'PAID' | 'VOIDED';
 export type MenuType = 'FOOD' | 'DRINK' | 'SERVICE' | 'OTHER';
 export type MenuItemType = 'REGULAR' | 'TOPPING' | 'COMBO' | 'SERVICE';
 export type PriceListType = 'GENERAL' | 'CUSTOM';
@@ -47,7 +48,70 @@ export type ErrorCode =
   | 'ORDER_STATE_INVALID'
   | 'RATE_LIMITED'
   | 'INTERNAL_ERROR'
-  | 'INVALID_CREDENTIALS';
+  | 'INVALID_CREDENTIALS'
+  | 'EMPLOYEE_NOT_FOUND'
+  | 'EMPLOYEE_NOT_WORKING'
+  | 'SHIFT_NOT_FOUND'
+  | 'SHIFT_INACTIVE'
+  | 'SCHEDULE_DATE_INVALID'
+  | 'SCHEDULE_TIME_INVALID'
+  | 'SCHEDULE_RECURRENCE_INVALID'
+  | 'SCHEDULE_DUPLICATE'
+  | 'SCHEDULE_OVERLAP'
+  | 'SCHEDULE_IMPORT_FILE_INVALID'
+  | 'SCHEDULE_IMPORT_FILE_TOO_LARGE'
+  | 'SCHEDULE_IMPORT_FORMULA_NOT_ALLOWED'
+  | 'SCHEDULE_IMPORT_ROW_LIMIT'
+  | 'SCHEDULE_IMPORT_HEADERS_INVALID'
+  | 'SCHEDULE_IMPORT_ROWS_INVALID'
+  | 'SCHEDULE_IMPORT_EMPTY'
+  | 'ATTENDANCE_DATE_INVALID'
+  | 'ATTENDANCE_REASON_REQUIRED'
+  | 'KIOSK_SESSION_INVALID'
+  | 'KIOSK_SESSION_EXPIRED'
+  | 'KIOSK_SESSION_REVOKED'
+  | 'ATTENDANCE_CREDENTIAL_INVALID'
+  | 'IDEMPOTENCY_KEY_REUSED'
+  | 'ATTENDANCE_SESSION_ALREADY_OPEN'
+  | 'NO_OPEN_ATTENDANCE_SESSION'
+  | 'MULTIPLE_OPEN_ATTENDANCE_SESSIONS'
+  | 'SCHEDULE_SELECTION_REQUIRED'
+  | 'SCHEDULE_NOT_AVAILABLE'
+  | 'OUTSIDE_SCHEDULE_CONFIRMATION_REQUIRED'
+  | 'ATTENDANCE_BRANCH_MISMATCH'
+  | 'ATTENDANCE_SESSION_NOT_FOUND'
+  | 'ATTENDANCE_OCCURRENCE_ALREADY_RECORDED'
+  | 'ATTENDANCE_ABSENCE_ALREADY_CONFIRMED'
+  | 'ATTENDANCE_SHIFT_NOT_ENDED'
+  | 'ATTENDANCE_DISPOSITION_NOT_FOUND'
+  | 'ATTENDANCE_DISPOSITION_HAS_NO_SESSION'
+  | 'ATTENDANCE_DISPOSITION_ALREADY_REVOKED'
+  | 'PAYROLL_PERIOD_INVALID'
+  | 'PAYROLL_OVERLAP'
+  | 'PAYROLL_COMPENSATION_MISSING'
+  | 'PAYROLL_ATTENDANCE_UNRESOLVED'
+  | 'PAYROLL_STATE_INVALID'
+  | 'PAYROLL_PAYMENT_EXCEEDS_REMAINING'
+  | 'PAYROLL_IDEMPOTENCY_KEY_REUSED'
+  | 'PAYROLL_CONCURRENCY_CONFLICT'
+  | 'EMPLOYEE_SETTINGS_EFFECTIVE_DATE_INVALID'
+  | 'EMPLOYEE_SETTINGS_EFFECTIVE_DATE_IN_PAST'
+  | 'EMPLOYEE_SETTINGS_VALUE_INVALID'
+  | 'EMPLOYEE_SETTINGS_CAPABILITY_UNSUPPORTED'
+  | 'EMPLOYEE_SETTINGS_WORKWEEK_EMPTY'
+  | 'EMPLOYEE_SETTINGS_REVISION_CONFLICT'
+  | 'EMPLOYEE_SETTINGS_BRANCH_NOT_FOUND'
+  | 'BRANCH_ACCESS_DENIED'
+  | 'EMPLOYEE_SETTINGS_VERSION_DUPLICATE'
+  | 'EMPLOYEE_SETTINGS_BASELINE_MISSING'
+  | 'EMPLOYEE_HOLIDAY_DATE_INVALID'
+  | 'EMPLOYEE_HOLIDAY_OVERLAP'
+  | 'EMPLOYEE_HOLIDAY_NOT_FOUND'
+  | 'EMPLOYEE_HOLIDAY_ARCHIVED'
+  | 'EMPLOYEE_HOLIDAY_HISTORY_LOCKED'
+  | 'EMPLOYEE_HOLIDAY_REVISION_CONFLICT'
+  | 'SCHEDULE_CALENDAR_CONFIRMATION_REQUIRED'
+  | 'ATTENDANCE_SCHEDULE_REQUIRED';
 
 // ==========================================
 // 2. HTTP ENVELOPES
@@ -60,7 +124,7 @@ export interface ApiErrorResponse {
   error: {
     code: ErrorCode;
     message: string;
-    details?: Record<string, string>;
+    details?: Record<string, unknown>;
   };
 }
 
@@ -312,6 +376,9 @@ export interface OrderCreateDto {
   tableId?: number;
   qrCodeToken?: string;
   buzzerNumber?: number;
+  deliveryPartnerId?: number;
+  deliveryAddress?: string;
+  deliveryFee?: number;
   items: OrderItemCreateDto[];
   notes?: string;
   idempotencyKey?: string;
@@ -338,6 +405,11 @@ export interface OrderDto {
   status: OrderStatus;
   tableId?: number | null;
   tableNumber?: number | null;
+  deliveryPartnerId?: number | null;
+  deliveryPartner?: { id: number; code: string; name: string } | null;
+  deliveryAddress?: string | null;
+  deliveryFee?: number;
+  deliveryFeePaid?: number;
   buzzerNumber?: number | null;
   totalAmount: number;
   discountAmount?: number;
@@ -347,6 +419,7 @@ export interface OrderDto {
   finalAmount: number;
   paymentMethod?: PaymentMethod | null;
   paymentStatus: PaymentStatus;
+  payLaterAuthorized?: boolean;
   paidAt?: string | null;
   notes?: string | null;
   

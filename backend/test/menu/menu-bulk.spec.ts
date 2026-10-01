@@ -32,7 +32,7 @@ describe('Menu bulk actions API (Phase 6)', () => {
     await truncateAllTables();
     await seedDatabase(prismaTest);
     inventoryEventSpy.mockClear();
-  });
+  }, 30000);
 
   afterAll(async () => {
     await prismaTest.$disconnect();

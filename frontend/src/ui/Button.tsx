@@ -9,7 +9,7 @@ import { buttonMetrics, buttonTone } from './tokens';
 export type ButtonVariant = 'primary' | 'secondary' | 'quiet' | 'danger';
 
 export interface ButtonProps {
-  variant: ButtonVariant;
+  variant?: ButtonVariant;
   label: string;
   icon?: LucideIcon;
   loading?: boolean;
@@ -19,7 +19,7 @@ export interface ButtonProps {
 }
 
 export const Button: React.FC<ButtonProps> = ({
-  variant,
+  variant = 'primary',
   label,
   icon,
   loading = false,
@@ -30,7 +30,8 @@ export const Button: React.FC<ButtonProps> = ({
   const { theme } = useTheme();
   const [focused, setFocused] = useState(false);
   const isDisabled = disabled || loading;
-  const metrics = buttonMetrics[variant];
+  const effectiveVariant: ButtonVariant = (variant && ['primary', 'secondary', 'quiet', 'danger'].includes(variant)) ? variant : 'primary';
+  const metrics = buttonMetrics[effectiveVariant];
   const palette = {
     primary: {
       background: theme.mode === 'dark' ? buttonTone.primary.dark.background : theme.interactivePrimary,
@@ -44,7 +45,7 @@ export const Button: React.FC<ButtonProps> = ({
       pressed: theme.mode === 'dark' ? buttonTone.danger.dark.pressed : theme.interactiveDangerPressed,
       text: buttonTone.danger.dark.foreground
     }
-  }[variant];
+  }[effectiveVariant];
 
   return (
     <Pressable

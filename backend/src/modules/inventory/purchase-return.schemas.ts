@@ -18,11 +18,26 @@ export const createPurchaseReturnSchema = z.object({
 export const returnVersionSchema = z.object({ expectedVersion: z.number().int().positive() });
 export const updatePurchaseReturnSchema = createPurchaseReturnSchema.extend({ expectedVersion: z.number().int().positive() });
 export const purchaseReturnQuerySchema = z.object({
-  search: z.string().trim().max(120).optional(),
-  supplierId: z.coerce.number().int().positive().optional(), sourceReceiptId: z.coerce.number().int().positive().optional(),
-  from: returnDate.optional(), to: returnDate.optional(),
-  statuses: z.string().transform(value => value.split(',')).pipe(z.array(z.enum(['DRAFT', 'COMPLETED', 'CANCELLED'])).min(1)).optional(),
-  page: z.coerce.number().int().min(1).max(1_000_000).default(1), pageSize: z.coerce.number().int().min(1).max(100).default(50)
+  search: z.preprocess(value => (value === '' || value === null ? undefined : value), z.string().trim().max(120).optional()),
+  supplierId: z.preprocess(value => (value === '' || value === null || value === undefined ? undefined : value), z.coerce.number().int().positive().optional()),
+  sourceReceiptId: z.preprocess(value => (value === '' || value === null || value === undefined ? undefined : value), z.coerce.number().int().positive().optional()),
+  from: z.preprocess(value => {
+    if (!value || value === '' || value === null) return undefined;
+    if (typeof value === 'string' && value.includes('T')) return value.slice(0, 10);
+    return value;
+  }, returnDate.optional()),
+  to: z.preprocess(value => {
+    if (!value || value === '' || value === null) return undefined;
+    if (typeof value === 'string' && value.includes('T')) return value.slice(0, 10);
+    return value;
+  }, returnDate.optional()),
+  statuses: z.preprocess(value => {
+    if (value === undefined || value === null || value === '') return undefined;
+    const values = Array.isArray(value) ? value : String(value).split(',');
+    return values.flatMap(item => String(item).split(',')).map(item => item.trim()).filter(Boolean);
+  }, z.array(z.enum(['DRAFT', 'COMPLETED', 'CANCELLED'])).min(1).optional()),
+  page: z.coerce.number().int().min(1).max(1_000_000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50)
 }).refine(value => !value.from || !value.to || value.from <= value.to, 'Ngày bắt đầu phải trước ngày kết thúc');
 export const purchaseReturnImportSchema = z.object({
   fileName: z.string().trim().max(255).regex(/\.xlsx?$/i),

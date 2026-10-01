@@ -40,6 +40,7 @@ interface CustomerCartModalProps {
   onSubmitOrder: () => void;
   isSubmitting: boolean;
   onClose: () => void;
+  submitLabel?: string;
 }
 
 export const CustomerCartModal: React.FC<CustomerCartModalProps> = ({
@@ -59,7 +60,8 @@ export const CustomerCartModal: React.FC<CustomerCartModalProps> = ({
   onClearCart,
   onSubmitOrder,
   isSubmitting,
-  onClose
+  onClose,
+  submitLabel = `Gửi bếp ngay (${formatVND(cartTotal)})`
 }) => {
   const { theme } = useTheme();
   const [voucherInput, setVoucherInput] = React.useState('');
@@ -408,7 +410,7 @@ export const CustomerCartModal: React.FC<CustomerCartModalProps> = ({
               />
               <Button
                 variant="primary"
-                label={`Gửi bếp ngay (${formatVND(cartTotal)})`}
+                label={submitLabel}
                 icon={UtensilsCrossed}
                 loading={isSubmitting}
                 onPress={onSubmitOrder}

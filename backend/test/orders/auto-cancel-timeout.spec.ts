@@ -36,7 +36,7 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
       tableId: table.id,
       qrCodeToken: table.qrCodeToken,
       items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
-    });
+    }, 1);
 
     // Simulate created 65 minutes ago
     const pastDate = new Date(Date.now() - 65 * 60 * 1000);
@@ -74,7 +74,7 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
       tableId: table.id,
       qrCodeToken: table.qrCodeToken,
       items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
-    });
+    }, 1);
 
     // Simulate created 20 minutes ago
     const pastDate = new Date(Date.now() - 20 * 60 * 1000);
@@ -100,7 +100,7 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
       tableId: table.id,
       qrCodeToken: table.qrCodeToken,
       items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
-    });
+    }, 1);
     await OrdersService.updateOrderStatus(order1.order.id, 'PREPARING');
 
     // Order 2: READY
@@ -142,7 +142,7 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
       tableId: table.id,
       qrCodeToken: table.qrCodeToken,
       items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
-    });
+    }, 1);
     const pastDate = new Date(Date.now() - 65 * 60 * 1000);
     await prismaTest.order.update({
       where: { id: orderA.order.id },
@@ -155,7 +155,7 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
       tableId: table.id,
       qrCodeToken: table.qrCodeToken,
       items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
-    });
+    }, 1);
 
     const result = await OrdersService.autoCancelExpiredOrders(60);
     expect(result.cancelledOrderIds).toContain(orderA.order.id);

@@ -12,9 +12,11 @@ import {
   Tag,
   Utensils,
   Warehouse,
-  Tags
+  Tags,
+  UserRound
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
+import type { Role } from '../api/contracts';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { radii, spacing, typography } from '../theme';
@@ -29,8 +31,11 @@ import { InventoryScreen } from '../features/admin/InventoryScreen';
 import { VoucherManagementScreen } from '../features/admin/VoucherManagementScreen';
 import { PriceListScreen } from '../features/admin/PriceListScreen';
 import { OrdersScreen } from '../features/orders/OrdersScreen';
+import { CustomerManagementScreen } from '../features/admin/CustomerManagementScreen';
+import { ReservationManagementScreen } from '../features/admin/ReservationManagementScreen';
+import { EmployeeWorkspaceScreen } from '../features/admin/EmployeeWorkspaceScreen';
 
-type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'pricing' | 'inventory' | 'orders' | 'vouchers' | 'audit';
+type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'pricing' | 'inventory' | 'orders' | 'vouchers' | 'audit' | 'customers' | 'reservations' | 'employees';
 
 interface TabItem {
   key: TabKey;
@@ -43,6 +48,7 @@ const tabsByRole = {
   CASHIER: [
     { key: 'pos', label: 'Bán hàng', icon: ShoppingCart, component: POSScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
+    { key: 'reservations', label: 'Đặt bàn', icon: ClipboardList, component: ReservationManagementScreen },
     { key: 'orders', label: 'Đơn hàng', icon: ClipboardList, component: OrdersScreen }
   ],
   KITCHEN: [
@@ -55,10 +61,15 @@ const tabsByRole = {
     { key: 'inventory', label: 'Kho hàng', icon: Warehouse, component: InventoryScreen },
     { key: 'orders', label: 'Đơn hàng', icon: ClipboardList, component: OrdersScreen },
     { key: 'vouchers', label: 'Ưu đãi', icon: Tag, component: VoucherManagementScreen },
+    { key: 'customers', label: 'Khách hàng', icon: UserRound, component: CustomerManagementScreen },
+    { key: 'employees', label: 'Nhân viên', icon: UserRound, component: EmployeeWorkspaceScreen },
+    { key: 'reservations', label: 'Đặt bàn', icon: ClipboardList, component: ReservationManagementScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
     { key: 'audit', label: 'Nhật ký', icon: ClipboardList, component: AuditLogScreen }
   ]
 } satisfies Record<string, TabItem[]>;
+
+export const getTabsForRole = (role: Role): TabItem[] => tabsByRole[role];
 
 const roleLabels = {
   CASHIER: 'Thu ngân',
@@ -109,7 +120,7 @@ export const RoleTabs: React.FC = () => {
   const { width } = useWindowDimensions();
   const isDesktop = width >= 1200;
   const isMobile = width < 768;
-  const tabs = useMemo(() => tabsByRole[user?.role || 'ADMIN'], [user?.role]);
+  const tabs = useMemo(() => getTabsForRole(user?.role || 'ADMIN'), [user?.role]);
   const [activeTab, setActiveTab] = useState<TabKey>(() => tabsByRole[user?.role || 'ADMIN'][0]?.key || 'reports');
 
   useEffect(() => {

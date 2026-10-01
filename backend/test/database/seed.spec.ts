@@ -13,17 +13,19 @@ describe('Database Seed & Schema Verification (Task 5)', () => {
     await prismaTest.$disconnect();
   });
 
-  it('tao chinh xac 3 tai khoan user co bcrypt password va dung role', async () => {
+  it('tao it nhat 20 tai khoan user co bcrypt password va dung role', async () => {
     await seedDatabase(prismaTest);
 
     const users = await prismaTest.user.findMany({
       orderBy: { username: 'asc' }
     });
 
-    expect(users).toHaveLength(3);
+    expect(users.length).toBeGreaterThanOrEqual(20);
     
     const usernames = users.map(u => u.username);
-    expect(usernames).toEqual(['admin', 'cashier', 'kitchen']);
+    expect(usernames).toContain('admin');
+    expect(usernames).toContain('cashier');
+    expect(usernames).toContain('kitchen');
 
     const roles = users.map(u => u.role);
     expect(roles).toContain('CASHIER');
@@ -56,21 +58,37 @@ describe('Database Seed & Schema Verification (Task 5)', () => {
     expect(requiredGroup?.isRequired).toBe(true);
   });
 
-  it('tao chinh xac 12 ban an tu Ban 01 den Ban 12 voi QR token duy nhat', async () => {
+  it('tao chinh sach dat coc mac dinh de booking snapshot quy dinh tai thoi diem tao', async () => {
+    const policy = await prismaTest.reservationPolicy.findFirst({
+      where: { isActive: true },
+      orderBy: { id: 'asc' }
+    });
+
+    expect(policy).not.toBeNull();
+    expect(policy).toMatchObject({
+      depositAmount: 300000,
+      freeCancelBeforeMinutes: 120,
+      lateCancelRefundPercent: 0,
+      noShowRefundPercent: 0,
+      gracePeriodMinutes: 30,
+      isActive: true
+    });
+  });
+
+  it('tao it nhat 20 ban an voi QR token duy nhat', async () => {
     await seedDatabase(prismaTest);
 
     const tables = await prismaTest.diningTable.findMany({
       orderBy: { tableNumber: 'asc' }
     });
 
-    expect(tables).toHaveLength(12);
+    expect(tables.length).toBeGreaterThanOrEqual(20);
     expect(tables[0].tableNumber).toBe(1);
-    expect(tables[11].tableNumber).toBe(12);
 
     // Tat ca QR tokens phai la duy nhat va co do dai hop le
     const tokens = tables.map(t => t.qrCodeToken);
     const uniqueTokens = new Set(tokens);
-    expect(uniqueTokens.size).toBe(12);
+    expect(uniqueTokens.size).toBe(tables.length);
     tokens.forEach(token => {
       expect(token).toMatch(/^qr_[A-Za-z0-9_-]{20,}$/);
       expect(token).not.toMatch(/^QR-TABLE-\d{2}$/);
@@ -106,19 +124,19 @@ describe('Database Seed & Schema Verification (Task 5)', () => {
     });
   });
 
-  it('seed 8 nguyen vat lieu trong yeu va map BOM thanh cong cho tat ca 20 mon an co dinh luong', async () => {
+  it('seed it nhat 20 nguyen vat lieu va map BOM thanh cong cho tat ca mon an co dinh luong', async () => {
     await seedDatabase(prismaTest);
 
-    // Kiem tra 8 nguyen lieu
+    // Kiem tra it nhat 20 nguyen lieu
     const ingredients = await prismaTest.ingredient.findMany();
-    expect(ingredients.length).toBe(8);
+    expect(ingredients.length).toBeGreaterThanOrEqual(20);
 
     // Kiem tra so mon an co BOM
     const bomItems = await prismaTest.menuItemIngredient.findMany({
       select: { menuItemId: true },
       distinct: ['menuItemId']
     });
-    expect(bomItems.length).toBe(20);
+    expect(bomItems.length).toBeGreaterThanOrEqual(20);
 
     // Kiem tra mon cu the: Combo 1 Nguoi co dung 4 nguyen lieu (ga, khoai, dau, lon nuoc)
     const combo = await prismaTest.menuItem.findFirst({

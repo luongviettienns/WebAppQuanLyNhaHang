@@ -13,6 +13,7 @@
     "lint": "eslint src --ext .ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:migrate:test": "npm run build && node dist/scripts/migrate-test-db.js",
     "prisma:seed": "ts-node-dev prisma/seed.ts",
     "db:reset": "ts-node-dev src/scripts/reset-db.ts"
   },

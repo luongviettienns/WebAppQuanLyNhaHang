@@ -9,6 +9,8 @@ export interface InlineAlertProps {
   message: string;
   tone?: StatusTone;
   title?: string;
+  actionLabel?: string;
+  onAction?: () => void;
   testID?: string;
 }
 
@@ -16,6 +18,8 @@ export const InlineAlert: React.FC<InlineAlertProps> = ({
   message,
   tone = 'danger',
   title,
+  actionLabel,
+  onAction,
   testID
 }) => {
   const colors = statusTone[tone];
@@ -29,6 +33,11 @@ export const InlineAlert: React.FC<InlineAlertProps> = ({
     >
       {title && <Text style={[styles.alertTitle, { color: colors.foreground }]}>{title}</Text>}
       <Text style={[styles.alertMessage, { color: colors.foreground }]}>{message}</Text>
+      {actionLabel && onAction && (
+        <Text onPress={onAction} style={[styles.alertTitle, { color: colors.foreground, textDecorationLine: 'underline', marginTop: 4 }]}>
+          {actionLabel}
+        </Text>
+      )}
     </View>
   );
 };
