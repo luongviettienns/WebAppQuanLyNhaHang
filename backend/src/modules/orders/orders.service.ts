@@ -19,6 +19,7 @@ import { PriceListService } from '../price-lists/price-list.service';
 import { createHash } from 'crypto';
 import { ReservationsService } from '../reservations/reservations.service';
 import { getVietQrInstructions } from '../../lib/vietqr';
+import { EmployeeCommissionRecognitionService } from '../employee-commissions/employee-commission.recognition.service';
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -321,6 +322,7 @@ export class OrdersService {
         quantity: itemInput.quantity,
         unitPrice,
         subtotal,
+        commissionEmployeeId: createdByUserId === undefined ? null : (itemInput.commissionEmployeeId ?? null),
         selectedModifiersJson: selectedMods.length > 0 ? selectedMods : null,
         notes: itemInput.notes
       });
@@ -353,6 +355,15 @@ export class OrdersService {
     let transactionResult: { order: any; isDuplicate: boolean; stockChanges: MenuStockChange[]; awaitingPayment?: boolean };
     try {
       transactionResult = await prisma.$transaction(async (tx) => {
+        const commissionEmployeeIds = [...new Set(orderItemsData
+          .map(item => item.commissionEmployeeId as number | null)
+          .filter((id): id is number => id !== null))];
+        if (commissionEmployeeIds.length) {
+          const workingEmployees = await tx.employee.count({ where: { id: { in: commissionEmployeeIds }, status: 'WORKING' } });
+          if (workingEmployees !== commissionEmployeeIds.length) {
+            throw ApiError.badRequest('Nhân viên phụ trách hoa hồng không tồn tại hoặc đã nghỉ việc');
+          }
+        }
         let reservationContext: { id: number; customerId: number } | null = null;
         if (input.orderType === 'DINE_IN' && resolvedTableId) {
           await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${resolvedTableId} FOR UPDATE`;
@@ -589,7 +600,7 @@ export class OrdersService {
       if (current.paymentStatus === 'WAITING_CONFIRMATION') {
         const pending = await tx.orderPaymentTransaction.findFirst({ where: { orderId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } });
         if (!pending) throw ApiError.conflict('Không tìm thấy giao dịch chờ xác nhận');
-        return { order: current, amountDue: pending.amount, autoPaid: false, stockChanges: [] };
+        return { order: current, amountDue: pending.amount, autoPaid: false, stockChanges: [], commissionChanged: false };
       }
       if (current.paymentStatus !== 'UNPAID') throw ApiError.conflict('Order không còn chờ thanh toán trước');
 
@@ -602,7 +613,7 @@ export class OrdersService {
           action: 'RESERVATION_ORDER_PAYMENT_DECLARED', targetType: 'Order', targetId: orderId,
           metadata: { reservationId: reservation.id, amountDue }
         });
-        return { order, amountDue, autoPaid: false, stockChanges: [] };
+        return { order, amountDue, autoPaid: false, stockChanges: [], commissionChanged: false };
       }
 
       const appliedDeposit = Math.min(current.finalAmount, availableCredit);
@@ -621,11 +632,13 @@ export class OrdersService {
         action: 'RESERVATION_ORDER_PAID_BY_DEPOSIT', targetType: 'Order', targetId: orderId,
         metadata: { reservationId: reservation.id, appliedDeposit }
       });
-      return { order, amountDue: 0, autoPaid: true, stockChanges };
+      const commission = await EmployeeCommissionRecognitionService.recognizePaidOrder(tx, order.id, paidAt);
+      return { order, amountDue: 0, autoPaid: true, stockChanges, commissionChanged: commission.changed };
     });
     if (result.autoPaid) this.emitPrepaidOrder(result.order, result.stockChanges);
     emitToAll('reservations:changed', { ids: [result.order.reservationId], updatedAt: new Date().toISOString() });
     emitToAll('order:paymentChanged', { orderId, paymentStatus: result.order.paymentStatus, updatedAt: new Date().toISOString() });
+    if (result.commissionChanged) emitToAll('employee-commission:changed', { revision: Date.now(), branchId: 1, reason: 'PAYMENT_RECOGNIZED', affectedPlanIds: [], affectedEmployeeIds: [], affectedOrderItemIds: result.order.items.map((item: { id: number }) => item.id), updatedAt: new Date().toISOString() });
     const transferContent = `THU ${result.order.code}`;
     return { order: result.order, paymentStatus: result.order.paymentStatus, amountDue: result.amountDue, transferContent, paymentInstructions: result.amountDue > 0 ? getVietQrInstructions(result.amountDue, transferContent) : null };
   }
@@ -669,10 +682,12 @@ export class OrdersService {
           action: 'RESERVATION_ORDER_PREPAYMENT_CONFIRMED', targetType: 'Order', targetId: orderId,
           actorId, actorName, metadata: { reservationId: reservation.id, amount: input.amount, appliedDeposit, externalReference: input.externalReference }
         });
-        return { order, stockChanges };
+        const commission = await EmployeeCommissionRecognitionService.recognizePaidOrder(tx, order.id, now, { id: actorId, name: actorName });
+        return { order, stockChanges, commissionChanged: commission.changed };
       });
       this.emitPrepaidOrder(result.order, result.stockChanges);
       emitToAll('reservations:changed', { ids: [result.order.reservationId], updatedAt: new Date().toISOString() });
+      if (result.commissionChanged) emitToAll('employee-commission:changed', { revision: Date.now(), branchId: 1, reason: 'PAYMENT_RECOGNIZED', affectedPlanIds: [], affectedEmployeeIds: [], affectedOrderItemIds: result.order.items.map((item: { id: number }) => item.id), updatedAt: new Date().toISOString() });
       return result.order;
     } catch (error) {
       if (isUniqueConstraintError(error)) throw ApiError.conflict('Mã giao dịch đã được ghi nhận hoặc tiền cọc đã được áp dụng cho order này');
@@ -758,7 +773,7 @@ export class OrdersService {
       throw ApiError.conflict(`Đơn hàng ID ${orderId} đã được thanh toán từ trước`);
     }
 
-    const { order: updatedOrder, tableState, inventoryChange } = await prisma.$transaction(async (tx) => {
+    const { order: updatedOrder, tableState, inventoryChange, commissionChanged } = await prisma.$transaction(async (tx) => {
       if (existingOrder.tableId) {
         // Serialize create/pay operations on the same table before reading its unpaid orders.
         await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${existingOrder.tableId} FOR UPDATE`;
@@ -847,7 +862,8 @@ export class OrdersService {
         }
       }
 
-      return { order, tableState: nextTableState, inventoryChange };
+      const commission = await EmployeeCommissionRecognitionService.recognizePaidOrder(tx, order.id, order.paidAt!, { id: actorId, name: actorName });
+      return { order, tableState: nextTableState, inventoryChange, commissionChanged: commission.changed };
     });
 
     emitInventoryChanged({
@@ -870,6 +886,10 @@ export class OrdersService {
     if (tableState) {
       emitToAll('table:statusChanged', tableState);
     }
+    if (commissionChanged) emitToAll('employee-commission:changed', {
+      revision: Date.now(), branchId: 1, reason: 'PAYMENT_RECOGNIZED', affectedPlanIds: [], affectedEmployeeIds: [],
+      affectedOrderItemIds: updatedOrder.items.map((item: { id: number }) => item.id), updatedAt: new Date().toISOString()
+    });
 
     return { order: updatedOrder };
   }

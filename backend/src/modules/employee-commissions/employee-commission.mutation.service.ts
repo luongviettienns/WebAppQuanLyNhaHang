@@ -12,6 +12,7 @@ import type {
   CommissionResolutionInput,
   CommissionRuleCreateInput
 } from './employee-commission.schemas';
+import { EmployeeCommissionRecognitionService } from './employee-commission.recognition.service';
 
 export interface CommissionActor { id: number; name?: string | null }
 type ChangeReason = 'PLAN_CHANGED' | 'RULE_CHANGED' | 'ASSIGNMENT_CHANGED' | 'ISSUE_CHANGED' | 'LEDGER_CHANGED';
@@ -192,7 +193,7 @@ export class EmployeeCommissionMutationService {
     try {
       const item = await prisma.$transaction(async tx => {
         await tx.$queryRaw`SELECT id FROM OrderItem WHERE id = ${orderItemId} FOR UPDATE`;
-        const current = await tx.orderItem.findUnique({ where: { id: orderItemId }, include: { order: { select: { paymentStatus: true } } } });
+        const current = await tx.orderItem.findUnique({ where: { id: orderItemId }, include: { order: { select: { id: true, paymentStatus: true, paidAt: true } } } });
         if (!current) throw ApiError.notFound('Không tìm thấy dòng món.', 'NOT_FOUND');
         if (await tx.commissionEntry.count({ where: { orderItemId } })) {
           throw ApiError.conflict('Dòng món đã ghi nhận hoa hồng; hãy dùng thao tác đổi người có lý do.', 'COMMISSION_HISTORY_LOCKED');
@@ -203,6 +204,11 @@ export class EmployeeCommissionMutationService {
           if (employee.status !== 'WORKING') throw ApiError.conflict('Nhân viên không còn làm việc.', 'EMPLOYEE_NOT_WORKING');
         }
         const updated = await tx.orderItem.update({ where: { id: orderItemId }, data: { commissionEmployeeId } });
+        if (current.order.paymentStatus === 'PAID' && commissionEmployeeId != null) {
+          const basis = await tx.commissionSaleBasis.findUnique({ where: { orderItemId } });
+          if (basis) await EmployeeCommissionRecognitionService.retrySaleBasis(tx, basis.id, actor);
+          else throw ApiError.conflict('Giao dịch cũ chưa có snapshot hoa hồng tại lúc bán; không được dùng cấu hình hiện tại để tính bù.', 'COMMISSION_SALE_BASIS_NOT_FOUND');
+        }
         await audit(tx, { action: 'EMPLOYEE_COMMISSION_ORDER_ITEM_ASSIGNED', targetType: 'OrderItem', targetId: orderItemId, actor, metadata: { beforeEmployeeId: current.commissionEmployeeId, afterEmployeeId: commissionEmployeeId } });
         return updated;
       });
@@ -212,34 +218,64 @@ export class EmployeeCommissionMutationService {
   }
 
   static async createResolution(saleBasisId: number, input: CommissionResolutionInput, actor: CommissionActor) {
+    const values = input.resolution as Record<string, unknown>;
+    if (input.type === 'COST_OVERRIDE') {
+      if (!Number.isSafeInteger(values.unitCost) || Number(values.unitCost) < 0) {
+        throw ApiError.badRequest('COST_OVERRIDE cần unitCost là số nguyên không âm.');
+      }
+    } else {
+      const type = values.type;
+      const fixed = values.fixedAmount;
+      const rate = values.rateBps;
+      const validType = ['FIXED_PER_UNIT', 'PERCENT_NET_REVENUE', 'PERCENT_GROSS_PROFIT'].includes(String(type));
+      const validPlan = Number.isSafeInteger(values.planId) && Number(values.planId) > 0;
+      const validLevel = type === 'FIXED_PER_UNIT'
+        ? Number.isSafeInteger(fixed) && Number(fixed) > 0 && rate == null
+        : Number.isSafeInteger(rate) && Number(rate) > 0 && Number(rate) <= 10_000 && fixed == null;
+      if (!validType || !validPlan || !validLevel) throw ApiError.badRequest('RULE_OVERRIDE cần planId, loại và mức hoa hồng hợp lệ.');
+    }
     const digest = crypto.createHash('sha256').update(JSON.stringify(input)).digest('hex');
+    const eventKey = `COMMISSION_BASIS_RESOLUTION:${saleBasisId}:${input.idempotencyKey}`;
     try {
       const committed = await prisma.$transaction(async tx => {
         const basis = await tx.commissionSaleBasis.findUnique({ where: { id: saleBasisId } });
         if (!basis) throw ApiError.notFound('Không tìm thấy căn cứ bán hàng.', 'COMMISSION_SALE_BASIS_NOT_FOUND');
+        const existing = await tx.commissionBasisResolution.findUnique({ where: { eventKey } });
+        if (existing) {
+          if (existing.requestDigest !== digest) throw ApiError.conflict('Idempotency key đã được dùng với nội dung khác.', 'IDEMPOTENCY_KEY_REUSED');
+          return { resolution: existing, entry: await tx.commissionEntry.findUnique({ where: { eventKey: `ORDER_PAID_EARNING:${basis.orderId}:${basis.orderItemId}` } }), replayed: true };
+        }
         const resolution = await tx.commissionBasisResolution.create({ data: {
-          eventKey: `COMMISSION_BASIS_RESOLUTION:${saleBasisId}:${input.idempotencyKey}`, saleBasisId,
+          eventKey, saleBasisId,
           type: input.type, resolution: input.resolution as Prisma.InputJsonValue, reason: input.reason,
           createdByUserId: actor.id, createdByName: actor.name ?? `User #${actor.id}`, requestDigest: digest
         } });
         await audit(tx, { action: 'EMPLOYEE_COMMISSION_BASIS_RESOLUTION_CREATED', targetType: 'CommissionBasisResolution', targetId: resolution.id, actor, metadata: { saleBasisId, type: input.type, reason: input.reason } });
-        return resolution;
+        const entry = await EmployeeCommissionRecognitionService.retrySaleBasis(tx, saleBasisId, actor);
+        return { resolution, entry, replayed: false };
       });
-      notify(1, 'ISSUE_CHANGED', { affectedPlanIds: [], affectedEmployeeIds: [], affectedOrderItemIds: [] });
+      if (!committed.replayed) notify(1, 'ISSUE_CHANGED', { affectedPlanIds: [], affectedEmployeeIds: [], affectedOrderItemIds: [] });
       return committed;
     } catch (error) { mapError(error); }
   }
 
-  static async retryIssue(issueId: number, _idempotencyKey: string, _actor: CommissionActor) {
-    const issue = await prisma.commissionRecognitionIssue.findUnique({ where: { id: issueId } });
-    if (!issue) throw ApiError.notFound('Không tìm thấy vấn đề ghi nhận.', 'COMMISSION_ISSUE_NOT_FOUND');
-    throw ApiError.conflict('Dịch vụ ghi nhận hoa hồng chưa xử lý lại vấn đề này.', 'COMMISSION_RECOGNITION_PENDING');
+  static async retryIssue(issueId: number, idempotencyKey: string, actor: CommissionActor) {
+    const committed = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM CommissionRecognitionIssue WHERE id = ${issueId} FOR UPDATE`;
+      const issue = await tx.commissionRecognitionIssue.findUnique({ where: { id: issueId } });
+      if (!issue) throw ApiError.notFound('Không tìm thấy vấn đề ghi nhận.', 'COMMISSION_ISSUE_NOT_FOUND');
+      const entry = await EmployeeCommissionRecognitionService.retrySaleBasis(tx, issue.saleBasisId, actor);
+      await audit(tx, {
+        action: 'EMPLOYEE_COMMISSION_ISSUE_RETRIED', targetType: 'CommissionRecognitionIssue', targetId: issueId, actor,
+        metadata: { idempotencyKey, saleBasisId: issue.saleBasisId, recognizedEntryId: entry?.id ?? null }
+      });
+      return { issueId, entry };
+    });
+    notify(1, 'ISSUE_CHANGED', { affectedPlanIds: [], affectedEmployeeIds: committed.entry ? [committed.entry.employeeId] : [], affectedOrderItemIds: committed.entry ? [committed.entry.orderItemId] : [] });
+    return committed;
   }
 
-  static async reassignOrderItem(orderItemId: number, _input: CommissionReassignInput, _actor: CommissionActor) {
-    if (!await prisma.orderItem.findUnique({ where: { id: orderItemId }, select: { id: true } })) {
-      throw ApiError.notFound('Không tìm thấy dòng món.', 'NOT_FOUND');
-    }
-    throw ApiError.conflict('Dòng món chưa có lịch sử hoa hồng để đổi người.', 'COMMISSION_ENTRY_NOT_FOUND');
+  static reassignOrderItem(orderItemId: number, input: CommissionReassignInput, actor: CommissionActor) {
+    return EmployeeCommissionRecognitionService.reassignOrderItem(orderItemId, input, { id: actor.id, name: actor.name });
   }
 }
