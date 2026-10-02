@@ -37,7 +37,7 @@ describe('web warning guards', () => {
   });
 
   it('keeps frontend demo login passwords aligned with seeded demo users', () => {
-    const envSource = readWorkspaceFile('.env');
+    const envSource = readWorkspaceFile('.env.example');
     const authSource = readSource('contexts/AuthContext.tsx');
 
     expect(authSource).toContain(`p: '${envValue(envSource, 'SEED_CASHIER_PASSWORD')}'`);
