@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import type { TextInputProps } from 'react-native';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { radii, spacing, typography } from '../theme';
 import { fieldState } from './tokens';
@@ -10,6 +10,7 @@ export interface FieldProps extends TextInputProps {
   description?: string;
   error?: string;
   testID?: string;
+  webType?: 'date' | 'datetime-local' | 'email' | 'text';
 }
 
 export const Field: React.FC<FieldProps> = ({
@@ -17,6 +18,7 @@ export const Field: React.FC<FieldProps> = ({
   description,
   error,
   testID,
+  webType,
   onBlur,
   onFocus,
   accessibilityLabel,
@@ -46,6 +48,7 @@ export const Field: React.FC<FieldProps> = ({
       <Text style={[styles.label, { color: isDisabled ? theme.textSecondary : theme.textPrimary }]}>{label}</Text>
       <TextInput
         {...inputProps}
+        {...(Platform.OS === 'web' && webType ? { type: webType as any } : {})}
         testID={testID}
         accessibilityLabel={accessibilityLabel || label}
         accessibilityState={{ disabled: isDisabled }}

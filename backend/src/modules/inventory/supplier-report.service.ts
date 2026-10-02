@@ -28,13 +28,17 @@ function reportSource(query: SupplierListQuery) {
   return Prisma.sql`FROM (
     SELECT s.id, s.code, s.isActive,
       COALESCE(p.totalPurchase, 0) - COALESCE(ret.totalReturn, 0) AS totalPurchase,
-      GREATEST(0, COALESCE(p.outstandingAmount, 0) - COALESCE(ret.returnDebtReduction, 0)) AS outstandingAmount
+      GREATEST(0, COALESCE(p.payableAmount, 0) - COALESCE(payments.paidAmount, 0) - COALESCE(ret.returnDebtReduction, 0)) AS outstandingAmount
     FROM Supplier s LEFT JOIN (
       SELECT r.supplierId,
         SUM(CASE WHEN ${Prisma.join(dateConditions, ' AND ')} THEN r.subtotalAmount - r.discountAmount ELSE 0 END) AS totalPurchase,
-        SUM(GREATEST(0, r.subtotalAmount - r.discountAmount - r.paidAmount)) AS outstandingAmount
+        SUM(r.subtotalAmount - r.discountAmount) AS payableAmount
       FROM PurchaseReceipt r WHERE r.status = 'POSTED' GROUP BY r.supplierId
     ) p ON p.supplierId = s.id
+    LEFT JOIN (
+      SELECT sp.supplierId, SUM(sp.amount) AS paidAmount
+      FROM SupplierPayment sp WHERE sp.status = 'SUCCESS' GROUP BY sp.supplierId
+    ) payments ON payments.supplierId = s.id
     LEFT JOIN (
       SELECT pr.supplierId,
         SUM(CASE WHEN ${Prisma.join(returnDateConditions, ' AND ')} THEN pr.subtotalAmount - pr.discountAmount ELSE 0 END) AS totalReturn,

@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ApiError } from '../../lib/api-error';
-import { createPurchaseReturnSchema, purchaseReturnImportSchema, purchaseReturnQuerySchema, returnVersionSchema, updatePurchaseReturnSchema } from './purchase-return.schemas';
+import { createPurchaseReturnSchema, purchaseReturnImportSchema, purchaseReturnQuerySchema, returnCompletionSchema, returnVersionSchema, updatePurchaseReturnSchema } from './purchase-return.schemas';
 import { PurchaseReturnService } from './purchase-return.service';
 
 export const returnId = (value: string) => {
@@ -31,7 +31,7 @@ export class PurchaseReturnController {
     } catch (error) { next(error); }
   }
   static async complete(req: Request, res: Response, next: NextFunction) {
-    try { res.json({ data: await PurchaseReturnService.complete(returnId(req.params.id), returnVersionSchema.parse(req.body).expectedVersion, req.user!) }); } catch (error) { next(error); }
+    try { const input = returnCompletionSchema.parse(req.body); res.json({ data: await PurchaseReturnService.complete(returnId(req.params.id), input.expectedVersion, req.user!, input.financialAccountId) }); } catch (error) { next(error); }
   }
   static async cancel(req: Request, res: Response, next: NextFunction) {
     try { res.json({ data: await PurchaseReturnService.cancel(returnId(req.params.id), returnVersionSchema.parse(req.body).expectedVersion, req.user!) }); } catch (error) { next(error); }

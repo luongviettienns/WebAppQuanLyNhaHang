@@ -1,0 +1,23 @@
+import { Router } from 'express';
+import { authenticate } from '../../middlewares/authenticate';
+import { authorize } from '../../middlewares/authorize';
+import { CashbookController } from './cashbook.controller';
+
+export const cashbookRouter = Router();
+cashbookRouter.use(authenticate, authorize('ADMIN', 'CASHIER'));
+cashbookRouter.get('/settings', CashbookController.settings);
+cashbookRouter.get('/counterparties', CashbookController.counterparties);
+cashbookRouter.get('/purchase-invoices', CashbookController.purchaseInvoices);
+cashbookRouter.get('/parties', CashbookController.parties);
+cashbookRouter.post('/parties', authorize('ADMIN'), CashbookController.createParty);
+cashbookRouter.post('/accounts', authorize('ADMIN'), CashbookController.createAccount);
+cashbookRouter.patch('/accounts/:id', authorize('ADMIN'), CashbookController.updateAccount);
+cashbookRouter.post('/categories', authorize('ADMIN'), CashbookController.createCategory);
+cashbookRouter.patch('/categories/:id', authorize('ADMIN'), CashbookController.updateCategory);
+cashbookRouter.post('/activate', authorize('ADMIN'), CashbookController.activate);
+cashbookRouter.get('/export', CashbookController.export);
+cashbookRouter.get('/', CashbookController.list);
+cashbookRouter.post('/vouchers', CashbookController.createManual);
+cashbookRouter.get('/vouchers/:id/print', CashbookController.print);
+cashbookRouter.get('/vouchers/:id', CashbookController.getVoucher);
+cashbookRouter.post('/vouchers/:id/cancel', authorize('ADMIN'), CashbookController.cancelManual);

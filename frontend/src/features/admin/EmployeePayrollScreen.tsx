@@ -228,6 +228,7 @@ export const EmployeePayrollScreen: React.FC = () => {
                     {expandedId === item.id && detailLoading && <ActivityIndicator color={theme.primary} />}
                     {expandedId === item.id && detail && (
                       <EmployeePayrollDetail
+                        token={token}
                         detail={detail}
                         onChanged={async () => { await refresh(); }}
                         onRecalculate={async () => { await recalculateEmployeePayrollApi(token, item.id, idempotencyKey('payroll-recalculate')); }}
@@ -235,7 +236,9 @@ export const EmployeePayrollScreen: React.FC = () => {
                         onCancel={async reason => { await cancelEmployeePayrollApi(token, item.id, { reason }); }}
                         onAdjust={async (lineId, input) => { await addEmployeePayrollAdjustmentApi(token, item.id, lineId, input); }}
                         onReverseAdjustment={async (lineId, adjustmentId, reason) => { await reverseEmployeePayrollAdjustmentApi(token, item.id, lineId, adjustmentId, { reason }); }}
-                        onPay={async (lineId, input: PayrollPaymentInput) => { await recordEmployeePayrollPaymentApi(token, item.id, lineId, input, idempotencyKey('payroll-payment')); }}
+                        onPay={async (lineId, input: PayrollPaymentInput) => {
+                          await recordEmployeePayrollPaymentApi(token, item.id, lineId, input, idempotencyKey('payroll-payment'));
+                        }}
                         onReversePayment={async (lineId, paymentId, reason) => { await reverseEmployeePayrollPaymentApi(token, item.id, lineId, paymentId, { reason }, idempotencyKey('payroll-payment-reverse')); }}
                       />
                     )}

@@ -77,6 +77,8 @@ export function toPurchaseReceiptDraftInput(input: {
   invoiceDate: string;
   discountAmount: number;
   paidAmount: number;
+  paymentMethod?: 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD' | 'E_WALLET';
+  financialAccountId?: number | null;
   note: string;
   lines: PurchaseReceiptComposerLine[];
 }) {
@@ -87,6 +89,8 @@ export function toPurchaseReceiptDraftInput(input: {
     invoiceDate: input.invoiceDate.trim() || null,
     discountAmount: Math.max(0, input.discountAmount),
     paidAmount: Math.max(0, input.paidAmount),
+    ...(input.paymentMethod ? { paymentMethod: input.paymentMethod } : {}),
+    ...(input.financialAccountId !== undefined ? { financialAccountId: input.financialAccountId } : {}),
     note: input.note.trim() || null,
     lines: input.lines.map((line) => ({
       ingredientId: line.ingredientId,

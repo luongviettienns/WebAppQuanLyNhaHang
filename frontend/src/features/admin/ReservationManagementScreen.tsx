@@ -13,6 +13,7 @@ import {
   type DepositStatus, type PaymentConfirmationDto, type ReservationDto, type ReservationFilter,
   type ReservationStatus
 } from '../../api/reservations';
+import { CashbookAccountChoice } from '../cashbook/CashbookAccountChoice';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, Field, InlineAlert, ScreenHeader, StatusBadge } from '../../ui';
 
@@ -35,6 +36,7 @@ export const ReservationManagementScreen: React.FC = () => {
   const [loading, setLoading] = useState(true); const [error, setError] = useState('');
   const [selected, setSelected] = useState<SelectedItem | null>(null); const [detail, setDetail] = useState<Record<string, any> | null>(null);
   const [action, setAction] = useState<Action | null>(null); const [reason, setReason] = useState(''); const [receipt, setReceipt] = useState('');
+  const [financialAccountId, setFinancialAccountId] = useState<number | null>(null);
   const [amount, setAmount] = useState(''); const [scheduledAt, setScheduledAt] = useState(''); const [tableId, setTableId] = useState<number | null>(null);
   const [availableTables, setAvailableTables] = useState<DiningTableDto[]>([]); const [busy, setBusy] = useState(false); const [actionError, setActionError] = useState(''); const [revision, setRevision] = useState(0);
 
@@ -66,7 +68,7 @@ export const ReservationManagementScreen: React.FC = () => {
     catch (failure: any) { setError(failure.message || 'Không thể tải chi tiết đặt bàn'); }
   };
   const startAction = (next: Action, initialAmount?: number) => {
-    setAction(next); setReason(''); setReceipt(''); setAmount(initialAmount === undefined ? '' : String(initialAmount)); setScheduledAt(''); setTableId(null); setActionError('');
+    setAction(next); setReason(''); setReceipt(''); setFinancialAccountId(null); setAmount(initialAmount === undefined ? '' : String(initialAmount)); setScheduledAt(''); setTableId(null); setActionError('');
   };
   const runAction = async () => {
     if (!selected || !action || busy) return;
@@ -74,16 +76,16 @@ export const ReservationManagementScreen: React.FC = () => {
     try {
       if (selected.kind === 'reservation') {
         const reservation = selected.value;
-        if (action === 'confirm-deposit') await confirmReservationDepositApi(token, reservation.id, Number(amount), receipt.trim());
+        if (action === 'confirm-deposit') await confirmReservationDepositApi(token, reservation.id, Number(amount), receipt.trim(), financialAccountId);
         else if (action === 'reject-deposit') await rejectReservationDepositApi(token, reservation.id, reason.trim());
-        else if (action === 'refund') await refundReservationDepositApi(token, reservation.id, Number(amount), receipt.trim(), reason.trim());
+        else if (action === 'refund') await refundReservationDepositApi(token, reservation.id, Number(amount), receipt.trim(), reason.trim(), financialAccountId);
         else if (action === 'reschedule') await rescheduleReservationApi(token, reservation.id, new Date(scheduledAt).toISOString(), reason.trim());
         else if (action === 'no-show') await markReservationNoShowApi(token, reservation.id, reason.trim());
         else if (action === 'check-in') { if (!tableId) throw new Error('Chọn bàn để check-in'); await checkInReservationApi(token, reservation.id, tableId); }
         else if (action === 'cancel') await cancelReservationByRestaurantApi(token, reservation.id, reason.trim());
       } else {
         const order = selected.value;
-        if (action === 'confirm-order') await confirmOrderPaymentApi(token, order.id, Number(amount), receipt.trim());
+        if (action === 'confirm-order') await confirmOrderPaymentApi(token, order.id, Number(amount), receipt.trim(), financialAccountId);
         else if (action === 'reject-order') await rejectOrderPaymentApi(token, order.id, reason.trim());
         else if (action === 'authorize-pay-later') await authorizeReservationOrderPayLaterApi(token, order.id, reason.trim());
       }
@@ -92,7 +94,7 @@ export const ReservationManagementScreen: React.FC = () => {
     finally { setBusy(false); }
   };
 
-  const openOrder = (order: PaymentConfirmationDto) => { setSelected({ kind: 'order', value: order }); setDetail(null); setAction(null); setAmount(String(order.paymentDeclaration?.amount || 0)); setActionError(''); };
+  const openOrder = (order: PaymentConfirmationDto) => { setSelected({ kind: 'order', value: order }); setDetail(null); setAction(null); setFinancialAccountId(null); setAmount(String(order.paymentDeclaration?.amount || 0)); setActionError(''); };
   const currentReservation = selected?.kind === 'reservation' ? selected.value : null;
   const tabs: Array<[QueueTab, string]> = [['reservations', 'Đặt bàn'], ['deposits', 'Xác nhận cọc'], ['orders', 'Order chờ thanh toán']];
   const canCheckin = currentReservation?.status === 'CONFIRMED' && ['PAID', 'APPLIED_TO_BILL'].includes(currentReservation.depositStatus);
@@ -111,6 +113,7 @@ export const ReservationManagementScreen: React.FC = () => {
       <View style={styles.modalHeading}><Text style={[styles.modalTitle, { color: theme.textPrimary }]}>{action ? actionTitle[action] : ''}</Text><Pressable accessibilityLabel="Đóng" disabled={busy} onPress={() => setAction(null)}><AppIcon icon={X} color={theme.textSecondary} /></Pressable></View>
       {!!actionError && <InlineAlert message={actionError} />}
       {needsReceipt && <><Field label="Số tiền (đ)" value={amount} keyboardType="numeric" onChangeText={setAmount} editable={!busy} /><Field label="Mã tham chiếu giao dịch" value={receipt} onChangeText={setReceipt} editable={!busy} placeholder="Mã ngân hàng / nội dung đối chiếu" /></>}
+      {needsReceipt && <CashbookAccountChoice token={token} paymentMethod="BANK_TRANSFER" value={financialAccountId} onChange={setFinancialAccountId} />}
       {needsReason && <Field label="Lý do / ghi chú *" value={reason} onChangeText={setReason} editable={!busy} multiline maxLength={500} />}
       {action === 'reschedule' && <Field label="Lịch mới (ISO 8601)" value={scheduledAt} onChangeText={setScheduledAt} editable={!busy} placeholder="2026-09-30T18:30:00+07:00" />}
       {action === 'check-in' && <View style={styles.tableChoices}><Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Bàn phù hợp</Text>{availableTables.length ? availableTables.map(table => <Pressable key={table.id} accessibilityRole="radio" accessibilityState={{ checked: tableId === table.id }} onPress={() => setTableId(table.id)} style={[styles.tableChoice, { borderColor: tableId === table.id ? theme.primary : theme.borderSubtle, backgroundColor: tableId === table.id ? theme.interactiveSecondary : theme.surfaceBase }]}><Text style={{ color: theme.textPrimary }}>{table.displayName || `Bàn ${table.tableNumber}`} · {table.capacity} chỗ · {table.area?.name || 'Khu chung'}</Text></Pressable>) : <Text style={{ color: theme.textSecondary }}>Không có bàn trống đủ chỗ cho số khách này.</Text>}</View>}
