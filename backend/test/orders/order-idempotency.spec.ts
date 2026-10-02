@@ -43,6 +43,7 @@ describe('atomic order idempotency', () => {
   ])('stores a non-null scope and request hash for %s orders', async (_name, userId, expectedScope) => {
     let createData: any;
     (prisma.$transaction as any).mockImplementation(async (callback: (tx: any) => Promise<unknown>) => callback({
+      employee: { findUnique: vi.fn().mockResolvedValue(null) },
       order: {
         findUnique: vi.fn().mockResolvedValue(null),
         create: vi.fn(async ({ data }) => {

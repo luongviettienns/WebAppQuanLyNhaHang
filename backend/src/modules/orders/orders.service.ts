@@ -24,6 +24,7 @@ import { cashbookChangedEvent } from '../cashbook/cashbook.events';
 import { amountReceivedAfterCredit } from '../cashbook/cashbook.domain';
 import { EmployeeCommissionRecognitionService } from '../employee-commissions/employee-commission.recognition.service';
 import { assertCommissionEmployeeEligible } from '../employee-commissions/employee-commission.eligibility';
+import { claimInitialOrderReceiver, resolveEmployeeForUser } from './order-receiver.service';
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -442,6 +443,7 @@ export class OrdersService {
         );
         const stockChanges = requiresReservationPrepayment ? [] : await reserveMenuStockForOrder(tx, input.items, trackedMenuItemIds);
 
+        const receivedByEmployeeId = await resolveEmployeeForUser(tx, createdByUserId);
         const order = await tx.order.create({
           data: {
             code,
@@ -469,6 +471,7 @@ export class OrdersService {
             idempotencyScope,
             requestHash,
             createdByUserId,
+            receivedByEmployeeId,
             items: {
               create: orderItemsData
             }
@@ -983,57 +986,61 @@ export class OrdersService {
    * Chuyen trang thai don hang theo Finite State Machine (FSM):
    * PENDING -> PREPARING -> READY -> COMPLETED
    */
-  static async updateOrderStatus(orderId: number, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED', _userId?: number) {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        items: true,
-        table: { select: { id: true, tableNumber: true } }
+  static async updateOrderStatus(orderId: number, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED', userId?: number) {
+    const updatedOrder = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          items: true,
+          table: { select: { id: true, tableNumber: true } }
+        }
+      });
+
+      if (!order) {
+        throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
       }
-    });
 
-    if (!order) {
-      throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
-    }
+      // FSM State transitions: PENDING -> PREPARING -> READY -> COMPLETED
+      const validTransitions: Record<string, string[]> = {
+        PENDING: ['PREPARING'],
+        PREPARING: ['READY'],
+        READY: ['COMPLETED']
+      };
 
-    // FSM State transitions: PENDING -> PREPARING -> READY -> COMPLETED
-    const validTransitions: Record<string, string[]> = {
-      PENDING: ['PREPARING'],
-      PREPARING: ['READY'],
-      READY: ['COMPLETED']
-    };
-
-    const allowed = validTransitions[order.status];
-    if (!allowed || !allowed.includes(nextStatus)) {
-      throw ApiError.orderStateInvalid(
-        `Không thể chuyển trạng thái từ ${order.status} sang ${nextStatus}. Luồng trạng thái hợp lệ: PENDING -> PREPARING -> READY -> COMPLETED`
-      );
-    }
-
-    const now = new Date();
-    const data: any = { status: nextStatus };
-
-    if (nextStatus === 'PREPARING') {
-      if (!order.preparingAt) {
-        data.preparingAt = now;
+      const allowed = validTransitions[order.status];
+      if (!allowed || !allowed.includes(nextStatus)) {
+        throw ApiError.orderStateInvalid(
+          `Không thể chuyển trạng thái từ ${order.status} sang ${nextStatus}. Luồng trạng thái hợp lệ: PENDING -> PREPARING -> READY -> COMPLETED`
+        );
       }
-    } else if (nextStatus === 'READY') {
-      if (!order.readyAt) {
-        data.readyAt = now;
-      }
-    } else if (nextStatus === 'COMPLETED') {
-      if (!order.completedAt) {
-        data.completedAt = now;
-      }
-    }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data,
-      include: {
-        items: true,
-        table: { select: { id: true, tableNumber: true } }
+      const now = new Date();
+      const data: any = { status: nextStatus };
+
+      if (nextStatus === 'PREPARING') {
+        if (!order.preparingAt) {
+          data.preparingAt = now;
+        }
+      } else if (nextStatus === 'READY') {
+        if (!order.readyAt) {
+          data.readyAt = now;
+        }
+      } else if (nextStatus === 'COMPLETED') {
+        if (!order.completedAt) {
+          data.completedAt = now;
+        }
       }
+
+      await claimInitialOrderReceiver(tx, orderId, userId);
+      return tx.order.update({
+        where: { id: orderId },
+        data,
+        include: {
+          items: true,
+          table: { select: { id: true, tableNumber: true } }
+        }
+      });
     });
 
     const orderDto = formatOrderDto(updatedOrder);
@@ -1364,6 +1371,7 @@ function formatOrderDto(order: any) {
     code: order.code,
     orderType: order.orderType,
     status: order.status,
+    receivedByEmployeeId: order.receivedByEmployeeId ?? null,
     tableId: order.tableId,
     tableNumber: order.table?.tableNumber ?? null,
     deliveryPartnerId: order.deliveryPartnerId ?? null,
