@@ -3,6 +3,22 @@ import { describe, expect, it, vi } from 'vitest';
 import { calculateChronologicalBalances } from '../../src/modules/cashbook/cashbook-balance.service';
 import { CashbookPostingService, resolveCashbookAccountForPayment } from '../../src/modules/cashbook/cashbook-posting.service';
 
+const openingAt = new Date('2026-09-01T00:00:00.000Z');
+const activatedAt = new Date('2026-09-01T00:00:00.000Z');
+
+function postingRaw(ledgerRows: unknown[] = []) {
+  const ledgerRead = vi.fn().mockResolvedValue(ledgerRows);
+  const raw = vi.fn((strings: TemplateStringsArray) => {
+    const sql = strings.join(' ');
+    if (sql.includes('CashbookSetting')) return Promise.resolve([{ activatedAt }]);
+    if (sql.includes('openingBalance, openingAt')) return Promise.resolve([{ openingBalance: 0, openingAt }]);
+    if (sql.includes('SELECT id, type, isActive')) return Promise.resolve([{ id: 1, type: 'CASH', isActive: true }]);
+    if (sql.includes('FROM CashVoucher')) return ledgerRead();
+    return Promise.resolve([{ id: 1 }]);
+  });
+  return { raw, ledgerRead };
+}
+
 describe('cashbook chronological balance invariants', () => {
   it('places a new voucher after existing vouchers at the same timestamp', () => {
     const at = new Date('2026-10-01T10:00:00.000Z');
@@ -25,15 +41,12 @@ describe('cashbook chronological balance invariants', () => {
 
   it('locks the account before reading the ledger and inserts one stable manual voucher', async () => {
     const occurredAt = new Date('2026-10-01T10:00:00.000Z');
-    const lock = vi.fn().mockResolvedValue([]);
-    const ledgerRead = vi.fn().mockResolvedValue([]);
+    const { raw, ledgerRead } = postingRaw();
     const create = vi.fn().mockResolvedValue({ id: 9 } as unknown as CashVoucher);
     const tx = {
-      $queryRaw: lock,
-      cashbookSetting: { findUnique: vi.fn().mockResolvedValue({ activatedAt: new Date('2026-09-01T00:00:00.000Z') }) },
-      financialAccount: { findUnique: vi.fn().mockResolvedValue({ id: 1, type: 'CASH', isActive: true, openingBalance: 0, openingAt: new Date('2026-09-01T00:00:00.000Z') }) },
+      $queryRaw: raw,
       cashFlowCategory: { findUnique: vi.fn().mockResolvedValue({ id: 2, direction: 'RECEIPT', isActive: true, isSystem: false, affectsBusinessResultDefault: true }) },
-      cashVoucher: { findUnique: vi.fn().mockResolvedValue(null), findMany: ledgerRead, create }
+      cashVoucher: { findUnique: vi.fn().mockResolvedValue(null), create }
     } as unknown as Prisma.TransactionClient;
 
     await CashbookPostingService.post(tx, {
@@ -41,8 +54,10 @@ describe('cashbook chronological balance invariants', () => {
       occurredAt, sourceType: CashVoucherSourceType.MANUAL, clientRequestId: 'retry-abc', note: 'Thu khác', reason: 'Chứng từ về trễ'
     }, { id: 7, role: 'ADMIN' });
 
-    expect(lock).toHaveBeenCalledTimes(2);
-    expect(lock.mock.invocationCallOrder[0]).toBeLessThan(ledgerRead.mock.invocationCallOrder[0]);
+    const sqlCalls = raw.mock.calls.map(([strings]) => strings.join(' '));
+    expect(sqlCalls).toHaveLength(4);
+    expect(sqlCalls.findIndex(sql => sql.includes('FinancialAccount'))).toBeLessThan(sqlCalls.findIndex(sql => sql.includes('FROM CashVoucher')));
+    expect(ledgerRead).toHaveBeenCalledOnce();
     expect(create).toHaveBeenCalledOnce();
     expect(create.mock.calls[0][0].data).toMatchObject({ sourceKey: 'MANUAL:7:retry-abc', sourceType: 'MANUAL', amount: 500 });
   });
@@ -51,16 +66,11 @@ describe('cashbook chronological balance invariants', () => {
     const occurredAt = new Date('2026-10-01T10:00:00.000Z');
     const later = new Date('2026-10-02T10:00:00.000Z');
     const create = vi.fn();
+    const { raw } = postingRaw([{ id: 5, occurredAt: later, direction: 'RECEIPT', amount: 100 }]);
     const tx = {
-      $queryRaw: vi.fn().mockResolvedValue([]),
-      cashbookSetting: { findUnique: vi.fn().mockResolvedValue({ activatedAt: new Date('2026-09-01T00:00:00.000Z') }) },
-      financialAccount: { findUnique: vi.fn().mockResolvedValue({ id: 1, type: 'CASH', isActive: true, openingBalance: 0, openingAt: new Date('2026-09-01T00:00:00.000Z') }) },
+      $queryRaw: raw,
       cashFlowCategory: { findUnique: vi.fn().mockResolvedValue({ id: 3, direction: 'PAYMENT', isActive: true, isSystem: false, affectsBusinessResultDefault: false }) },
-      cashVoucher: {
-        findUnique: vi.fn().mockResolvedValue(null),
-        findMany: vi.fn().mockResolvedValue([{ id: 5, occurredAt: later, direction: 'RECEIPT', amount: 100 }]),
-        create
-      }
+      cashVoucher: { findUnique: vi.fn().mockResolvedValue(null), create }
     } as unknown as Prisma.TransactionClient;
 
     await expect(CashbookPostingService.post(tx, {
@@ -79,15 +89,14 @@ describe('cashbook chronological balance invariants', () => {
     } as unknown as CashVoucher;
     const create = vi.fn();
     const findUnique = vi.fn().mockResolvedValueOnce(original).mockResolvedValueOnce(null);
+    const { raw } = postingRaw([
+      { id: 11, occurredAt: receiptAt, direction: 'RECEIPT', amount: 100 },
+      { id: 12, occurredAt: spentAt, direction: 'PAYMENT', amount: 90 }
+    ]);
     const tx = {
-      $queryRaw: vi.fn().mockResolvedValue([]),
-      financialAccount: { findUnique: vi.fn().mockResolvedValue({ openingBalance: 0, openingAt: new Date('2026-09-01T00:00:00.000Z') }) },
+      $queryRaw: raw,
       cashVoucher: {
         findUnique,
-        findMany: vi.fn().mockResolvedValue([
-          { id: 11, occurredAt: receiptAt, direction: 'RECEIPT', amount: 100 },
-          { id: 12, occurredAt: spentAt, direction: 'PAYMENT', amount: 90 }
-        ]),
         create
       }
     } as unknown as Prisma.TransactionClient;
@@ -117,11 +126,9 @@ describe('cashbook chronological balance invariants', () => {
   });
 
   it('resolves the default cash account and rejects a mismatched non-cash account', async () => {
-    const fence = vi.fn().mockResolvedValue([]);
-    const readSetting = vi.fn().mockResolvedValue({ activatedAt: null });
+    const fence = vi.fn().mockResolvedValue([{ activatedAt: null }]);
     const tx = {
       $queryRaw: fence,
-      cashbookSetting: { findUnique: readSetting },
       financialAccount: {
         findFirst: vi.fn().mockResolvedValue({ id: 3, type: 'CASH', isActive: true }),
         findUnique: vi.fn().mockResolvedValue({ id: 4, type: 'CASH', isActive: true })
@@ -132,6 +139,6 @@ describe('cashbook chronological balance invariants', () => {
     await expect(resolveCashbookAccountForPayment(tx, 'BANK_TRANSFER', 4))
       .rejects.toMatchObject({ code: 'CASHBOOK_PAYMENT_METHOD_ACCOUNT_MISMATCH' });
     expect(fence).toHaveBeenCalledTimes(2);
-    expect(fence.mock.invocationCallOrder[0]).toBeLessThan(readSetting.mock.invocationCallOrder[0]);
+    expect(fence.mock.calls.every(([strings]) => strings.join(' ').includes('CashbookSetting'))).toBe(true);
   });
 });

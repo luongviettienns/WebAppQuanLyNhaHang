@@ -35,6 +35,16 @@ const cashbookDependencies = () => ({
   cashFlowCategory: { findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 1 }) }
 });
 
+const mockRawQueries = (transactionEvents?: string[]) => vi.fn((strings: TemplateStringsArray) => {
+  const sql = strings.join(' ');
+  if (sql.includes('DiningTable')) {
+    transactionEvents?.push('lock-table');
+    return Promise.resolve([{ id: 1 }]);
+  }
+  if (sql.includes('CashbookSetting')) return Promise.resolve([{ activatedAt: null }]);
+  return Promise.resolve([]);
+});
+
 describe('multiple unpaid orders on one table', () => {
   beforeEach(() => vi.resetAllMocks());
 
@@ -94,7 +104,7 @@ describe('multiple unpaid orders on one table', () => {
     vi.mocked(prisma.order.findUnique).mockResolvedValue(unpaidOrder(1) as never);
     (prisma.$transaction as any).mockImplementation(async (callback: (client: any) => Promise<unknown>) => {
       const tx = {
-        $queryRaw: vi.fn(() => transactionEvents.push('lock-table')),
+        $queryRaw: mockRawQueries(transactionEvents),
         ...cashbookDependencies(),
         order: {
           findUnique: vi.fn(async () => {
@@ -135,7 +145,7 @@ describe('multiple unpaid orders on one table', () => {
     }] as never);
     (prisma.$transaction as any).mockImplementation(async (callback: (client: any) => Promise<unknown>) => {
       const tx = {
-        $queryRaw: vi.fn(() => transactionEvents.push('lock-table')),
+        $queryRaw: mockRawQueries(transactionEvents),
         priceList: { findFirst: vi.fn().mockResolvedValue(null) },
         priceListItem: { findMany: vi.fn().mockResolvedValue([]) },
         menuItem: { findMany: vi.fn().mockResolvedValue([{ id: 10, basePrice: 50_000 }]) },
@@ -167,7 +177,7 @@ describe('multiple unpaid orders on one table', () => {
     vi.mocked(prisma.order.findUnique).mockResolvedValue(unpaidOrder(1) as never);
     (prisma.$transaction as any).mockImplementation(async (callback: (client: any) => Promise<unknown>) => {
       const tx = {
-        $queryRaw: vi.fn(),
+        $queryRaw: mockRawQueries(),
         ...cashbookDependencies(),
         order: {
           findUnique: vi.fn().mockResolvedValue(unpaidOrder(1)),
@@ -195,7 +205,7 @@ describe('multiple unpaid orders on one table', () => {
     vi.mocked(prisma.order.findUnique).mockResolvedValue(paidOrder as never);
     (prisma.$transaction as any).mockImplementation(async (callback: (client: any) => Promise<unknown>) => {
       const tx = {
-        $queryRaw: vi.fn(),
+        $queryRaw: mockRawQueries(),
         order: {
           findUnique: vi.fn().mockResolvedValue(paidOrder),
           update: orderUpdate,

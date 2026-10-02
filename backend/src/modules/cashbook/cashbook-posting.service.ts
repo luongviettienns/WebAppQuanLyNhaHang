@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { CashVoucherDirection, CashVoucherSourceType, Prisma, type CashVoucher } from '@prisma/client';
+import { CashVoucherDirection, CashVoucherSourceType, Prisma, type CashVoucher, type FinancialAccountType } from '@prisma/client';
 import { ApiError } from '../../lib/api-error';
 import {
   assertPostingTimePolicy, assertVndAmount, manualSourceKey, requiredAccountType,
@@ -54,8 +54,10 @@ export async function resolveCashbookAccountForPayment(
 ): Promise<number | null> {
   // Fence source transactions against activation: a payment may be committed either
   // before activation (outside the ledger) or after activation (inside it), never in-between.
-  await tx.$queryRaw`SELECT id FROM CashbookSetting WHERE id = 1 FOR SHARE`;
-  const setting = await tx.cashbookSetting.findUnique({ where: { id: 1 }, select: { activatedAt: true } });
+  const settings = await tx.$queryRaw<Array<{ activatedAt: Date | null }>>`
+    SELECT activatedAt FROM CashbookSetting WHERE id = 1 FOR SHARE
+  `;
+  const setting = settings[0];
   const expectedType = requiredAccountType(paymentMethod);
   const account = requestedAccountId
     ? await tx.financialAccount.findUnique({ where: { id: requestedAccountId } })
@@ -124,9 +126,12 @@ export class CashbookPostingService {
     if (previous) return assertSameReplay(tx, previous, input);
 
     const now = new Date();
-    // Share the activation fence with account resolution, including callers that post directly.
-    await tx.$queryRaw`SELECT id FROM CashbookSetting WHERE id = 1 FOR SHARE`;
-    const setting = await tx.cashbookSetting.findUnique({ where: { id: 1 } });
+    // Read the setting from the locking query itself. A plain follow-up SELECT can keep
+    // seeing the pre-activation snapshot under REPEATABLE READ after waiting on this fence.
+    const settings = await tx.$queryRaw<Array<{ activatedAt: Date | null }>>`
+      SELECT activatedAt FROM CashbookSetting WHERE id = 1 FOR SHARE
+    `;
+    const setting = settings[0];
     if (!setting?.activatedAt) return null;
     const occurredAt = input.occurredAt;
     if (input.sourceType === CashVoucherSourceType.MANUAL) {
@@ -140,9 +145,15 @@ export class CashbookPostingService {
       throw ApiError.conflict('Chiều giao dịch không khớp loại sự kiện nguồn.', 'CASHBOOK_CATEGORY_DIRECTION_MISMATCH');
     }
 
-    // Serialize all ledger mutations for this account before reading its running balance.
-    await tx.$queryRaw`SELECT id FROM FinancialAccount WHERE id = ${input.accountId} FOR UPDATE`;
-    const account = await tx.financialAccount.findUnique({ where: { id: input.accountId } });
+    // Serialize ledger mutations and validate account state from the same current read.
+    // A plain Prisma read here could observe an older snapshot after waiting for this lock.
+    const accounts = await tx.$queryRaw<Array<{ id: number; type: FinancialAccountType; isActive: boolean }>>`
+      SELECT id, type, isActive
+      FROM FinancialAccount
+      WHERE id = ${input.accountId}
+      FOR UPDATE
+    `;
+    const account = accounts[0];
     if (!account) throw ApiError.notFound('Không tìm thấy tài khoản quỹ.', 'CASHBOOK_ACCOUNT_NOT_FOUND');
     if (!account.isActive) throw ApiError.conflict('Tài khoản quỹ đã ngừng hoạt động.', 'CASHBOOK_ACCOUNT_INACTIVE');
     if (input.paymentMethod && requiredAccountType(input.paymentMethod) !== account.type) {
