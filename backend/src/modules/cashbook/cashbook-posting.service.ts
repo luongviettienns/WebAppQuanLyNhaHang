@@ -18,6 +18,7 @@ export interface CashbookPostingInput {
   categoryId: number;
   paymentMethod?: CashbookPaymentMethod | null;
   occurredAt: Date;
+  occurrenceTimeWasRequested?: boolean;
   reason?: string | null;
   sourceType: CashVoucherSourceType;
   sourceTransactionId?: number | null;
@@ -31,6 +32,19 @@ export interface CashbookPostingInput {
   linkedPurchaseReceiptId?: number | null;
   sourceInvoiceNumber?: string | null;
   sourceInvoiceDate?: Date | null;
+}
+
+export function normalizeCashbookPersistenceError(error: unknown): never {
+  if (error instanceof ApiError) throw error;
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === 'P2034') {
+      throw ApiError.conflict('Sổ quỹ vừa được thay đổi bởi giao dịch khác. Vui lòng tải lại và thử lại.', 'CASHBOOK_CONCURRENCY_CONFLICT');
+    }
+    if (error.code === 'P2002') {
+      throw ApiError.conflict('Giao dịch Sổ quỹ trùng với chứng từ đã tồn tại.', 'CASHBOOK_DUPLICATE');
+    }
+  }
+  throw error;
 }
 
 function voucherCode(direction: CashVoucherDirection, now: Date): string {
@@ -59,9 +73,19 @@ function runDomainValidation<T>(validation: () => T): T {
   }
 }
 
-function assertSameReplay(existing: CashVoucher, input: CashbookPostingInput): CashVoucher {
+async function assertSameReplay(tx: Prisma.TransactionClient, existing: CashVoucher, input: CashbookPostingInput): Promise<CashVoucher> {
+  const category = await tx.cashFlowCategory.findUnique({ where: { id: input.categoryId }, select: { affectsBusinessResultDefault: true } });
+  const affectsBusinessResult = input.affectsBusinessResult ?? category?.affectsBusinessResultDefault;
   if (existing.direction !== input.direction || existing.amount !== input.amount || existing.accountId !== input.accountId ||
-      existing.categoryId !== input.categoryId || existing.paymentMethod !== (input.paymentMethod ?? null)) {
+      existing.categoryId !== input.categoryId || existing.paymentMethod !== (input.paymentMethod ?? null) ||
+      existing.sourceCode !== (input.sourceCode ?? null) || existing.counterpartyType !== (input.counterpartyType ?? null) ||
+      existing.counterpartyId !== (input.counterpartyId ?? null) || existing.counterpartyName !== (input.counterpartyName ?? null) ||
+      existing.note !== (input.note ?? null) || existing.affectsBusinessResult !== affectsBusinessResult ||
+      existing.linkedPurchaseReceiptId !== (input.linkedPurchaseReceiptId ?? null) ||
+      existing.sourceInvoiceNumber !== (input.sourceInvoiceNumber ?? null) ||
+      (existing.sourceInvoiceDate?.getTime() ?? null) !== (input.sourceInvoiceDate?.getTime() ?? null) ||
+      (input.sourceType !== CashVoucherSourceType.MANUAL || input.occurrenceTimeWasRequested) &&
+        existing.occurredAt.getTime() !== input.occurredAt.getTime()) {
     throw ApiError.conflict('Khóa idempotency đã được dùng cho nội dung phiếu khác.', 'CASHBOOK_SOURCE_REPLAY_MISMATCH');
   }
   return existing;
@@ -71,7 +95,7 @@ export class CashbookPostingService {
   static async post(tx: Prisma.TransactionClient, input: CashbookPostingInput, actor: CashbookPostingActor): Promise<CashVoucher | null> {
     const stableKey = runDomainValidation(() => sourceKey(input, actor));
     const previous = await tx.cashVoucher.findUnique({ where: { sourceKey: stableKey } });
-    if (previous) return assertSameReplay(previous, input);
+    if (previous) return assertSameReplay(tx, previous, input);
 
     const now = new Date();
     const setting = await tx.cashbookSetting.findUnique({ where: { id: 1 } });
@@ -148,7 +172,7 @@ export class CashbookPostingService {
     } catch (error) {
       if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') throw error;
       const replay = await tx.cashVoucher.findUnique({ where: { sourceKey: stableKey } });
-      if (replay) return assertSameReplay(replay, input);
+      if (replay) return assertSameReplay(tx, replay, input);
       throw ApiError.conflict('Phiếu vừa được tạo bởi một yêu cầu khác.', 'CASHBOOK_SOURCE_REPLAY_MISMATCH');
     }
   }
