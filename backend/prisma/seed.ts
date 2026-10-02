@@ -249,6 +249,12 @@ export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
   let itemSkuSeq = 1;
   const createdMenuItems: Array<{ id: number; basePrice: number; name: string }> = [];
 
+  const existingSkus = new Set(
+    (await prisma.menuItem.findMany({ select: { sku: true } }))
+      .map(i => i.sku)
+      .filter((s): s is string => Boolean(s))
+  );
+
   for (const catDef of categoriesDefinition) {
     let cat = await prisma.category.findFirst({ where: { name: catDef.name } });
     if (!cat) {
@@ -260,10 +266,15 @@ export async function seedDatabase(prisma: PrismaClient = defaultPrisma) {
     for (const itemDef of catDef.items) {
       let menuItem = await prisma.menuItem.findFirst({ where: { name: itemDef.name } });
       if (!menuItem) {
+        while (existingSkus.has(formatMenuSku(itemSkuSeq))) {
+          itemSkuSeq++;
+        }
+        const assignedSku = formatMenuSku(itemSkuSeq++);
+        existingSkus.add(assignedSku);
         menuItem = await prisma.menuItem.create({
           data: {
             categoryId: cat.id,
-            sku: formatMenuSku(itemSkuSeq++),
+            sku: assignedSku,
             name: itemDef.name,
             description: itemDef.desc,
             basePrice: itemDef.price,
