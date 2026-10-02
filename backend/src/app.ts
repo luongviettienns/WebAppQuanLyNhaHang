@@ -22,6 +22,8 @@ import { employeeAttendanceRouter } from './modules/employee-attendance/employee
 import { attendanceKioskRouter } from './modules/employee-attendance/attendance-kiosk.routes';
 import { employeePayrollRouter } from './modules/employee-payroll/employee-payroll.routes';
 import { employeeSettingsRouter } from './modules/employee-settings/employee-settings.routes';
+import { cashbookRouter } from './modules/cashbook/cashbook.routes';
+import { employeeCommissionRouter } from './modules/employee-commissions/employee-commission.routes';
 import { errorHandler, notFoundHandler } from './middlewares/error-handler';
 
 import { getUploadsDir } from './lib/uploads';
@@ -115,6 +117,11 @@ app.use('/api/employee-payrolls', employeePayrollRouter);
 
 // Versioned branch-aware employee settings (Admin only).
 app.use('/api/employee-settings', employeeSettingsRouter);
+
+// Cashbook ledger, receipts and payments.
+app.use('/api/cashbook', cashbookRouter);
+// Employee commission configuration, assignment, issue queue and immutable ledger.
+app.use('/api/employee-commissions', employeeCommissionRouter);
 
 // System routes (ho tro test contracts va status)
 app.use('/api/system', systemRouter);

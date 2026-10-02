@@ -13,6 +13,7 @@ export type CreatePublicReservationInput = z.infer<typeof createPublicReservatio
 export const confirmDepositSchema = z.object({
   amount: z.number().int().positive(),
   paymentMethod: z.enum(['BANK_TRANSFER']),
+  financialAccountId: z.number().int().positive().nullable().optional(),
   externalReference: z.string().trim().min(1).max(120)
 });
 
@@ -22,6 +23,7 @@ export const rejectDepositSchema = z.object({
 
 export const refundDepositSchema = z.object({
   amount: z.number().int().positive(),
+  financialAccountId: z.number().int().positive().nullable().optional(),
   externalReference: z.string().trim().min(1).max(120),
   reason: z.string().trim().min(3).max(500)
 });

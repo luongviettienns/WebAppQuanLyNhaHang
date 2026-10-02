@@ -52,6 +52,21 @@ describe('purchase returns lifecycle', () => {
     expect(await prismaTest.auditLog.count({ where: { action: 'PURCHASE_RETURN_COMPLETED', targetId: created.id } })).toBe(1);
   });
 
+  it('uses the financial account selected when completing a supplier refund', async () => {
+    const activatedAt = new Date('2026-01-01T00:00:00.000Z');
+    const bank = await prismaTest.financialAccount.create({ data: { code: 'BANK-RETURN', name: 'Tài khoản ngân hàng trả hàng', type: 'BANK', openingAt: activatedAt } });
+    await prismaTest.cashbookSetting.update({ where: { id: 1 }, data: { activatedAt } });
+    const created = await create(draft(2, { refundMethod: 'BANK_TRANSFER', financialAccountId: null }));
+
+    const response = await request(app).post(root + '/' + created.id + '/complete')
+      .set('Authorization', authorization()).send({ expectedVersion: created.version, financialAccountId: bank.id });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.financialAccountId).toBe(bank.id);
+    expect(await prismaTest.cashVoucher.findFirst({ where: { sourceType: 'PURCHASE_RETURN_REFUND', sourceTransactionId: created.id } }))
+      .toMatchObject({ direction: 'RECEIPT', amount: 100, accountId: bank.id });
+  });
+
   it('saves changed draft values, rejects stale edits and makes terminal vouchers immutable', async () => {
     const created = await create();
     const updated = await request(app).patch(root + '/' + created.id).set('Authorization', authorization()).send({ ...draft(3), expectedVersion: 1 });

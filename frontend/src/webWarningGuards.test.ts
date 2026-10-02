@@ -8,8 +8,8 @@ const readSource = (relativePath: string) =>
 const readWorkspaceFile = (relativePath: string) =>
   readFileSync(resolve(__dirname, '..', '..', relativePath), 'utf8');
 
-const envValue = (source: string, key: string) =>
-  source.match(new RegExp(`^${key}=(.+)$`, 'm'))?.[1]?.trim();
+const seededPasswordFallback = (source: string, role: 'ADMIN' | 'CASHIER' | 'KITCHEN') =>
+  source.match(new RegExp(`process\\.env\\.SEED_${role}_PASSWORD \\|\\| '([^']+)'`))?.[1];
 
 describe('web warning guards', () => {
   it('does not pass pointerEvents as a View prop in ToastContext', () => {
@@ -37,11 +37,11 @@ describe('web warning guards', () => {
   });
 
   it('keeps frontend demo login passwords aligned with seeded demo users', () => {
-    const envSource = readWorkspaceFile('.env');
+    const seedSource = readWorkspaceFile('backend/prisma/seed.ts');
     const authSource = readSource('contexts/AuthContext.tsx');
 
-    expect(authSource).toContain(`p: '${envValue(envSource, 'SEED_CASHIER_PASSWORD')}'`);
-    expect(authSource).toContain(`p: '${envValue(envSource, 'SEED_KITCHEN_PASSWORD')}'`);
-    expect(authSource).toContain(`p: '${envValue(envSource, 'SEED_ADMIN_PASSWORD')}'`);
+    expect(authSource).toContain(`p: '${seededPasswordFallback(seedSource, 'CASHIER')}'`);
+    expect(authSource).toContain(`p: '${seededPasswordFallback(seedSource, 'KITCHEN')}'`);
+    expect(authSource).toContain(`p: '${seededPasswordFallback(seedSource, 'ADMIN')}'`);
   });
 });

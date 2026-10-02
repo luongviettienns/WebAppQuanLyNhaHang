@@ -28,8 +28,8 @@ export async function fetchSalesReturnCandidatesApi(token: string | null, filter
   return (await response.json() as { data: SalesReturnCandidateDataDto }).data;
 }
 
-export async function createSalesReturnApi(token: string | null, input: SalesReturnCreateInput): Promise<SalesReturnDto> {
-  const response = await fetch(getApiBaseUrl() + '/api/orders/returns', { method: 'POST', headers: { ...authHeaders(token), 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+export async function createSalesReturnApi(token: string | null, input: SalesReturnCreateInput, idempotencyKey: string): Promise<SalesReturnDto> {
+  const response = await fetch(getApiBaseUrl() + '/api/orders/returns', { method: 'POST', headers: { ...authHeaders(token), 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey }, body: JSON.stringify(input) });
   if (!response.ok) await throwApiError(response, 'Lỗi tạo phiếu trả hàng');
   return (await response.json() as { data: SalesReturnDto }).data;
 }

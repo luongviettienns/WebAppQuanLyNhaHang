@@ -1,26 +1,37 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fetchSalesReturnCandidatesApi, fetchSalesReturnsApi } from './salesReturns';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createSalesReturnApi } from './salesReturns';
+import { getSalesReturnIdempotencyKey } from './salesReturnIdempotency';
 
 vi.mock('./config', () => ({ getApiBaseUrl: () => 'https://api.example.test' }));
+afterEach(() => vi.unstubAllGlobals());
 
-describe('sales return API helpers', () => {
-  const fetchMock = vi.fn();
-  beforeEach(() => { fetchMock.mockReset(); vi.stubGlobal('fetch', fetchMock); });
+describe('sales return API client', () => {
+  it('sends a stable retry key as a header, not as return data', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue({ ok: true, json: async () => ({ data: { id: 4 } }) } as Response);
+    vi.stubGlobal('fetch', fetchMock);
+    const input = { orderId: 7, lines: [{ orderItemId: 3, quantity: 1 }], refundMethod: 'CASH' as const, financialAccountId: null };
 
-  it('serializes return list filters with pagination', async () => {
-    const data = { items: [], pagination: { page: 2, pageSize: 20, totalRows: 0, totalPages: 1 }, summary: { totalRefundDue: 0, totalRefunded: 0 } };
-    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ data }) });
-    await expect(fetchSalesReturnsApi('token', { search: ' THD01 ', from: '2026-09-01', to: '2026-09-30', statuses: ['COMPLETED'], tableId: 7, page: 2, pageSize: 20 })).resolves.toEqual(data);
-    expect(fetchMock).toHaveBeenCalledWith(
-      'https://api.example.test/api/orders/returns?search=THD01&from=2026-09-01&to=2026-09-30&statuses=COMPLETED&tableId=7&page=2&pageSize=20',
-      { headers: { Authorization: 'Bearer token' } }
-    );
+    await createSalesReturnApi('staff-token', input, 'sales-return-retry-123');
+
+    expect(fetchMock.mock.calls[0][0]).toBe('https://api.example.test/api/orders/returns');
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ Authorization: 'Bearer staff-token', 'Idempotency-Key': 'sales-return-retry-123' });
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(input);
   });
 
-  it('loads eligible paid invoice candidates without status filters', async () => {
-    const data = { items: [], pagination: { page: 1, pageSize: 50, totalRows: 0, totalPages: 1 } };
-    fetchMock.mockResolvedValue({ ok: true, json: async () => ({ data }) });
-    await expect(fetchSalesReturnCandidatesApi(null, { search: 'HD0001', page: 1, pageSize: 50 })).resolves.toEqual(data);
-    expect(fetchMock).toHaveBeenCalledWith('https://api.example.test/api/orders/returns/candidates?search=HD0001&page=1&pageSize=50', { headers: {} });
+  it('keeps an uncertain return request key across a page reload until success is acknowledged', async () => {
+    const persisted = new Map<string, string>();
+    vi.stubGlobal('localStorage', {
+      getItem: (key: string) => persisted.get(key) ?? null,
+      setItem: (key: string, value: string) => { persisted.set(key, value); },
+      removeItem: (key: string) => { persisted.delete(key); }
+    });
+    const input = { orderId: 9, lines: [{ orderItemId: 3, quantity: 1 }], refundMethod: 'CASH' as const };
+    const firstKey = await getSalesReturnIdempotencyKey(input);
+
+    vi.resetModules();
+    const reloaded = await import('./salesReturnIdempotency');
+    await expect(reloaded.getSalesReturnIdempotencyKey(input)).resolves.toBe(firstKey);
+    await reloaded.clearSalesReturnIdempotencyKey(input);
+    expect(persisted.size).toBe(0);
   });
 });

@@ -56,6 +56,16 @@ export interface SupplierReceiptHistory {
   items: Array<{ id: number; receiptCode: string; receivedAt: string; status: 'DRAFT' | 'POSTED' | 'CANCELLED'; payableAmount: number; paidAmount: number }>;
   pagination: SupplierListDataDto['pagination'];
 }
+export type SupplierPaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD' | 'E_WALLET';
+export interface SupplierPaymentInput {
+  amount: number; paymentMethod: SupplierPaymentMethod; financialAccountId?: number | null;
+  paidAt?: string; externalReference?: string; note?: string;
+}
+export interface SupplierPaymentDto {
+  id: number; supplierId: number; amount: number; paymentMethod: SupplierPaymentMethod; financialAccountId: number | null;
+  paidAt: string; externalReference: string | null; note: string | null; status: 'SUCCESS' | 'REVERSED';
+  reverseReason?: string | null; reversedAt?: string | null;
+}
 
 function filterQuery(filter: SupplierListFilter) {
   const params = new URLSearchParams();
@@ -79,9 +89,10 @@ export async function fetchSuppliersApi(
   return (await response.json() as { data: SupplierListDataDto }).data;
 }
 
-async function supplierRequest<T>(token: string | null, path: string, method = 'GET', body?: unknown): Promise<T> {
+async function supplierRequest<T>(token: string | null, path: string, method = 'GET', body?: unknown, idempotencyKey?: string): Promise<T> {
   const response = await fetch(getApiBaseUrl() + '/api/inventory/' + path, {
-    method, headers: jsonHeaders(token), ...(body === undefined ? {} : { body: JSON.stringify(body) })
+    method, headers: { ...jsonHeaders(token), ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {}) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) })
   });
   if (!response.ok) await throwApiError(response, 'Không thể xử lý nhà cung cấp');
   return (await response.json() as { data: T }).data;
@@ -90,6 +101,8 @@ export const fetchSupplierGroupsApi = (token: string | null) => supplierRequest<
 export const saveSupplierGroupApi = (token: string | null, id: number | null, name: string) => supplierRequest<SupplierGroupDto>(token, 'supplier-groups' + (id ? '/' + id : ''), id ? 'PATCH' : 'POST', { name });
 export const fetchSupplierDetailApi = (token: string | null, id: number) => supplierRequest<SupplierDto>(token, 'suppliers/' + id);
 export const fetchSupplierReceiptsApi = (token: string | null, id: number, page = 1) => supplierRequest<SupplierReceiptHistory>(token, 'suppliers/' + id + '/receipts?page=' + page + '&pageSize=10');
+export const recordSupplierPaymentApi = (token: string | null, id: number, input: SupplierPaymentInput, idempotencyKey: string) =>
+  supplierRequest<SupplierPaymentDto>(token, `suppliers/${id}/payments`, 'POST', input, idempotencyKey);
 export const previewSupplierImportApi = (token: string | null, fileName: string, fileBase64: string) => supplierRequest<SupplierImportPreview>(token, 'suppliers/import/preview', 'POST', { fileName, fileBase64 });
 export const commitSupplierImportApi = (token: string | null, rows: SupplierInput[]) => supplierRequest<{ createdCount: number }>(token, 'suppliers/import/commit', 'POST', { rows });
 export async function downloadSuppliersApi(token: string | null, filter: SupplierListFilter = {}, format: 'csv' | 'xlsx' = 'xlsx', template = false) {

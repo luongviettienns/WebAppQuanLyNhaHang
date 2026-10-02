@@ -21,6 +21,8 @@ describe('PurchaseReceiptService posting transaction', () => {
 
   beforeEach(async () => {
     await prismaTest.auditLog.deleteMany();
+    await prismaTest.cashVoucher.deleteMany({ where: { sourceType: 'PURCHASE_RECEIPT_PAYMENT' } });
+    await prismaTest.supplierPayment.deleteMany();
     await prismaTest.inventoryTransaction.deleteMany();
     await prismaTest.purchaseReceiptLine.deleteMany();
     await prismaTest.purchaseReceipt.deleteMany();

@@ -33,6 +33,7 @@ import type { LucideIcon } from 'lucide-react-native';
 import { DiningTableDto, OrderStatus, PaymentMethod, TableStatus } from '../../api/contracts';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
+import { CashbookAccountChoice } from '../cashbook/CashbookAccountChoice';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
 import { elevation, radii, spacing, statusColors, typography } from '../../theme';
@@ -87,7 +88,7 @@ const paymentOptions: Array<{ value: PaymentMethod; label: string; icon: LucideI
 
 export const TableScreen: React.FC = () => {
   const { theme } = useTheme();
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const { showToast } = useToast();
   const { width } = useWindowDimensions();
   const { tables, isLoadingTables, fetchTables, payOrder, updateTableStatus, transferTable, voidOrder } = useRestaurant();
@@ -98,6 +99,7 @@ export const TableScreen: React.FC = () => {
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
+  const [financialAccountId, setFinancialAccountId] = useState<number | null>(null);
   const [isProcessingPay, setIsProcessingPay] = useState(false);
   const [paySuccessMsg, setPaySuccessMsg] = useState<string | null>(null);
   const [isVoidModalOpen, setIsVoidModalOpen] = useState(false);
@@ -165,7 +167,7 @@ export const TableScreen: React.FC = () => {
   const handlePay = async () => {
     if (!selectedTable?.orders || !activeOrder) return;
     setIsProcessingPay(true);
-    const result = await payOrder(activeOrder.id, paymentMethod);
+    const result = await payOrder(activeOrder.id, paymentMethod, financialAccountId);
     setIsProcessingPay(false);
 
     if (!result.success) {
@@ -710,6 +712,7 @@ export const TableScreen: React.FC = () => {
                         );
                       })}
                     </View>
+                    <CashbookAccountChoice token={token} paymentMethod={paymentMethod} value={financialAccountId} onChange={setFinancialAccountId} />
                   </View>
                 </View>
               ) : isSelectedTableDirty ? (

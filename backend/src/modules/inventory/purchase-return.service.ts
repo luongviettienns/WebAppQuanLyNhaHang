@@ -3,6 +3,9 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitInventoryChanged } from './inventory.events';
+import { CashbookPostingService, normalizeCashbookPersistenceError, resolveCashbookAccountForPayment } from '../cashbook/cashbook-posting.service';
+import { cashbookChangedEvent } from '../cashbook/cashbook.events';
+import { emitToAll } from '../../lib/socket';
 import { purchaseReturnTotals } from './purchase-return.math';
 import { serializePurchaseReturnCsv, serializePurchaseReturnWorkbook } from './purchase-return.export';
 import { parsePurchaseReturnExcelBuffer } from './purchase-return.import';
@@ -138,10 +141,11 @@ export class PurchaseReturnService {
     }, txOptions);
     notify(row); return returnDto(row);
   }
-  static async complete(id: number, expectedVersion: number, actor: ReturnActor) {
-    const row = await prisma.$transaction(async tx => {
+  static async complete(id: number, expectedVersion: number, actor: ReturnActor, requestedFinancialAccountId?: number | null) {
+    const outcome = await prisma.$transaction(async tx => {
       const current = await lockedDraft(tx, id, expectedVersion);
       if (!current.supplier?.isActive || !current.lines.length) throw ApiError.badRequest('Cần nhà cung cấp đang hoạt động và ít nhất một dòng hàng');
+      await tx.$queryRaw`SELECT id FROM Supplier WHERE id = ${current.supplierId} FOR UPDATE`;
       purchaseReturnTotals(current.lines, current.discountAmount, current.vatAmount, current.refundAmount);
       if (current.sourceReceiptId) {
         await tx.$queryRaw`SELECT id FROM PurchaseReceipt WHERE id = ${current.sourceReceiptId} FOR UPDATE`;
@@ -167,9 +171,29 @@ export class PurchaseReturnService {
         await tx.purchaseReturnLine.update({ where: { id: line.id }, data: { stockCostPerUnit: ingredient.costPerUnit, stockCostAmount: cost } });
         await tx.inventoryTransaction.create({ data: { ingredientId: ingredient.id, purchaseReturnId: id, type: 'PURCHASE_RETURN', quantity: -line.quantity, costAmount: -cost, note: 'Trả hàng nhập ' + current.returnCode, createdByUserId: actor.id } });
       }
-      const completed = await tx.purchaseReturn.update({ where: { id }, data: { status: 'COMPLETED', version: { increment: 1 }, completedAt: new Date(), completedByUserId: actor.id }, include: returnInclude });
-      await audit(tx, completed, actor, 'COMPLETED'); return completed;
-    }, txOptions);
-    notify(row); return returnDto(row);
+      const selectedFinancialAccountId = requestedFinancialAccountId === undefined ? current.financialAccountId : requestedFinancialAccountId;
+      const completed = await tx.purchaseReturn.update({ where: { id }, data: { status: 'COMPLETED', financialAccountId: selectedFinancialAccountId, version: { increment: 1 }, completedAt: new Date(), completedByUserId: actor.id }, include: returnInclude });
+      let voucher = null;
+      if (completed.refundAmount > 0) {
+        const financialAccountId = await resolveCashbookAccountForPayment(tx, completed.refundMethod as 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD' | 'E_WALLET', completed.financialAccountId);
+        if (financialAccountId !== null) {
+          const category = await tx.cashFlowCategory.findUniqueOrThrow({ where: { code: 'SUPPLIER_REFUND' } });
+          voucher = await CashbookPostingService.post(tx, {
+            direction: 'RECEIPT', amount: completed.refundAmount, accountId: financialAccountId, categoryId: category.id,
+            paymentMethod: completed.refundMethod as 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD' | 'E_WALLET',
+            occurredAt: completed.completedAt ?? new Date(), sourceType: 'PURCHASE_RETURN_REFUND',
+            sourceTransactionId: completed.id, sourceCode: completed.returnCode,
+            note: completed.refundExternalReference || completed.note || `Nhà cung cấp hoàn tiền theo ${completed.returnCode}`,
+            counterpartyType: 'SUPPLIER', counterpartyId: completed.supplierId,
+            counterpartyName: completed.supplier?.name ?? null
+          }, { id: actor.id, name: actor.name, role: 'ADMIN' });
+        }
+      }
+      await audit(tx, completed, actor, 'COMPLETED'); return { row: completed, voucher };
+    }, txOptions).catch(normalizeCashbookPersistenceError);
+    const row = outcome.row;
+    notify(row);
+    if (outcome.voucher) emitToAll('cashbook:changed', cashbookChangedEvent(outcome.voucher));
+    return returnDto(row);
   }
 }

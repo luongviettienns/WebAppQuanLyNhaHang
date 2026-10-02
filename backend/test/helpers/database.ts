@@ -28,6 +28,19 @@ export async function truncateAllTables() {
   // Xoa du lieu theo thu tu khoa ngoai
   await prismaTest.$executeRawUnsafe(`SET FOREIGN_KEY_CHECKS = 0;`);
   const tables = [
+    'CashVoucher',
+    'CashbookSetting',
+    'CashFlowCategory',
+    'FinancialParty',
+    'FinancialAccount',
+    'CommissionPayrollAllocation',
+    'CommissionEntry',
+    'CommissionRecognitionIssue',
+    'CommissionBasisResolution',
+    'CommissionSaleBasis',
+    'CommissionRule',
+    'CommissionPlanEmployee',
+    'CommissionPlan',
     'EmployeeScheduleIdempotency',
     'EmployeePayrollIdempotency',
     'EmployeePayrollPayment',
@@ -67,6 +80,7 @@ export async function truncateAllTables() {
     'InventoryCheckLine',
     'InventoryCheck',
     'InventoryTransaction',
+    'SupplierPayment',
     'PurchaseReceiptLine',
     'PurchaseReceipt',
     'Supplier',
@@ -106,6 +120,37 @@ export async function truncateAllTables() {
     // Branch table may not exist before the attendance foundation migration is applied.
   }
   await prismaTest.$executeRawUnsafe(`SET FOREIGN_KEY_CHECKS = 1;`);
+
+  // The Cashbook foundation migration seeds these defaults. Recreate them after
+  // truncation so legacy transaction tests exercise the post-migration baseline.
+  const baselineAt = new Date();
+  await prismaTest.financialAccount.upsert({
+    where: { code: 'CASH' },
+    create: { code: 'CASH', name: 'Tiền mặt', type: 'CASH', openingAt: baselineAt, isDefault: true },
+    update: { name: 'Tiền mặt', type: 'CASH', openingBalance: 0, openingAt: baselineAt, isDefault: true, isActive: true }
+  });
+  await prismaTest.cashbookSetting.upsert({
+    where: { id: 1 },
+    create: { id: 1, activatedAt: null },
+    update: { activatedAt: null, activatedByUserId: null }
+  });
+  const systemCategories = [
+    ['CUSTOMER_PAYMENT', 'Khách thanh toán', 'RECEIPT', false],
+    ['SUPPLIER_REFUND', 'Nhà cung cấp hoàn tiền', 'RECEIPT', false],
+    ['OTHER_INCOME', 'Thu khác', 'RECEIPT', true],
+    ['SUPPLIER_PAYMENT', 'Trả nhà cung cấp', 'PAYMENT', false],
+    ['CUSTOMER_REFUND', 'Hoàn tiền khách', 'PAYMENT', false],
+    ['OPERATING_EXPENSE', 'Chi phí vận hành', 'PAYMENT', true],
+    ['OTHER_EXPENSE', 'Chi khác', 'PAYMENT', true],
+    ['REVERSAL_RECEIPT', 'Đảo phiếu chi', 'RECEIPT', false],
+    ['REVERSAL_PAYMENT', 'Đảo phiếu thu', 'PAYMENT', false],
+    ['PAYROLL_PAYMENT', 'Chi trả lương', 'PAYMENT', false]
+  ] as const;
+  await prismaTest.cashFlowCategory.createMany({
+    data: systemCategories.map(([code, name, direction, affectsBusinessResultDefault]) => ({
+      code, name, direction, affectsBusinessResultDefault, isSystem: true, isActive: true, updatedAt: baselineAt
+    }))
+  });
 }
 
 export async function seedEmployeeSettingsBaselines(branchId: number, createdByUserId?: number) {

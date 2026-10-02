@@ -1,10 +1,12 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import type {
   EmployeePayrollDetailDto,
   PayrollAdjustmentInput,
   PayrollPaymentInput
 } from '../../api/employeePayroll';
+import { CashbookAccountChoice } from '../cashbook/CashbookAccountChoice';
+import { fetchCashbookSettingsApi } from '../../api/cashbook';
 import { useTheme } from '../../contexts/ThemeContext';
 import {
   buildEmployeePayrollDetailModel,
@@ -12,6 +14,7 @@ import {
 } from './employeePayrollViewModel';
 
 interface EmployeePayrollDetailProps {
+  token: string | null;
   detail: EmployeePayrollDetailDto;
   onChanged: () => Promise<void>;
   onRecalculate?: () => Promise<void>;
@@ -26,6 +29,7 @@ interface EmployeePayrollDetailProps {
 const newIdempotentClickGuard = () => ({ current: false });
 
 export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
+  token,
   detail,
   onChanged,
   onRecalculate,
@@ -44,11 +48,30 @@ export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
   const [reason, setReason] = useState('');
   const [adjustmentType, setAdjustmentType] = useState<'BONUS' | 'DEDUCTION'>('BONUS');
   const [paymentMethod, setPaymentMethod] = useState<PayrollPaymentInput['method']>('BANK_TRANSFER');
+  const [financialAccountId, setFinancialAccountId] = useState<number | null>(null);
+  const [cashbookActivated, setCashbookActivated] = useState(true);
   const [reverseTarget, setReverseTarget] = useState<{ kind: 'adjustment' | 'payment'; lineId: number; id: number } | null>(null);
   const [reverseReason, setReverseReason] = useState('');
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
   const pendingRef = useRef(newIdempotentClickGuard()).current;
+
+  useEffect(() => {
+    let active = true;
+    void fetchCashbookSettingsApi(token).then(settings => {
+      if (active) setCashbookActivated(Boolean(settings.activatedAt));
+    }).catch(() => {
+      if (active) setCashbookActivated(true);
+    });
+    return () => { active = false; };
+  }, [token]);
+
+  useEffect(() => {
+    if (cashbookActivated && paymentMethod === 'OTHER') {
+      setPaymentMethod('BANK_TRANSFER');
+      setFinancialAccountId(null);
+    }
+  }, [cashbookActivated, paymentMethod]);
 
   const run = async (action?: () => Promise<void>) => {
     if (!action || pendingRef.current) return false;
@@ -293,15 +316,21 @@ export const EmployeePayrollDetail: React.FC<EmployeePayrollDetailProps> = ({
                     {detail.status === 'FINALIZED' && (
                       <View style={styles.formRow}>
                         <TextInput value={amount} onChangeText={setAmount} placeholder={`Tối đa ${formatPayrollVnd(line.raw.remainingAmount)}`} style={styles.input} keyboardType="numeric" />
-                        {(['CASH', 'BANK_TRANSFER', 'OTHER'] as const).map(method => (
-                          <Pressable key={method} testID={`payroll-payment-method-${method.toLowerCase()}`} onPress={() => setPaymentMethod(method)} style={[styles.choiceButton, paymentMethod === method && styles.choiceButtonSelected]}>
+                        {(['CASH', 'BANK_TRANSFER', ...(!cashbookActivated ? ['OTHER' as const] : [])] as const).map(method => (
+                          <Pressable key={method} testID={`payroll-payment-method-${method.toLowerCase()}`} onPress={() => { setPaymentMethod(method); setFinancialAccountId(null); }} style={[styles.choiceButton, paymentMethod === method && styles.choiceButtonSelected]}>
                             <Text style={styles.secondaryButtonText}>{method === 'CASH' ? 'Tiền mặt' : method === 'BANK_TRANSFER' ? 'Chuyển khoản' : 'Khác'}</Text>
                           </Pressable>
                         ))}
+                        {paymentMethod !== 'OTHER' && <CashbookAccountChoice
+                          token={token}
+                          paymentMethod={paymentMethod}
+                          value={financialAccountId}
+                          onChange={setFinancialAccountId}
+                        />}
                         <Pressable
                           testID={`payroll-line-pay-${line.id}`}
                           disabled={pending || !onPay || parsedAmount <= 0 || parsedAmount > line.raw.remainingAmount}
-                          onPress={() => run(() => onPay?.(line.id, { amount: parsedAmount, method: paymentMethod }) ?? Promise.resolve())}
+                          onPress={() => run(() => onPay?.(line.id, { amount: parsedAmount, method: paymentMethod, ...(paymentMethod === 'OTHER' ? {} : { financialAccountId }) }) ?? Promise.resolve())}
                           style={styles.primaryButton}
                         >
                           <Text style={styles.primaryButtonText}>Ghi nhận trả lương</Text>
