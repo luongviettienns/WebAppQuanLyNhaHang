@@ -34,8 +34,9 @@ import { OrdersScreen } from '../features/orders/OrdersScreen';
 import { CustomerManagementScreen } from '../features/admin/CustomerManagementScreen';
 import { ReservationManagementScreen } from '../features/admin/ReservationManagementScreen';
 import { EmployeeWorkspaceScreen } from '../features/admin/EmployeeWorkspaceScreen';
+import { CashbookScreen } from '../features/cashbook/CashbookScreen';
 
-type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'pricing' | 'inventory' | 'orders' | 'vouchers' | 'audit' | 'customers' | 'reservations' | 'employees';
+type TabKey = 'pos' | 'tables' | 'kds' | 'reports' | 'menu' | 'pricing' | 'inventory' | 'orders' | 'vouchers' | 'audit' | 'customers' | 'reservations' | 'employees' | 'cashbook';
 
 interface TabItem {
   key: TabKey;
@@ -49,7 +50,8 @@ const tabsByRole = {
     { key: 'pos', label: 'Bán hàng', icon: ShoppingCart, component: POSScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
     { key: 'reservations', label: 'Đặt bàn', icon: ClipboardList, component: ReservationManagementScreen },
-    { key: 'orders', label: 'Đơn hàng', icon: ClipboardList, component: OrdersScreen }
+    { key: 'orders', label: 'Đơn hàng', icon: ClipboardList, component: OrdersScreen },
+    { key: 'cashbook', label: 'Sổ quỹ', icon: ClipboardList, component: CashbookScreen }
   ],
   KITCHEN: [
     { key: 'kds', label: 'Bếp', icon: ChefHat, component: KDSScreen }
@@ -65,7 +67,8 @@ const tabsByRole = {
     { key: 'employees', label: 'Nhân viên', icon: UserRound, component: EmployeeWorkspaceScreen },
     { key: 'reservations', label: 'Đặt bàn', icon: ClipboardList, component: ReservationManagementScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
-    { key: 'audit', label: 'Nhật ký', icon: ClipboardList, component: AuditLogScreen }
+    { key: 'audit', label: 'Nhật ký', icon: ClipboardList, component: AuditLogScreen },
+    { key: 'cashbook', label: 'Sổ quỹ', icon: ClipboardList, component: CashbookScreen }
   ]
 } satisfies Record<string, TabItem[]>;
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ApiError } from '../../lib/api-error';
 
 const dateOnly = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Ngày phải có định dạng YYYY-MM-DD').refine(value => {
   const date = new Date(`${value}T00:00:00Z`);
@@ -33,10 +34,18 @@ export const salesReturnCreateSchema = z.object({
   orderId: z.number().int().positive(),
   lines: z.array(z.object({ orderItemId: z.number().int().positive(), quantity: z.number().int().positive() })).min(1).max(100)
     .refine(lines => new Set(lines.map(line => line.orderItemId)).size === lines.length, 'Mỗi dòng món chỉ được xuất hiện một lần'),
-  refundMethod: z.enum(['CASH', 'BANK_TRANSFER', 'CREDIT_CARD']).default('CASH'),
+  refundMethod: z.enum(['CASH', 'BANK_TRANSFER', 'CREDIT_CARD', 'E_WALLET']).default('CASH'),
+  financialAccountId: z.number().int().positive().nullable().optional(),
   refundedAmount: z.number().int().nonnegative().optional(),
   note: z.string().trim().max(1000).optional()
 });
+
+const salesReturnIdempotencyKeySchema = z.string().trim().min(8).max(128).regex(/^[A-Za-z0-9._:-]+$/);
+export function parseSalesReturnIdempotencyKey(value: unknown): string {
+  const result = salesReturnIdempotencyKeySchema.safeParse(value);
+  if (!result.success) throw ApiError.badRequest('Idempotency-Key phiếu trả hàng không hợp lệ');
+  return result.data;
+}
 
 export const salesReturnCandidateQuerySchema = z.object(salesReturnQueryShape).omit({ statuses: true });
 export const salesReturnIdSchema = z.object({ id: z.coerce.number().int().positive() });

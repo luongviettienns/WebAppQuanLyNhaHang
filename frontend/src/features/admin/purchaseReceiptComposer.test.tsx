@@ -81,6 +81,9 @@ vi.mock('../../api/purchaseReceipts', () => ({
   })),
   postPurchaseReceiptApi: vi.fn()
 }));
+vi.mock('../../api/cashbook', () => ({ getDefaultCashbookAccountId: vi.fn(async () => 12) }));
+vi.mock('../cashbook/CashbookAccountChoice', () => ({ CashbookAccountChoice: () => null }));
+vi.mock('../cashbook/CashbookChoice', () => ({ Choice: () => null }));
 
 import { savePurchaseReceiptDraftApi, postPurchaseReceiptApi } from '../../api/purchaseReceipts';
 import { PurchaseReceiptComposerScreen } from './PurchaseReceiptComposerScreen';

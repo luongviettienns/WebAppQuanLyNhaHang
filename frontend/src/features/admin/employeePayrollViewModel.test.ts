@@ -15,7 +15,7 @@ const line = (overrides: Partial<EmployeePayrollLineDto> = {}): EmployeePayrollL
   departmentName: 'Phục vụ', jobTitleName: 'Nhân viên', bankName: 'VCB', bankAccountNumber: '0123456789', bankAccountName: 'NGUYEN MINH ANH',
   activeCalendarDays: 30, periodCalendarDays: 30, scheduledShifts: 22, completedSessions: 20, actualMinutes: 9_690,
   confirmedAbsences: 1, missingCheckouts: 0, reviewRequiredCount: 0,
-  grossAmount: 12_000_000, bonusAmount: 500_000, deductionAmount: 100_000, netAmount: 12_400_000, paidAmount: 2_400_000, remainingAmount: 10_000_000,
+  grossAmount: 12_000_000, bonusAmount: 500_000, deductionAmount: 100_000, commissionAmount: 0, commissionDeferredDebitAmount: 0, netAmount: 12_400_000, paidAmount: 2_400_000, remainingAmount: 10_000_000,
   calculationStatus: 'READY', warningCodes: ['UNSCHEDULED_ATTENDANCE', 'CONFIRMED_ABSENCE'],
   sourceSnapshot: { compensationTerms: [{ id: 1, payBasis: 'MONTHLY', baseRate: 12_000_000, effectiveFrom: '2026-01-01' }] },
   calculatedAt: '2026-09-30T08:00:00.000Z', adjustments: [], payments: [], ...overrides
@@ -24,7 +24,7 @@ const line = (overrides: Partial<EmployeePayrollLineDto> = {}): EmployeePayrollL
 const detail = (overrides: Partial<EmployeePayrollDetailDto> = {}): EmployeePayrollDetailDto => ({
   id: 1, code: 'BL202609001', name: 'Bảng lương tháng 9/2026', branch: { id: 1, code: 'MAIN', name: 'Chi nhánh trung tâm' },
   frequency: 'MONTHLY', periodStart: '2026-09-01', periodEnd: '2026-09-30', status: 'CALCULATED',
-  totalGrossAmount: 12_000_000, totalAdjustmentAmount: 400_000, totalNetAmount: 12_400_000, totalPaidAmount: 2_400_000, totalRemainingAmount: 10_000_000,
+  totalGrossAmount: 12_000_000, totalAdjustmentAmount: 400_000, totalCommissionAmount: 0, totalCommissionDeferredDebitAmount: 0, totalNetAmount: 12_400_000, totalPaidAmount: 2_400_000, totalRemainingAmount: 10_000_000,
   createdAt: '2026-09-30T08:00:00.000Z', updatedAt: '2026-09-30T08:00:00.000Z', version: 1, sourceStale: false,
   createdBy: { id: 1, name: 'Admin' }, calculatedBy: { id: 1, name: 'Admin' }, finalizedBy: null, cancelledBy: null,
   calculatedAt: '2026-09-30T08:00:00.000Z', finalizedAt: null, cancelledAt: null, cancelReason: null, lines: [line()], ...overrides

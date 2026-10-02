@@ -19,6 +19,11 @@ import { PriceListService } from '../price-lists/price-list.service';
 import { createHash } from 'crypto';
 import { ReservationsService } from '../reservations/reservations.service';
 import { getVietQrInstructions } from '../../lib/vietqr';
+import { CashbookPostingService, normalizeCashbookPersistenceError, resolveCashbookAccountForPayment } from '../cashbook/cashbook-posting.service';
+import { cashbookChangedEvent } from '../cashbook/cashbook.events';
+import { amountReceivedAfterCredit } from '../cashbook/cashbook.domain';
+import { EmployeeCommissionRecognitionService } from '../employee-commissions/employee-commission.recognition.service';
+import { assertCommissionEmployeeEligible } from '../employee-commissions/employee-commission.eligibility';
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -321,6 +326,7 @@ export class OrdersService {
         quantity: itemInput.quantity,
         unitPrice,
         subtotal,
+        commissionEmployeeId: createdByUserId === undefined ? null : (itemInput.commissionEmployeeId ?? null),
         selectedModifiersJson: selectedMods.length > 0 ? selectedMods : null,
         notes: itemInput.notes
       });
@@ -353,6 +359,12 @@ export class OrdersService {
     let transactionResult: { order: any; isDuplicate: boolean; stockChanges: MenuStockChange[]; awaitingPayment?: boolean };
     try {
       transactionResult = await prisma.$transaction(async (tx) => {
+        const commissionEmployeeIds = [...new Set(orderItemsData
+          .map(item => item.commissionEmployeeId as number | null)
+          .filter((id): id is number => id !== null))];
+        if (commissionEmployeeIds.length) {
+          for (const employeeId of commissionEmployeeIds) await assertCommissionEmployeeEligible(tx, employeeId);
+        }
         let reservationContext: { id: number; customerId: number } | null = null;
         if (input.orderType === 'DINE_IN' && resolvedTableId) {
           await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${resolvedTableId} FOR UPDATE`;
@@ -589,12 +601,13 @@ export class OrdersService {
       if (current.paymentStatus === 'WAITING_CONFIRMATION') {
         const pending = await tx.orderPaymentTransaction.findFirst({ where: { orderId, status: 'PENDING' }, orderBy: { createdAt: 'desc' } });
         if (!pending) throw ApiError.conflict('Không tìm thấy giao dịch chờ xác nhận');
-        return { order: current, amountDue: pending.amount, autoPaid: false, stockChanges: [] };
+        return { order: current, amountDue: pending.amount, autoPaid: false, stockChanges: [], commissionChanged: false };
       }
       if (current.paymentStatus !== 'UNPAID') throw ApiError.conflict('Order không còn chờ thanh toán trước');
 
       const availableCredit = await this.availableReservationCredit(tx, reservation.id);
-      const amountDue = Math.max(0, current.finalAmount - availableCredit);
+      const appliedDeposit = Math.min(current.finalAmount, availableCredit);
+      const amountDue = amountReceivedAfterCredit(current.finalAmount, appliedDeposit);
       if (amountDue > 0) {
         await tx.orderPaymentTransaction.create({ data: { orderId, status: 'PENDING', amount: amountDue, paymentMethod: 'BANK_TRANSFER' } });
         const order = await tx.order.update({ where: { id: orderId }, data: { paymentStatus: 'WAITING_CONFIRMATION' }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
@@ -602,10 +615,9 @@ export class OrdersService {
           action: 'RESERVATION_ORDER_PAYMENT_DECLARED', targetType: 'Order', targetId: orderId,
           metadata: { reservationId: reservation.id, amountDue }
         });
-        return { order, amountDue, autoPaid: false, stockChanges: [] };
+        return { order, amountDue, autoPaid: false, stockChanges: [], commissionChanged: false };
       }
 
-      const appliedDeposit = Math.min(current.finalAmount, availableCredit);
       if (appliedDeposit > 0) {
         await tx.reservationDepositTransaction.create({ data: {
           reservationId: reservation.id, orderId, type: 'APPLY_TO_BILL', status: 'SUCCESS', amount: appliedDeposit,
@@ -621,16 +633,18 @@ export class OrdersService {
         action: 'RESERVATION_ORDER_PAID_BY_DEPOSIT', targetType: 'Order', targetId: orderId,
         metadata: { reservationId: reservation.id, appliedDeposit }
       });
-      return { order, amountDue: 0, autoPaid: true, stockChanges };
+      const commission = await EmployeeCommissionRecognitionService.recognizePaidOrder(tx, order.id, paidAt);
+      return { order, amountDue: 0, autoPaid: true, stockChanges, commissionChanged: commission.changed };
     });
     if (result.autoPaid) this.emitPrepaidOrder(result.order, result.stockChanges);
     emitToAll('reservations:changed', { ids: [result.order.reservationId], updatedAt: new Date().toISOString() });
     emitToAll('order:paymentChanged', { orderId, paymentStatus: result.order.paymentStatus, updatedAt: new Date().toISOString() });
+    if (result.commissionChanged) emitToAll('employee-commission:changed', { revision: Date.now(), branchId: 1, reason: 'PAYMENT_RECOGNIZED', affectedPlanIds: [], affectedEmployeeIds: [], affectedOrderItemIds: result.order.items.map((item: { id: number }) => item.id), updatedAt: new Date().toISOString() });
     const transferContent = `THU ${result.order.code}`;
     return { order: result.order, paymentStatus: result.order.paymentStatus, amountDue: result.amountDue, transferContent, paymentInstructions: result.amountDue > 0 ? getVietQrInstructions(result.amountDue, transferContent) : null };
   }
 
-  static async confirmReservationOrderPayment(orderId: number, input: ConfirmOrderPaymentInput, actorId: number, actorName: string) {
+  static async confirmReservationOrderPayment(orderId: number, input: ConfirmOrderPaymentInput, actorId: number, actorName: string, actorRole: 'ADMIN' | 'CASHIER' = 'CASHIER') {
     try {
       const result = await prisma.$transaction(async tx => {
         await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
@@ -644,9 +658,9 @@ export class OrdersService {
         if (!pending) throw ApiError.conflict('Không tìm thấy giao dịch thanh toán đang chờ');
 
         const availableCredit = await this.availableReservationCredit(tx, reservation.id);
-        const amountDue = Math.max(0, current.finalAmount - availableCredit);
-        if (input.amount !== pending.amount || input.amount !== amountDue) throw ApiError.conflict('Số tiền chuyển khoản đã thay đổi; cần tạo lại yêu cầu thanh toán');
         const appliedDeposit = Math.min(current.finalAmount, availableCredit);
+        const amountDue = amountReceivedAfterCredit(current.finalAmount, appliedDeposit);
+        if (input.amount !== pending.amount || input.amount !== amountDue) throw ApiError.conflict('Số tiền chuyển khoản đã thay đổi; cần tạo lại yêu cầu thanh toán');
         const now = new Date();
         if (appliedDeposit > 0) {
           await tx.reservationDepositTransaction.create({ data: {
@@ -656,10 +670,19 @@ export class OrdersService {
           await tx.reservation.update({ where: { id: reservation.id }, data: { depositStatus: 'APPLIED_TO_BILL' } });
         }
 
-        await tx.orderPaymentTransaction.create({ data: {
+        const financialAccountId = await resolveCashbookAccountForPayment(tx, 'BANK_TRANSFER', input.financialAccountId);
+        const payment = await tx.orderPaymentTransaction.create({ data: {
           orderId, status: 'SUCCESS', amount: input.amount, paymentMethod: 'BANK_TRANSFER',
-          externalReference: input.externalReference, confirmedByUserId: actorId, confirmedAt: now
+          financialAccountId, externalReference: input.externalReference, confirmedByUserId: actorId, confirmedAt: now
         } });
+        const category = await tx.cashFlowCategory.findUniqueOrThrow({ where: { code: 'CUSTOMER_PAYMENT' } });
+        const voucher = financialAccountId === null ? null : await CashbookPostingService.post(tx, {
+          direction: 'RECEIPT', amount: payment.amount, accountId: financialAccountId, categoryId: category.id,
+          paymentMethod: 'BANK_TRANSFER', occurredAt: now, sourceType: 'ORDER_PAYMENT',
+          sourceTransactionId: payment.id, sourceCode: current.code,
+          counterpartyType: current.customerId ? 'CUSTOMER' : null, counterpartyId: current.customerId,
+          note: 'Khách thanh toán trước order đặt bàn'
+        }, { id: actorId, name: actorName, role: actorRole });
         const order = await tx.order.update({ where: { id: orderId }, data: {
           paymentStatus: 'PAID', paymentMethod: 'BANK_TRANSFER', paidAt: now
         }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
@@ -669,14 +692,17 @@ export class OrdersService {
           action: 'RESERVATION_ORDER_PREPAYMENT_CONFIRMED', targetType: 'Order', targetId: orderId,
           actorId, actorName, metadata: { reservationId: reservation.id, amount: input.amount, appliedDeposit, externalReference: input.externalReference }
         });
-        return { order, stockChanges };
+        const commission = await EmployeeCommissionRecognitionService.recognizePaidOrder(tx, order.id, now, { id: actorId, name: actorName });
+        return { order, stockChanges, voucher, commissionChanged: commission.changed };
       });
       this.emitPrepaidOrder(result.order, result.stockChanges);
       emitToAll('reservations:changed', { ids: [result.order.reservationId], updatedAt: new Date().toISOString() });
+      if (result.voucher) emitToAll('cashbook:changed', cashbookChangedEvent(result.voucher));
+      if (result.commissionChanged) emitToAll('employee-commission:changed', { revision: Date.now(), branchId: 1, reason: 'PAYMENT_RECOGNIZED', affectedPlanIds: [], affectedEmployeeIds: [], affectedOrderItemIds: result.order.items.map((item: { id: number }) => item.id), updatedAt: new Date().toISOString() });
       return result.order;
     } catch (error) {
       if (isUniqueConstraintError(error)) throw ApiError.conflict('Mã giao dịch đã được ghi nhận hoặc tiền cọc đã được áp dụng cho order này');
-      throw error;
+      normalizeCashbookPersistenceError(error);
     }
   }
 
@@ -739,7 +765,7 @@ export class OrdersService {
   /**
    * Thanh toan don hang va tu dong reset ban an ve AVAILABLE khi het don UNPAID
    */
-  static async payOrder(orderId: number, input: PayOrderInput, actorId?: number, actorName?: string) {
+  static async payOrder(orderId: number, input: PayOrderInput, actorId?: number, actorName?: string, actorRole: 'ADMIN' | 'CASHIER' = 'CASHIER') {
     const existingOrder = await prisma.order.findUnique({
       where: { id: orderId },
       include: { items: true }
@@ -758,7 +784,7 @@ export class OrdersService {
       throw ApiError.conflict(`Đơn hàng ID ${orderId} đã được thanh toán từ trước`);
     }
 
-    const { order: updatedOrder, tableState, inventoryChange } = await prisma.$transaction(async (tx) => {
+    const { order: updatedOrder, tableState, inventoryChange, voucher, commissionChanged } = await prisma.$transaction(async (tx) => {
       if (existingOrder.tableId) {
         // Serialize create/pay operations on the same table before reading its unpaid orders.
         await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${existingOrder.tableId} FOR UPDATE`;
@@ -785,10 +811,11 @@ export class OrdersService {
         throw ApiError.conflict('Order QR của khách phải được xác nhận prepayment hoặc cấp quyền trả sau trước khi thu tiền');
       }
 
+      let appliedDeposit = 0;
       if (lockedOrder.reservationId) {
         await tx.$queryRaw`SELECT id FROM Reservation WHERE id = ${lockedOrder.reservationId} FOR UPDATE`;
         const availableDeposit = await this.availableReservationCredit(tx, lockedOrder.reservationId);
-        const appliedDeposit = Math.min(lockedOrder.finalAmount, availableDeposit);
+        appliedDeposit = Math.min(lockedOrder.finalAmount, availableDeposit);
         if (appliedDeposit > 0) {
           await tx.reservationDepositTransaction.create({ data: {
             reservationId: lockedOrder.reservationId, orderId, type: 'APPLY_TO_BILL', status: 'SUCCESS', amount: appliedDeposit,
@@ -802,12 +829,31 @@ export class OrdersService {
         }
       }
 
+      const now = new Date();
+      const amountReceived = amountReceivedAfterCredit(lockedOrder.finalAmount, appliedDeposit);
+      let voucher = null;
+      if (amountReceived > 0) {
+        const financialAccountId = await resolveCashbookAccountForPayment(tx, input.paymentMethod, input.financialAccountId);
+        const payment = await tx.orderPaymentTransaction.create({ data: {
+          orderId, status: 'SUCCESS', amount: amountReceived, paymentMethod: input.paymentMethod as PaymentMethod,
+          financialAccountId, confirmedByUserId: actorId ?? null, confirmedAt: now
+        } });
+        const category = await tx.cashFlowCategory.findUniqueOrThrow({ where: { code: 'CUSTOMER_PAYMENT' } });
+        if (financialAccountId !== null) voucher = await CashbookPostingService.post(tx, {
+          direction: 'RECEIPT', amount: payment.amount, accountId: financialAccountId, categoryId: category.id,
+          paymentMethod: input.paymentMethod, occurredAt: now, sourceType: 'ORDER_PAYMENT',
+          sourceTransactionId: payment.id, sourceCode: lockedOrder.code,
+          counterpartyType: lockedOrder.customerId ? 'CUSTOMER' : null, counterpartyId: lockedOrder.customerId,
+          note: 'Khách thanh toán order'
+        }, { id: actorId ?? 0, name: actorName ?? null, role: actorRole });
+      }
+
       const order = await tx.order.update({
         where: { id: orderId },
         data: {
           paymentStatus: 'PAID',
           paymentMethod: input.paymentMethod as PaymentMethod,
-          paidAt: new Date(),
+          paidAt: now,
           status: 'COMPLETED',
           completedAt: new Date()
         },
@@ -847,8 +893,9 @@ export class OrdersService {
         }
       }
 
-      return { order, tableState: nextTableState, inventoryChange };
-    });
+      const commission = await EmployeeCommissionRecognitionService.recognizePaidOrder(tx, order.id, order.paidAt!, { id: actorId, name: actorName });
+      return { order, tableState: nextTableState, inventoryChange, voucher, commissionChanged: commission.changed };
+    }).catch(normalizeCashbookPersistenceError);
 
     emitInventoryChanged({
       sourceType: 'INGREDIENT',
@@ -856,6 +903,7 @@ export class OrdersService {
       reason: 'ORDER_PAID',
       updatedAt: new Date().toISOString()
     });
+    if (voucher) emitToAll('cashbook:changed', cashbookChangedEvent(voucher));
 
     // Phat su kien WebSocket realtime
     emitToAll('order:statusChanged', {
@@ -870,6 +918,10 @@ export class OrdersService {
     if (tableState) {
       emitToAll('table:statusChanged', tableState);
     }
+    if (commissionChanged) emitToAll('employee-commission:changed', {
+      revision: Date.now(), branchId: 1, reason: 'PAYMENT_RECOGNIZED', affectedPlanIds: [], affectedEmployeeIds: [],
+      affectedOrderItemIds: updatedOrder.items.map((item: { id: number }) => item.id), updatedAt: new Date().toISOString()
+    });
 
     return { order: updatedOrder };
   }
@@ -918,7 +970,6 @@ export class OrdersService {
         }
       }
     });
-
     return orders.map(order => ({
       ...formatOrderDto(order),
       reservationId: order.reservationId,

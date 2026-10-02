@@ -3,6 +3,9 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
+import { CashVoucherSourceType } from '@prisma/client';
+import { CashbookPostingService, normalizeCashbookPersistenceError, resolveCashbookAccountForPayment } from '../cashbook/cashbook-posting.service';
+import { cashbookChangedEvent } from '../cashbook/cashbook.events';
 import type { PayrollPaymentInput, PayrollReasonInput } from './employee-payroll.schemas';
 import type { PayrollActor } from './employee-payroll.mutation.service';
 
@@ -15,6 +18,7 @@ export interface PayrollPaymentResult {
   employeeId: number;
   amount: number;
   method: 'CASH' | 'BANK_TRANSFER' | 'OTHER';
+  financialAccountId: number | null;
   status: 'SUCCESS' | 'REVERSED';
   externalReference: string | null;
   note: string | null;
@@ -59,6 +63,7 @@ async function updateDerivedPaymentTotals(tx: Prisma.TransactionClient, batchId:
 function paymentResult(
   payment: {
     id: number; payrollBatchId: number; payrollLineId: number; employeeId: number; amount: number;
+    financialAccountId: number | null;
     method: 'CASH' | 'BANK_TRANSFER' | 'OTHER'; status: 'SUCCESS' | 'REVERSED'; externalReference: string | null;
     note: string | null; paidAt: Date; reversedAt: Date | null; reverseReason: string | null;
   },
@@ -71,6 +76,7 @@ function paymentResult(
     employeeId: payment.employeeId,
     amount: payment.amount,
     method: payment.method,
+    financialAccountId: payment.financialAccountId,
     status: payment.status,
     externalReference: payment.externalReference,
     note: payment.note,
@@ -126,6 +132,16 @@ export class EmployeePayrollPaymentService {
       if (input.amount > remaining) {
         throw ApiError.conflict('Số tiền chi trả vượt quá số còn lại', 'PAYROLL_PAYMENT_EXCEEDS_REMAINING', { remainingAmount: String(remaining) });
       }
+      // This also fences OTHER payments, which intentionally do not create a cashbook voucher.
+      await tx.$queryRaw`SELECT id FROM CashbookSetting WHERE id = 1 FOR SHARE`;
+      let financialAccountId: number | null = null;
+      if (input.method === 'OTHER') {
+        if (input.financialAccountId != null) throw ApiError.badRequest('Phương thức OTHER không được gắn tài khoản Sổ quỹ; hãy chọn tiền mặt hoặc chuyển khoản.');
+        const setting = await tx.cashbookSetting.findUnique({ where: { id: 1 }, select: { activatedAt: true } });
+        if (setting?.activatedAt) throw ApiError.badRequest('Sau khi kích hoạt Sổ quỹ, khoản chi lương phải dùng tiền mặt hoặc chuyển khoản.', undefined, 'CASHBOOK_UNSUPPORTED_PAYMENT_METHOD');
+      } else {
+        financialAccountId = await resolveCashbookAccountForPayment(tx, input.method, input.financialAccountId);
+      }
       const payment = await tx.employeePayrollPayment.create({
         data: {
           payrollBatchId: batch.id,
@@ -133,12 +149,25 @@ export class EmployeePayrollPaymentService {
           employeeId: line.employeeId,
           amount: input.amount,
           method: input.method,
+          financialAccountId,
           externalReference: input.externalReference,
           note: input.note,
           paidAt: input.paidAt ? new Date(input.paidAt) : new Date(),
           createdByUserId: actor.id
         }
       });
+      let voucher = null;
+      if (financialAccountId !== null) {
+        const category = await tx.cashFlowCategory.findUniqueOrThrow({ where: { code: 'PAYROLL_PAYMENT' } });
+        voucher = await CashbookPostingService.post(tx, {
+          direction: 'PAYMENT', amount: payment.amount, accountId: financialAccountId, categoryId: category.id,
+          paymentMethod: payment.method as 'CASH' | 'BANK_TRANSFER', occurredAt: payment.paidAt,
+          sourceType: CashVoucherSourceType.PAYROLL_PAYMENT, sourceTransactionId: payment.id,
+          sourceCode: `PAY${payment.payrollBatchId}-${payment.id}`,
+          counterpartyType: 'EMPLOYEE', counterpartyId: payment.employeeId,
+          counterpartyName: line.employeeName, note: payment.note ?? `Chi lương ${line.employeeName}`
+        }, { id: actor.id, name: actor.name, role: 'ADMIN' });
+      }
       const totals = await updateDerivedPaymentTotals(tx, batch.id, line.id);
       const result = paymentResult(payment, totals);
       await tx.auditLog.create({
@@ -152,15 +181,16 @@ export class EmployeePayrollPaymentService {
         data: { actorId: actor.id, operation, idempotencyKey, requestDigest: digest, response: jsonValue(result), payrollBatchId: batch.id }
       });
       return {
-        result, replayed: false, branchId: batch.branchId,
+        result, voucher, replayed: false, branchId: batch.branchId,
         periodStart: batch.periodStart.toISOString().slice(0, 10), periodEnd: batch.periodEnd.toISOString().slice(0, 10)
       };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30_000 });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30_000 }).catch(normalizeCashbookPersistenceError);
     if (!outcome.replayed) {
       this.emit('employee-payroll:changed', {
         batchId, branchId: outcome.branchId, employeeIds: [outcome.result.employeeId],
         periodStart: outcome.periodStart, periodEnd: outcome.periodEnd, revision: outcome.result.revision
       });
+      if (outcome.voucher) this.emit('cashbook:changed', cashbookChangedEvent(outcome.voucher) as unknown as Record<string, unknown>);
     }
     return outcome.result;
   }
@@ -195,6 +225,14 @@ export class EmployeePayrollPaymentService {
       });
       if (!payment) throw ApiError.notFound('Không tìm thấy giao dịch chi trả thuộc dòng lương');
       if (payment.status !== 'SUCCESS') throw ApiError.conflict('Giao dịch chi trả đã được đảo trước đó', 'PAYROLL_STATE_INVALID');
+      let voucher = null;
+      if (payment.financialAccountId !== null) {
+        const sourceVoucher = await tx.cashVoucher.findUnique({ where: { sourceKey: `PAYROLL_PAYMENT:${payment.id}` }, select: { id: true } });
+        if (sourceVoucher) {
+          voucher = await CashbookPostingService.reverseSourceTransaction(tx, CashVoucherSourceType.PAYROLL_PAYMENT,
+            payment.id, { id: actor.id, name: actor.name, role: 'ADMIN' }, input.reason);
+        }
+      }
       const reversed = await tx.employeePayrollPayment.update({
         where: { id: payment.id },
         data: { status: 'REVERSED', reversedAt: new Date(), reversedByUserId: actor.id, reverseReason: input.reason }
@@ -212,15 +250,16 @@ export class EmployeePayrollPaymentService {
         data: { actorId: actor.id, operation, idempotencyKey, requestDigest: digest, response: jsonValue(result), payrollBatchId: batch.id }
       });
       return {
-        result, replayed: false, branchId: batch.branchId,
+        result, voucher, replayed: false, branchId: batch.branchId,
         periodStart: batch.periodStart.toISOString().slice(0, 10), periodEnd: batch.periodEnd.toISOString().slice(0, 10)
       };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30_000 });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30_000 }).catch(normalizeCashbookPersistenceError);
     if (!outcome.replayed) {
       this.emit('employee-payroll:changed', {
         batchId, branchId: outcome.branchId, employeeIds: [outcome.result.employeeId],
         periodStart: outcome.periodStart, periodEnd: outcome.periodEnd, revision: outcome.result.revision
       });
+      if (outcome.voucher) this.emit('cashbook:changed', cashbookChangedEvent(outcome.voucher) as unknown as Record<string, unknown>);
     }
     return outcome.result;
   }

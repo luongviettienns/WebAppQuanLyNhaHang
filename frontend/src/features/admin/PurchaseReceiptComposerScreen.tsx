@@ -39,6 +39,9 @@ import {
   type PurchaseReceiptComposerLine
 } from './purchaseReceiptComposerViewModel';
 import { formatReceiptMoney } from './purchaseReceiptViewModel';
+import { CashbookAccountChoice } from '../cashbook/CashbookAccountChoice';
+import { Choice as CashbookChoice } from '../cashbook/CashbookChoice';
+import type { PaymentMethod } from '../../api/contracts';
 
 export interface PurchaseReceiptComposerScreenProps {
   mode: 'create' | 'edit';
@@ -104,6 +107,8 @@ export const PurchaseReceiptComposerScreen: React.FC<PurchaseReceiptComposerScre
   const [invoiceDate, setInvoiceDate] = useState('');
   const [discountInput, setDiscountInput] = useState('0');
   const [paidInput, setPaidInput] = useState('0');
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
+  const [financialAccountId, setFinancialAccountId] = useState<number | null>(null);
   const [note, setNote] = useState('');
   const [ingredientSearch, setIngredientSearch] = useState('');
   const [ingredientSuggestions, setIngredientSuggestions] = useState<IngredientDto[]>([]);
@@ -159,6 +164,8 @@ export const PurchaseReceiptComposerScreen: React.FC<PurchaseReceiptComposerScre
       setInvoiceDate(receipt.invoiceDate?.slice(0, 10) || '');
       setDiscountInput(String(receipt.discountAmount));
       setPaidInput(String(receipt.paidAmount));
+      setPaymentMethod(receipt.paymentMethod || 'CASH');
+      setFinancialAccountId(receipt.financialAccountId ?? null);
       setNote(receipt.note || '');
       setLines(receipt.lines.map((line) => ({
         ingredientId: line.ingredientId,
@@ -198,6 +205,8 @@ export const PurchaseReceiptComposerScreen: React.FC<PurchaseReceiptComposerScre
         invoiceDate,
         discountAmount: toNumber(discountInput),
         paidAmount: toNumber(paidInput),
+        paymentMethod,
+        financialAccountId,
         note,
         lines
       }));
@@ -375,6 +384,10 @@ export const PurchaseReceiptComposerScreen: React.FC<PurchaseReceiptComposerScre
           <SummaryRow label="Cần trả nhà cung cấp" value={formatReceiptMoney(totals.payableAmount)} theme={theme} strong />
           <Text style={[styles.label, { color: theme.textPrimary }]}>Đã trả (MVP)</Text>
           <TextInput value={paidInput} onChangeText={setPaidInput} editable={!isReadOnly} keyboardType="number-pad" style={[styles.input, { borderColor: theme.borderSubtle, color: theme.textPrimary }]} />
+          {Number(paidInput) > 0 && <>
+            <CashbookChoice label="Phương thức đã thanh toán" value={paymentMethod} options={['CASH', 'BANK_TRANSFER', 'CREDIT_CARD', 'E_WALLET']} onSelect={value => { setPaymentMethod(value as PaymentMethod); setFinancialAccountId(null); }} />
+            <CashbookAccountChoice token={token} paymentMethod={paymentMethod} value={financialAccountId} onChange={setFinancialAccountId} />
+          </>}
           <SummaryRow label="Công nợ (MVP)" value={formatReceiptMoney(totals.outstandingAmount)} theme={theme} strong />
           <Text style={[styles.label, { color: theme.textPrimary }]}>Ghi chú</Text>
           <TextInput value={note} onChangeText={setNote} editable={!isReadOnly} multiline numberOfLines={3} style={[styles.noteInput, { borderColor: theme.borderSubtle, color: theme.textPrimary }]} />

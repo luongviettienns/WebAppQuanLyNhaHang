@@ -24,11 +24,13 @@ const row = (overrides: Partial<EmployeePayrollExportRow> = {}): EmployeePayroll
   actualMinutes: 9_600,
   confirmedAbsences: 0,
   grossAmount: 12_000_000,
+  commissionAmount: 250_000,
+  commissionDeferredDebitAmount: 50_000,
   bonusAmount: 500_000,
   deductionAmount: 0,
-  netAmount: 12_500_000,
+  netAmount: 12_750_000,
   paidAmount: 2_500_000,
-  remainingAmount: 10_000_000,
+  remainingAmount: 10_250_000,
   warningCodes: [],
   ...overrides
 });

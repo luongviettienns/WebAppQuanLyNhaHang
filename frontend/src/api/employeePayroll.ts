@@ -16,12 +16,13 @@ export interface EmployeePayrollListQuery {
 export interface EmployeePayrollListItemDto {
   id: number; code: string; name: string; branchId: number; frequency: PayrollFrequency;
   periodStart: string; periodEnd: string; status: PayrollBatchStatus; employeeCount: number;
-  totalGrossAmount: number; totalAdjustmentAmount: number; totalNetAmount: number;
+  totalGrossAmount: number; totalAdjustmentAmount: number; totalCommissionAmount: number;
+  totalCommissionDeferredDebitAmount: number; totalNetAmount: number;
   totalPaidAmount: number; totalRemainingAmount: number; createdAt: string; updatedAt: string;
 }
 export interface EmployeePayrollListDto {
   items: EmployeePayrollListItemDto[];
-  summary: { totalGrossAmount: number; totalAdjustmentAmount: number; totalNetAmount: number; totalPaidAmount: number; totalRemainingAmount: number };
+  summary: { totalGrossAmount: number; totalAdjustmentAmount: number; totalCommissionAmount: number; totalCommissionDeferredDebitAmount: number; totalNetAmount: number; totalPaidAmount: number; totalRemainingAmount: number };
   pagination: { page: number; pageSize: number; totalItems: number; totalPages: number };
 }
 export interface EmployeePayrollAdjustmentDto {
@@ -39,7 +40,8 @@ export interface EmployeePayrollLineDto {
   bankAccountNumber: string | null; bankAccountName: string | null;
   activeCalendarDays: number; periodCalendarDays: number; scheduledShifts: number; completedSessions: number;
   actualMinutes: number; confirmedAbsences: number; missingCheckouts: number; reviewRequiredCount: number;
-  grossAmount: number; bonusAmount: number; deductionAmount: number; netAmount: number; paidAmount: number; remainingAmount: number;
+  grossAmount: number; bonusAmount: number; deductionAmount: number; commissionAmount: number;
+  commissionDeferredDebitAmount: number; netAmount: number; paidAmount: number; remainingAmount: number;
   calculationStatus: PayrollCalculationStatus; warningCodes: PayrollWarningCode[]; sourceSnapshot: Record<string, unknown>;
   calculatedAt: string; adjustments: EmployeePayrollAdjustmentDto[]; payments: EmployeePayrollPaymentDto[];
 }
@@ -57,7 +59,7 @@ export interface EmployeePayrollMutationDto {
 export interface CreateEmployeePayrollInput { branchId: number; month: string; scope: 'ALL' | 'CUSTOM'; employeeIds?: number[] }
 export interface PayrollReasonInput { reason: string }
 export interface PayrollAdjustmentInput extends PayrollReasonInput { type: 'BONUS' | 'DEDUCTION'; amount: number }
-export interface PayrollPaymentInput { amount: number; method: 'CASH' | 'BANK_TRANSFER' | 'OTHER'; externalReference?: string; note?: string; paidAt?: string }
+export interface PayrollPaymentInput { amount: number; method: 'CASH' | 'BANK_TRANSFER' | 'OTHER'; financialAccountId?: number | null; externalReference?: string; note?: string; paidAt?: string }
 
 export class EmployeePayrollApiError extends Error {
   constructor(message: string, readonly code: ErrorCode, readonly status: number, readonly details?: Record<string, unknown>) {

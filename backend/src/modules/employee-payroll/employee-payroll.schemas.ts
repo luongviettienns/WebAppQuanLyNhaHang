@@ -54,6 +54,7 @@ const adjustmentInputSchema = z.object({
 const paymentInputSchema = z.object({
   amount: z.number().int().positive().max(2_147_483_647),
   method: z.enum(['CASH', 'BANK_TRANSFER', 'OTHER']),
+  financialAccountId: positiveId.nullable().optional(),
   externalReference: z.string().trim().min(1).max(120).optional(),
   note: z.string().trim().min(1).max(500).optional(),
   paidAt: z.string().datetime({ offset: true }).optional()

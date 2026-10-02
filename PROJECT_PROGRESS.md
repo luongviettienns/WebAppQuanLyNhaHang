@@ -2,23 +2,25 @@
 
 > **Hệ Thống Đa Nền Tảng Đặt Món & Quản Lý Nhà Hàng Fast Food "CRISPY BITE"**  
 > **Kiến trúc**: Full-Stack Monorepo (React Native / Expo SDK 54 + Node.js / Express / Prisma / MySQL + Real-time Socket.io)  
-> **Trạng thái**: Đã hợp nhất thành công toàn bộ 53 commits từ nhánh `pKhanh` vào `main`. Tích hợp hoàn hảo Hệ thống Vận hành Kho khép kín (Nhà cung cấp, Phiếu nhập, Kiểm kho, Xuất hủy), Quản lý Bảng giá chung (Price List), Thực đơn nâng cao (Bulk actions, Excel Import/Export) cùng Hệ thống Voucher & Chuyển bàn realtime; Full Quality Gate PASS 100%.  
-> **Cập nhật lần cuối**: 2026-09-22 16:35:00
+> **Trạng thái**: Đã hợp nhất thành công toàn bộ 52 commits đợt 3 từ nhánh `pKhanh` vào `main`. Tích hợp hoàn hảo Hệ sinh thái Quản trị Nhân sự HRM toàn diện (Hồ sơ nhân viên, Avatar upload, Phân ca làm việc tuần, Chấm công Kiosk độc lập & Duyệt công Admin, Động cơ tính lương tự động Snapshot Payroll, Cài đặt chính sách phiên bản hóa Versioned Policies, Đặt bàn kèm cọc Reservations, Quản lý Khách hàng & Đối tác giao hàng Delivery Partners); Full Quality Gate PASS 100%.  
+> **Cập nhật lần cuối**: 2026-10-01 08:30:00
 
 ---
 
 ## 📈 1. TỔNG QUAN TIẾN ĐỘ (OVERALL PROGRESS)
 
 ```
-[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 11; Hệ sinh thái Vận hành & Quản trị QSR Toàn diện)
+[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 12; Hệ sinh thái Vận hành, Quản trị QSR & Nhân sự HRM Toàn diện)
 ```
 
 ### 🧪 Bằng chứng kiểm chứng chất lượng (Verification Metrics)
-- **Backend Test Suite (Vitest)**: 52/52 test files passed (360/360 tests pass 100% — bao gồm Toàn bộ cụm Supplier Management, Purchase Receipts, Stocktake Checks, Inventory Waste, Price Lists, Menu Bulk/Import/Export, Voucher Engine, Table Transfer, KDS Kitchen Waste, Order Idempotency, FSM, Auth RBAC, Reports & Real-time Socket).
-- **Frontend Test Suite (Vitest)**: 31/31 test files passed (98/98 tests pass 100% — bao gồm ViewModels cho NCC, Phiếu nhập, Phiếu hủy, Phiếu kiểm kho, Bảng giá, Menu bulk, Notification helper, UI Tokens & Guards).
-- **Tổng Unit / Integration Tests**: 458/458 tests passed 100% (360 backend + 98 frontend).
+- **Backend Test Suite (Vitest)**: 105/105 test files passed (725/725 tests pass 100% — bao gồm Toàn bộ cụm Nhân sự Employees, Lịch làm việc Schedules, Chấm công Attendance Kiosk & Admin, Tính lương Payroll, Cài đặt chính sách Employee Settings, Đặt bàn Reservations, Khách hàng Customers, Đối tác giao hàng Delivery Partners, Kho NVL, BOM & COGS, Price List, Menu Bulk/Import/Export, Voucher Engine, Table Transfer, KDS Kitchen Waste, Order Idempotency, FSM, Auth RBAC, Reports & Real-time Socket).
+- **Frontend Test Suite (Vitest)**: 71/71 test files passed (247/247 tests pass 100% — bao gồm ViewModels & Screens cho Nhân sự, Lịch làm việc tuần, Chấm công Kiosk/Admin, Bảng lương, Cài đặt chính sách, Đặt bàn, Khách hàng, NCC, Phiếu nhập, Phiếu hủy, Phiếu kiểm kho, Bảng giá, Menu bulk, Notification helper, UI Tokens & Guards).
+- **Tổng Unit / Integration Tests**: **972/972 tests passed 100%** (725 backend + 247 frontend).
 - **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ workspaces (`backend` + `frontend`).
-- **Database Migrations & Push**: Đồng bộ nhất quán 12 migrations trên cả `crispy_bite_dev` và `crispy_bite_test`.
+- **Monorepo Lint (ESLint)**: `npm run lint` $\rightarrow$ 0 lỗi trên toàn bộ workspaces.
+- **Expo Doctor Check**: `npm run doctor` $\rightarrow$ 18/18 checks đạt tiêu chuẩn Expo SDK 54.
+- **Database Migrations**: Đồng bộ nhất quán **25 migrations** trên cả `crispy_bite_dev` và `crispy_bite_test` kèm bảng kiểm toán `_prisma_migrations`.
 
 ### 🗂️ Tiến độ theo Giai đoạn (Phase Summary)
 | Giai đoạn | Mục tiêu cốt lõi | Trạng thái |
@@ -34,6 +36,8 @@
 | **Phase 8: Vận hành Thực tế** | QR Token bảo mật, LAN auto-detect, Virtual Buzzer, Menu KiotViet, Auto-Cancel | **HOÀN TẤT** (100%) |
 | **Phase 9: Kho & BOM & COGS** | Tồn kho thực tế, Định lượng BOM món, Giá vốn bình quân, Báo cáo lãi gộp, Nhập/Xuất Excel | **HOÀN TẤT** (100%) |
 | **Phase 10: Mở Rộng Nghiệp Vụ QSR** | Chuyển bàn thông minh, Báo hủy bếp, Cảnh báo NVL KDS, Voucher & Coupon Engine | **HOÀN TẤT** (100%) |
+| **Phase 11: Chuỗi Cung Ứng & Vận Hành** | Quản lý NCC, Phiếu nhập, Kiểm kho, Xuất hủy, Trả hàng nhập, Hóa đơn & Đổi trả bán | **HOÀN TẤT** (100%) |
+| **Phase 12: Quản Trị Nhân Sự (HRM)** | Hồ sơ NV, Lịch ca kíp, Chấm công Kiosk/Admin, Tính lương, Cài đặt chính sách, Đặt bàn | **HOÀN TẤT** (100%) |
 
 ---
 
@@ -263,6 +267,36 @@
       - `npm run doctor`: 18/18 checks đạt tiêu chuẩn Expo SDK 54.
       - Đã hoàn tất gộp vào nhánh chính `main` và cập nhật fast-forward cho local `pKhanh`.
 
+37. **Hợp nhất Toàn diện Nhánh `pKhanh` Đợt 3 (52 commits) vào `main` — Hệ Sinh Thái Quản Trị Nhân Sự (HRM), Lịch Ca Kíp, Chấm Công Kiosk, Bảng Lương, Đặt Bàn & Đối Tác Giao Hàng**:
+    - *Bối cảnh & Nghiệp vụ tiếp nhận*: Nhánh `origin/pKhanh` phát triển khối lượng nghiệp vụ đồ sộ (238 files thay đổi, +30,239 dòng code) bổ sung trọn bộ hệ thống HRM chuyên nghiệp cho chuỗi QSR:
+      1. **Hồ sơ & Danh bạ Nhân viên (Employee Directory & Avatars)**: API quản lý nhân sự, chức vụ, bộ phận, hồ sơ lương cơ bản, upload ảnh đại diện bảo mật (`/api/employees/avatar`), modal form responsive thích ứng mọi kích thước màn hình.
+      2. **Quản lý Lịch Làm Việc & Ca Kíp (Work Schedules & Shift Catalog)**: Quản lý danh mục ca (`MORNING`, `AFTERNOON`, `EVENING`, ca tùy biến), lập lịch theo tuần dạng lưới ma trận cuộn ngang, phát hiện xung đột ca, bảo toàn lịch sử ca làm khi nhân viên thôi việc hoặc điều chuyển, import/export lịch làm việc qua Excel.
+      3. **Chấm Công Kiosk & Quản Trị Duyệt Công (Attendance System)**: Màn hình Kiosk chấm công độc lập tại cửa hàng với mã PIN/AttendanceCode, chống brute-force và cấp session an toàn, giao diện Quản trị viên theo dõi/điều chỉnh giờ công (`AttendanceCorrectionModal`), cập nhật WebSocket realtime khi nhân viên check-in/check-out.
+      4. **Bảng Lương & Tính Lương Tự Động (Snapshot Payroll Engine & Payment Ledger)**: Động cơ tính toán lương nguyên tử theo kỳ (lương theo giờ công thực tế hoặc ca dự kiến, phụ cấp, giảm trừ), lưu snapshot bất biến các chính sách tại thời điểm chốt lương, sổ cái chi trả lương (`PayrollPaymentLedger`), xuất phiếu lương PDF/Excel.
+      5. **Chính Sách & Cài Đặt Nhân Sự Phiên Bản Hóa (Versioned Workforce Policies & Settings)**: Quản lý lịch tuần làm việc, ngày nghỉ lễ, ngưỡng đi muộn/về sớm có lưu phiên bản lịch sử kiểm toán (`AuditLog`), tự động cảnh báo ngày nghỉ trên lịch ca và cập nhật checklist Kiosk theo thời gian thực.
+      6. **Quản Lý Đặt Bàn & Đặt Cọc (Reservations & Deposit Booking Lifecycle)**: Khách đặt bàn trước kèm tiền cọc VietQR, ràng buộc thanh toán/check-in tại POS, hoàn cọc tự động theo chính sách.
+      7. **Quản Lý Khách Hàng (Customer Management) & Đối Tác Giao Hàng (Delivery Partners)**: Phân hệ quản lý tệp khách hàng thân thiết và đối tác vận chuyển giao hàng tận nơi.
+    - *Xử lý Kỹ thuật & Sửa lỗi Root Cause (RCA)*:
+      1. **RCA 1: Lỗi Hạn chế InnoDB Foreign Key Truncate (MySQL Error 1701)**:
+         - *Nguyên nhân*: MySQL InnoDB chặn lệnh `TRUNCATE TABLE` trên các bảng có khóa ngoại tham chiếu đến nó (`WorkShift`, `Employee`, `BranchAttendancePolicyVersion`), ngay cả khi bật `FOREIGN_KEY_CHECKS = 0`. Khối try/catch trong `truncateAllTables()` nuốt lỗi âm thầm, làm dữ liệu ca kíp và nhân viên cũ từ test trước không bị xóa, gây xung đột `WorkShift_code_key` và `Employee_code_key`.
+         - *Giải pháp*: Cải tiến `truncateAllTables()` với cơ chế fallback: ưu tiên `TRUNCATE TABLE` để reset auto-increment, nếu InnoDB chặn thì chuyển ngay sang `DELETE FROM \`${table}\``. Đảm bảo 100% dữ liệu được dọn dẹp sạch sẽ mà không làm lệch ID của `User` hay `DiningTable`.
+      2. **RCA 2: Va chạm Mã SKU trong Quá trình Seed CSDL (`MenuItem_sku_key`)**:
+         - *Nguyên nhân*: Hàm `seedDatabase` khởi tạo `itemSkuSeq = 1`. Khi test import tạo trước các món ăn có mã SKU `SP000001`, việc seed lại món chính bị trùng lặp SKU.
+         - *Giải pháp*: Tự động đọc danh sách `existingSkus` trong DB và tăng lũy tiến `itemSkuSeq` vượt qua các SKU đã tồn tại trước khi tạo mới món ăn.
+      3. **RCA 3: Đồng bộ Metadata Bảng `_prisma_migrations`**:
+         - Phát triển script `scripts/sync-migrations-record.js` sử dụng `prisma migrate resolve --applied <name>` để đồng bộ đầy đủ 25 migration vào `_prisma_migrations` trên cả `crispy_bite_test` và `crispy_bite_dev`.
+      4. **RCA 4: Lệch Mật khẩu Demo trong `AuthContext`**:
+         - Khôi phục `cashier123`, `kitchen123`, `admin123` khớp 100% với cấu hình `.env`, vượt qua bài test `src/webWarningGuards.test.ts`.
+    - *Kết quả nghiệm thu*:
+      - Backend: 105/105 test files, 725/725 tests PASS (100%).
+      - Frontend: 71/71 test files, 247/247 tests PASS (100%).
+      - Tổng cộng hệ thống: **972/972 tests PASS (100%)**.
+      - `npm run typecheck`: 100% không lỗi (backend + frontend).
+      - `npm run lint`: Sạch lỗi (0 error).
+      - `npm run doctor`: 18/18 checks đạt tiêu chuẩn Expo SDK 54.
+      - Đã hoàn tất merge vào nhánh chính `main` và đẩy lên GitHub.
+
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
+
 

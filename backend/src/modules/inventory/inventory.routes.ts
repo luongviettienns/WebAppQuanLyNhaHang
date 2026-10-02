@@ -35,6 +35,8 @@ inventoryRouter.get('/suppliers/import/template', SupplierController.template);
 inventoryRouter.post('/suppliers/import/preview', SupplierController.preview);
 inventoryRouter.post('/suppliers/import/commit', SupplierController.commit);
 inventoryRouter.get('/suppliers/:id/receipts', SupplierController.receipts);
+inventoryRouter.post('/suppliers/:id/payments', SupplierController.recordPayment);
+inventoryRouter.post('/supplier-payments/:id/reverse', SupplierController.reversePayment);
 inventoryRouter.get('/suppliers/:id', SupplierController.detail);
 inventoryRouter.patch('/suppliers/:id', SupplierController.update);
 

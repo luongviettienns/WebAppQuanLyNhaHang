@@ -7,12 +7,13 @@ import { Button, InlineAlert } from '../../ui';
 import type { SupplierDto } from '../../api/contracts';
 import { fetchSupplierDetailApi, fetchSupplierReceiptsApi, SupplierReceiptHistory } from '../../api/suppliers';
 import { SupplierModalShell } from './SupplierModalShell';
+import { SupplierPaymentModal } from './SupplierPaymentModal';
 import { supplierMoney } from './supplierViewModel';
 
 export function SupplierDetailModal({ id, onClose, onEdit, onOpenReceipt }: { id: number; onClose: () => void; onEdit: (supplier: SupplierDto) => void; onOpenReceipt: (id: number) => void }) {
   const { token } = useAuth(); const { theme } = useTheme(); const { inventoryRevision } = useRestaurant();
   const [data, setData] = useState<SupplierDto | null>(null); const [history, setHistory] = useState<SupplierReceiptHistory | null>(null);
-  const [page, setPage] = useState(1); const [error, setError] = useState(''); const [loading, setLoading] = useState(true); const [retry, setRetry] = useState(0);
+  const [page, setPage] = useState(1); const [error, setError] = useState(''); const [loading, setLoading] = useState(true); const [retry, setRetry] = useState(0); const [paying, setPaying] = useState(false);
   useEffect(() => {
     let active = true; setLoading(true); setError('');
     Promise.all([fetchSupplierDetailApi(token, id), fetchSupplierReceiptsApi(token, id, page)]).then(([supplier, receipts]) => {
@@ -20,8 +21,8 @@ export function SupplierDetailModal({ id, onClose, onEdit, onOpenReceipt }: { id
     }).catch((failure: Error) => { if (active) setError(failure.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [id, token, page, inventoryRevision, retry]);
-  return <SupplierModalShell visible title={data ? data.code + ' · ' + data.name : 'Chi tiết nhà cung cấp'} onClose={onClose}
-    footer={<><Button variant="quiet" label="Đóng" onPress={onClose} /><Button variant="primary" label="Sửa thông tin" disabled={!data || loading} onPress={() => { if (data) onEdit(data); }} /></>}>
+  return <SupplierModalShell visible={!paying} title={data ? data.code + ' · ' + data.name : 'Chi tiết nhà cung cấp'} onClose={onClose}
+    footer={<><Button variant="quiet" label="Đóng" onPress={onClose} />{data?.isActive && Number(data.outstandingAmount) > 0 && <Button variant="secondary" label="Thanh toán công nợ" disabled={loading || paying} onPress={() => setPaying(true)} />}<Button variant="primary" label="Sửa thông tin" disabled={!data || loading || paying} onPress={() => { if (data) onEdit(data); }} /></>}>
     {loading && <ActivityIndicator color={theme.primary} />}
     {!!error && <><InlineAlert message={error} /><Button variant="secondary" label="Thử lại" onPress={() => setRetry(value => value + 1)} /></>}
     {data && <>
@@ -41,5 +42,6 @@ export function SupplierDetailModal({ id, onClose, onEdit, onOpenReceipt }: { id
       </Pressable>)}
       <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}><Button variant="quiet" label="Trước" disabled={page <= 1 || loading} onPress={() => setPage(value => value - 1)} /><Text style={{ color: theme.textSecondary, alignSelf: 'center' }}>{page}/{history?.pagination.totalPages || 1}</Text><Button variant="quiet" label="Sau" disabled={loading || !history || page >= history.pagination.totalPages} onPress={() => setPage(value => value + 1)} /></View>
     </>}
+    {paying && data && <SupplierPaymentModal visible supplier={data} onClose={() => setPaying(false)} onSaved={() => { setPaying(false); setRetry(value => value + 1); }} />}
   </SupplierModalShell>;
 }
