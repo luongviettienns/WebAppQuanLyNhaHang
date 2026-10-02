@@ -9,6 +9,11 @@ const migrationPath = resolve(
   '../../prisma/migrations/20261001120000_cashbook_foundation/migration.sql'
 );
 const migration = existsSync(migrationPath) ? readFileSync(migrationPath, 'utf8') : '';
+const reversalMigrationPath = resolve(
+  __dirname,
+  '../../prisma/migrations/20261002120000_cashbook_reversal_categories/migration.sql'
+);
+const reversalMigration = existsSync(reversalMigrationPath) ? readFileSync(reversalMigrationPath, 'utf8') : '';
 const models = Prisma.dmmf.datamodel.models;
 
 function model(name: string) {
@@ -108,5 +113,10 @@ describe('cashbook schema and forward migration contract', () => {
       );
       expect(statement).toContain("'E_WALLET'");
     }
+  });
+
+  it('seeds direction-correct system categories for visible reversal vouchers', () => {
+    expect(reversalMigration).toContain("('REVERSAL_RECEIPT', 'Đảo phiếu chi', 'RECEIPT'");
+    expect(reversalMigration).toContain("('REVERSAL_PAYMENT', 'Đảo phiếu thu', 'PAYMENT'");
   });
 });
