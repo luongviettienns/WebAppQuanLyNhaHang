@@ -1,6 +1,6 @@
 import React from 'react';
 import { act, create } from 'react-test-renderer';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { native, getWidth, setWidth, revisions } = vi.hoisted(() => {
   let width = 1280;
@@ -41,7 +41,19 @@ const list = {
 } as any;
 const detail = { ...list.items[0], branch: { id: 1, code: 'MAIN', name: 'Trung tâm' }, version: 1, sourceStale: false, createdBy: { id: 1, name: 'Admin' }, calculatedBy: null, finalizedBy: null, cancelledBy: null, calculatedAt: null, finalizedAt: null, cancelledAt: null, cancelReason: null, lines: [] } as any;
 
+const renderedScreens: Array<{ unmount: () => void }> = [];
+const renderScreen = () => {
+  const screen = create(<EmployeePayrollScreen />);
+  renderedScreens.push(screen as unknown as { unmount: () => void });
+  return screen;
+};
+
 describe('EmployeePayrollScreen', () => {
+  afterEach(() => {
+    for (const screen of renderedScreens.splice(0)) act(() => screen.unmount());
+    vi.useRealTimers();
+  });
+
   beforeEach(() => {
     vi.clearAllMocks(); setWidth(1280); revisions.payroll = 0; revisions.employees = 0; revisions.attendance = 0; revisions.settings = 0;
     vi.mocked(fetchEmployeePayrollsApi).mockResolvedValue(list);
@@ -52,7 +64,7 @@ describe('EmployeePayrollScreen', () => {
 
   it('renders truthful payroll columns and uses the full filtered summary', async () => {
     let screen: any;
-    await act(async () => { screen = create(<EmployeePayrollScreen />); await Promise.resolve(); });
+    await act(async () => { screen = renderScreen(); await Promise.resolve(); });
     const text = JSON.stringify(screen.toJSON());
     expect(text).toContain('Kỳ hạn trả'); expect(text).toContain('Kỳ làm việc'); expect(text).toContain('Tổng lương');
     expect(text).toContain('Đã trả nhân viên'); expect(text).toContain('Còn cần trả'); expect(text).toContain('15.500.000');
@@ -61,11 +73,13 @@ describe('EmployeePayrollScreen', () => {
 
   it('filters, paginates and expands a payroll row to fetch fresh detail', async () => {
     let screen: any;
-    await act(async () => { screen = create(<EmployeePayrollScreen />); await Promise.resolve(); });
+    await act(async () => { screen = renderScreen(); await Promise.resolve(); });
     await act(async () => { screen.root.findByProps({ testID: 'payroll-filter-finalized' }).props.onPress(); await Promise.resolve(); });
     expect(fetchEmployeePayrollsApi).toHaveBeenLastCalledWith('admin-token', expect.objectContaining({ status: ['FINALIZED'], page: 1 }));
-    await act(async () => { screen.root.findByProps({ testID: 'payroll-page-next' }).props.onPress(); await Promise.resolve(); });
-    expect(fetchEmployeePayrollsApi).toHaveBeenLastCalledWith('admin-token', expect.objectContaining({ page: 2 }));
+    await act(async () => { screen.root.findByProps({ testID: 'payroll-page-next' }).props.onPress(); });
+    await vi.waitFor(() => {
+      expect(fetchEmployeePayrollsApi).toHaveBeenLastCalledWith('admin-token', expect.objectContaining({ page: 2 }));
+    });
     await act(async () => { screen.root.findByProps({ testID: 'payroll-row-1' }).props.onPress(); await Promise.resolve(); });
     expect(fetchEmployeePayrollDetailApi).toHaveBeenCalledWith('admin-token', 1);
     expect(screen.root.findByProps({ testID: 'payroll-detail' })).toBeDefined();
@@ -85,7 +99,7 @@ describe('EmployeePayrollScreen', () => {
   it('opens the create modal and collapses filters on compact screens', async () => {
     setWidth(600);
     let screen: any;
-    await act(async () => { screen = create(<EmployeePayrollScreen />); await Promise.resolve(); });
+    await act(async () => { screen = renderScreen(); await Promise.resolve(); });
     expect(screen.root.findByProps({ testID: 'payroll-filters-toggle' })).toBeDefined();
     expect(screen.root.findByProps({ testID: 'payroll-create-modal' }).props.visible).toBe(false);
     await act(async () => screen.root.findByProps({ testID: 'payroll-create-open' }).props.onPress());
@@ -94,7 +108,7 @@ describe('EmployeePayrollScreen', () => {
 
   it('exports an explicitly selected payroll without requiring row expansion', async () => {
     let screen: any;
-    await act(async () => { screen = create(<EmployeePayrollScreen />); await Promise.resolve(); });
+    await act(async () => { screen = renderScreen(); await Promise.resolve(); });
     await act(async () => screen.root.findByProps({ testID: 'payroll-select-1' }).props.onPress());
     await act(async () => { screen.root.findByProps({ testID: 'payroll-export' }).props.onPress(); await Promise.resolve(); });
     expect(downloadEmployeePayrollApi).toHaveBeenCalledWith('admin-token', 1, 'xlsx');
@@ -104,7 +118,7 @@ describe('EmployeePayrollScreen', () => {
   it('debounces search and exports the explicitly expanded payroll', async () => {
     vi.useFakeTimers();
     let screen: any;
-    await act(async () => { screen = create(<EmployeePayrollScreen />); await Promise.resolve(); });
+    await act(async () => { screen = renderScreen(); await Promise.resolve(); });
     await act(async () => { screen.root.findByProps({ testID: 'payroll-search' }).props.onChangeText('tháng 9'); });
     await act(async () => { vi.advanceTimersByTime(249); await Promise.resolve(); });
     expect(fetchEmployeePayrollsApi).not.toHaveBeenLastCalledWith('admin-token', expect.objectContaining({ search: 'tháng 9' }));
@@ -118,7 +132,7 @@ describe('EmployeePayrollScreen', () => {
 
   it('refetches from invalidation revisions while preserving an open create modal', async () => {
     let screen: any;
-    await act(async () => { screen = create(<EmployeePayrollScreen />); await Promise.resolve(); });
+    await act(async () => { screen = renderScreen(); await Promise.resolve(); });
     await act(async () => screen.root.findByProps({ testID: 'payroll-create-open' }).props.onPress());
     const initialCalls = vi.mocked(fetchEmployeePayrollsApi).mock.calls.length;
     revisions.payroll += 1;
@@ -140,6 +154,5 @@ describe('EmployeePayrollScreen', () => {
     expect(vi.mocked(fetchEmployeePayrollDetailApi).mock.calls.length).toBeGreaterThan(detailCallsBeforeSourceRevision);
     expect(screen.root.findByProps({ testID: 'payroll-detail' }).props.detail.sourceStale).toBe(true);
     expect(screen.root.findByProps({ testID: 'payroll-create-modal' }).props.visible).toBe(true);
-    await act(async () => screen.unmount());
   });
 });

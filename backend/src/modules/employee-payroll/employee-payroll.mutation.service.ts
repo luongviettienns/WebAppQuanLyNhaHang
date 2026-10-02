@@ -4,6 +4,7 @@ import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { calculatePayrollLine, getPayrollMonthBounds } from './employee-payroll.calculation';
+import { finalizeCommissionAllocations, releaseCommissionAllocations, reserveCommissionForPayroll } from '../employee-commissions/employee-commission.payroll';
 import { buildPayrollSettingsProjection } from './employee-payroll.settings-projection';
 import type { PayrollAdjustmentInput, PayrollCancelInput, PayrollCreateInput, PayrollReasonInput } from './employee-payroll.schemas';
 
@@ -167,7 +168,8 @@ async function recomputeFinancialTotals(tx: Prisma.TransactionClient, batchId: n
   for (const line of lines) {
     const bonusAmount = line.adjustments.filter(item => item.type === 'BONUS').reduce((sum, item) => sum + item.amount, 0);
     const deductionAmount = line.adjustments.filter(item => item.type === 'DEDUCTION').reduce((sum, item) => sum + item.amount, 0);
-    const netAmount = Math.max(0, line.grossAmount + bonusAmount - deductionAmount);
+    const netAmount = line.grossAmount + line.commissionAmount + bonusAmount - deductionAmount;
+    if (netAmount < 0) throw ApiError.conflict('Khấu trừ vượt số tiền phải trả của nhân viên', 'PAYROLL_STATE_INVALID');
     const remainingAmount = Math.max(0, netAmount - line.paidAmount);
     await tx.employeePayrollLine.update({
       where: { id: line.id }, data: { bonusAmount, deductionAmount, netAmount, remainingAmount }
@@ -178,7 +180,9 @@ async function recomputeFinancialTotals(tx: Prisma.TransactionClient, batchId: n
     totalPaidAmount += line.paidAmount;
     totalRemainingAmount += remainingAmount;
   }
-  return { lines, totalGrossAmount, totalAdjustmentAmount, totalNetAmount, totalPaidAmount, totalRemainingAmount };
+  const totalCommissionAmount = lines.reduce((sum, line) => sum + line.commissionAmount, 0);
+  const totalCommissionDeferredDebitAmount = lines.reduce((sum, line) => sum + line.commissionDeferredDebitAmount, 0);
+  return { lines, totalGrossAmount, totalAdjustmentAmount, totalNetAmount, totalPaidAmount, totalRemainingAmount, totalCommissionAmount, totalCommissionDeferredDebitAmount };
 }
 
 const lifecycleResult = (batch: {
@@ -335,18 +339,31 @@ export class EmployeePayrollMutationService {
           }
         }
       });
+      const createdLines = await tx.employeePayrollLine.findMany({ where: { payrollBatchId: created.id }, orderBy: { employeeId: 'asc' } });
+      const commission = await reserveCommissionForPayroll(tx, {
+        id: created.id, periodEnd: created.periodEnd, version: created.version
+      }, createdLines, actor.id);
+      const createdWithCommission = await tx.employeePayrollBatch.update({
+        where: { id: created.id },
+        data: {
+          totalCommissionAmount: commission.totalCommissionAmount,
+          totalCommissionDeferredDebitAmount: commission.totalDeferredDebitAmount,
+          totalNetAmount: totalGrossAmount + commission.totalCommissionAmount,
+          totalRemainingAmount: totalGrossAmount + commission.totalCommissionAmount
+        }
+      });
       const result: PayrollMutationResult = {
-        id: created.id,
-        code: created.code,
-        name: created.name,
-        status: created.status as 'DRAFT' | 'CALCULATED',
+        id: createdWithCommission.id,
+        code: createdWithCommission.code,
+        name: createdWithCommission.name,
+        status: createdWithCommission.status as 'DRAFT' | 'CALCULATED',
         periodStart: bounds.periodStart,
         periodEnd: bounds.periodEnd,
         employeeCount: employees.length,
-        totalGrossAmount: created.totalGrossAmount,
-        totalNetAmount: created.totalNetAmount,
-        totalRemainingAmount: created.totalRemainingAmount,
-        version: created.version
+        totalGrossAmount: createdWithCommission.totalGrossAmount,
+        totalNetAmount: createdWithCommission.totalNetAmount,
+        totalRemainingAmount: createdWithCommission.totalRemainingAmount,
+        version: createdWithCommission.version
       };
       await tx.auditLog.create({
         data: {
@@ -404,6 +421,7 @@ export class EmployeePayrollMutationService {
       if (batch.status !== 'DRAFT' && batch.status !== 'CALCULATED') {
         throw ApiError.conflict('Chỉ được tính lại bảng lương nháp hoặc tạm tính', 'PAYROLL_STATE_INVALID');
       }
+      await releaseCommissionAllocations(tx, batch.id, actor.id, 'Tính lại bảng lương');
       const employeeIds = batch.lines.map(line => line.employeeId);
       if (employeeIds.length === 0) throw ApiError.conflict('Bảng lương không có nhân viên để tính lại', 'PAYROLL_STATE_INVALID');
       await tx.$queryRaw(Prisma.sql`SELECT id FROM Employee WHERE id IN (${Prisma.join(employeeIds)}) ORDER BY id FOR UPDATE`);
@@ -432,7 +450,8 @@ export class EmployeePayrollMutationService {
         const deductionAmount = existing.adjustments
           .filter(adjustment => adjustment.type === 'DEDUCTION')
           .reduce((sum, adjustment) => sum + adjustment.amount, 0);
-        const netAmount = Math.max(0, draft.calculation.grossAmount + bonusAmount - deductionAmount);
+        const netAmount = draft.calculation.grossAmount + bonusAmount - deductionAmount;
+        if (netAmount < 0) throw ApiError.conflict('Khấu trừ vượt số tiền phải trả của nhân viên', 'PAYROLL_STATE_INVALID');
         const remainingAmount = Math.max(0, netAmount - existing.paidAmount);
         hasBlocker ||= draft.calculation.calculationStatus === 'REVIEW_REQUIRED';
         totalGrossAmount += draft.calculation.grossAmount;
@@ -477,6 +496,12 @@ export class EmployeePayrollMutationService {
         });
       }
 
+      const refreshedLines = await tx.employeePayrollLine.findMany({ where: { payrollBatchId: batch.id }, orderBy: { employeeId: 'asc' } });
+      const commission = await reserveCommissionForPayroll(tx, {
+        id: batch.id, periodEnd: batch.periodEnd, version: batch.version + 1
+      }, refreshedLines, actor.id);
+      totalNetAmount += commission.totalCommissionAmount;
+      totalRemainingAmount += commission.totalCommissionAmount;
       const updated = await tx.employeePayrollBatch.update({
         where: { id: batch.id },
         data: {
@@ -486,6 +511,8 @@ export class EmployeePayrollMutationService {
           totalNetAmount,
           totalPaidAmount,
           totalRemainingAmount,
+          totalCommissionAmount: commission.totalCommissionAmount,
+          totalCommissionDeferredDebitAmount: commission.totalDeferredDebitAmount,
           calculatedByUserId: actor.id,
           calculatedAt,
           version: { increment: 1 }
@@ -553,7 +580,9 @@ export class EmployeePayrollMutationService {
         totalAdjustmentAmount: totals.totalAdjustmentAmount,
         totalNetAmount: totals.totalNetAmount,
         totalPaidAmount: totals.totalPaidAmount,
-        totalRemainingAmount: totals.totalRemainingAmount
+        totalRemainingAmount: totals.totalRemainingAmount,
+        totalCommissionAmount: totals.totalCommissionAmount,
+        totalCommissionDeferredDebitAmount: totals.totalCommissionDeferredDebitAmount
       };
       const updated = await tx.employeePayrollBatch.update({
         where: { id: batch.id },
@@ -600,7 +629,9 @@ export class EmployeePayrollMutationService {
         totalAdjustmentAmount: totals.totalAdjustmentAmount,
         totalNetAmount: totals.totalNetAmount,
         totalPaidAmount: totals.totalPaidAmount,
-        totalRemainingAmount: totals.totalRemainingAmount
+        totalRemainingAmount: totals.totalRemainingAmount,
+        totalCommissionAmount: totals.totalCommissionAmount,
+        totalCommissionDeferredDebitAmount: totals.totalCommissionDeferredDebitAmount
       };
       const updated = await tx.employeePayrollBatch.update({
         where: { id: batch.id }, data: { ...financialTotals, version: { increment: 1 } }
@@ -645,6 +676,7 @@ export class EmployeePayrollMutationService {
       if (batch.status !== 'CALCULATED') {
         throw ApiError.conflict('Chỉ được chốt bảng lương đã tính xong', 'PAYROLL_STATE_INVALID');
       }
+      await finalizeCommissionAllocations(tx, batch.id, actor.id);
       const updated = await tx.employeePayrollBatch.update({
         where: { id: batch.id },
         data: {
@@ -653,6 +685,8 @@ export class EmployeePayrollMutationService {
           totalNetAmount: totals.totalNetAmount,
           totalPaidAmount: totals.totalPaidAmount,
           totalRemainingAmount: totals.totalRemainingAmount,
+          totalCommissionAmount: totals.totalCommissionAmount,
+          totalCommissionDeferredDebitAmount: totals.totalCommissionDeferredDebitAmount,
           status: 'FINALIZED', finalizedAt: new Date(), finalizedByUserId: actor.id, version: { increment: 1 }
         }
       });
@@ -691,6 +725,7 @@ export class EmployeePayrollMutationService {
         where: { payrollBatchId: batch.id, status: 'SUCCESS' }
       });
       if (successfulPayments > 0) throw ApiError.conflict('Không thể hủy bảng lương đã phát sinh chi trả', 'PAYROLL_STATE_INVALID');
+      await releaseCommissionAllocations(tx, batch.id, actor.id, input.reason);
       const updated = await tx.employeePayrollBatch.update({
         where: { id: batch.id },
         data: { status: 'CANCELLED', cancelledAt: new Date(), cancelledByUserId: actor.id, cancelReason: input.reason, version: { increment: 1 } }

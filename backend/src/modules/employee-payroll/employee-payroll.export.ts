@@ -5,7 +5,7 @@ export const employeePayrollExportHeaders = [
   'Mã nhân viên', 'Tên nhân viên', 'Phòng ban', 'Chức danh',
   'Ngân hàng', 'Số tài khoản', 'Tên chủ tài khoản',
   'Số phiên hoàn tất', 'Phút làm thực tế', 'Số ngày vắng đã xác nhận',
-  'Lương gộp', 'Thưởng', 'Khấu trừ', 'Thực nhận', 'Đã trả', 'Còn lại', 'Cảnh báo'
+  'Lương gộp', 'Hoa hồng', 'Hoa hồng âm chuyển kỳ sau', 'Thưởng', 'Khấu trừ', 'Thực nhận', 'Đã trả', 'Còn lại', 'Cảnh báo'
 ];
 
 export interface EmployeePayrollExportRow {
@@ -25,6 +25,8 @@ export interface EmployeePayrollExportRow {
   actualMinutes: number;
   confirmedAbsences: number;
   grossAmount: number;
+  commissionAmount: number;
+  commissionDeferredDebitAmount: number;
   bonusAmount: number;
   deductionAmount: number;
   netAmount: number;
@@ -55,6 +57,8 @@ const values = (row: EmployeePayrollExportRow): Array<string | number> => [
   row.actualMinutes,
   row.confirmedAbsences,
   row.grossAmount,
+  row.commissionAmount,
+  row.commissionDeferredDebitAmount,
   row.bonusAmount,
   row.deductionAmount,
   row.netAmount,

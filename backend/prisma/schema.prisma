@@ -75,6 +75,56 @@ enum PayrollPaymentStatus {
   REVERSED
 }
 
+enum CommissionPlanStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum CommissionRuleType {
+  FIXED_PER_UNIT
+  PERCENT_NET_REVENUE
+  PERCENT_GROSS_PROFIT
+}
+
+enum CommissionCostStatus {
+  CAPTURED
+  MISSING
+}
+
+enum CommissionBasisResolutionType {
+  COST_OVERRIDE
+  RULE_OVERRIDE
+}
+
+enum CommissionRecognitionIssueType {
+  UNASSIGNED_EMPLOYEE
+  PLAN_MISSING
+  PLAN_CONFLICT
+  RULE_MISSING
+  RULE_CONFLICT
+  COST_MISSING
+  LEDGER_CONFLICT
+}
+
+enum CommissionRecognitionIssueStatus {
+  OPEN
+  RESOLVED
+}
+
+enum CommissionEntryType {
+  EARNING
+  RETURN_REVERSAL
+  REASSIGNMENT_REVERSAL
+  REASSIGNMENT_EARNING
+}
+
+enum CommissionPayrollAllocationEventType {
+  RESERVED
+  FINALIZED
+  RELEASED
+}
+
 enum ScheduleRecurrenceType {
   ONCE
   WEEKLY
@@ -323,6 +373,7 @@ model Branch {
   workweekPolicyVersions    BranchWorkweekPolicyVersion[]
   holidayPeriods            BranchHolidayPeriod[]
   employeeSettingsRevision  BranchEmployeeSettingsRevision?
+  commissionPlans           CommissionPlan[]
 
   @@index([isActive, isDefault])
 }
@@ -471,15 +522,19 @@ model Employee {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  user                   User?                           @relation(fields: [userId], references: [id], onDelete: SetNull)
-  department             Department?                     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  jobTitle               JobTitle?                       @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
-  compensations          EmployeeCompensation[]
-  scheduleRules          EmployeeScheduleRule[]
-  attendanceSessions     EmployeeAttendanceSession[]
-  attendanceDispositions EmployeeAttendanceDisposition[]
-  payrollLines           EmployeePayrollLine[]
-  payrollPayments        EmployeePayrollPayment[]
+  user                      User?                           @relation(fields: [userId], references: [id], onDelete: SetNull)
+  department                Department?                     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  jobTitle                  JobTitle?                       @relation(fields: [jobTitleId], references: [id], onDelete: Restrict)
+  compensations             EmployeeCompensation[]
+  scheduleRules             EmployeeScheduleRule[]
+  attendanceSessions        EmployeeAttendanceSession[]
+  attendanceDispositions    EmployeeAttendanceDisposition[]
+  payrollLines              EmployeePayrollLine[]
+  payrollPayments           EmployeePayrollPayment[]
+  commissionPlanAssignments CommissionPlanEmployee[]
+  commissionOrderItems      OrderItem[]                     @relation("OrderItemCommissionEmployee")
+  commissionSaleBases       CommissionSaleBasis[]           @relation("CommissionSaleBasisEmployee")
+  commissionEntries         CommissionEntry[]
 
   @@index([status, createdAt])
   @@index([name])
@@ -505,82 +560,88 @@ model EmployeeCompensation {
 }
 
 model EmployeePayrollBatch {
-  id                    Int                @id @default(autoincrement())
-  code                  String             @unique @db.VarChar(32)
-  name                  String             @db.VarChar(160)
-  branchId              Int                @default(1)
-  frequency             PayrollFrequency   @default(MONTHLY)
-  periodStart           DateTime           @db.Date
-  periodEnd             DateTime           @db.Date
-  status                PayrollBatchStatus @default(DRAFT)
-  totalGrossAmount      Int                @default(0)
-  totalAdjustmentAmount Int                @default(0)
-  totalNetAmount        Int                @default(0)
-  totalPaidAmount       Int                @default(0)
-  totalRemainingAmount  Int                @default(0)
-  createdByUserId       Int
-  calculatedByUserId    Int?
-  calculatedAt          DateTime?
-  finalizedByUserId     Int?
-  finalizedAt           DateTime?
-  cancelledByUserId     Int?
-  cancelledAt           DateTime?
-  cancelReason          String?            @db.VarChar(500)
-  version               Int                @default(1)
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
+  id                                 Int                @id @default(autoincrement())
+  code                               String             @unique @db.VarChar(32)
+  name                               String             @db.VarChar(160)
+  branchId                           Int                @default(1)
+  frequency                          PayrollFrequency   @default(MONTHLY)
+  periodStart                        DateTime           @db.Date
+  periodEnd                          DateTime           @db.Date
+  status                             PayrollBatchStatus @default(DRAFT)
+  totalGrossAmount                   Int                @default(0)
+  totalAdjustmentAmount              Int                @default(0)
+  totalNetAmount                     Int                @default(0)
+  totalPaidAmount                    Int                @default(0)
+  totalRemainingAmount               Int                @default(0)
+  totalCommissionAmount              Int                @default(0)
+  totalCommissionDeferredDebitAmount Int                @default(0)
+  createdByUserId                    Int
+  calculatedByUserId                 Int?
+  calculatedAt                       DateTime?
+  finalizedByUserId                  Int?
+  finalizedAt                        DateTime?
+  cancelledByUserId                  Int?
+  cancelledAt                        DateTime?
+  cancelReason                       String?            @db.VarChar(500)
+  version                            Int                @default(1)
+  createdAt                          DateTime           @default(now())
+  updatedAt                          DateTime           @updatedAt
 
-  branch        Branch                       @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  createdBy     User                         @relation("EmployeePayrollBatchCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  calculatedBy  User?                        @relation("EmployeePayrollBatchCalculator", fields: [calculatedByUserId], references: [id], onDelete: Restrict)
-  finalizedBy   User?                        @relation("EmployeePayrollBatchFinalizer", fields: [finalizedByUserId], references: [id], onDelete: Restrict)
-  cancelledBy   User?                        @relation("EmployeePayrollBatchCanceller", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
-  lines         EmployeePayrollLine[]
-  payments      EmployeePayrollPayment[]
-  idempotencies EmployeePayrollIdempotency[]
+  branch                Branch                        @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  createdBy             User                          @relation("EmployeePayrollBatchCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  calculatedBy          User?                         @relation("EmployeePayrollBatchCalculator", fields: [calculatedByUserId], references: [id], onDelete: Restrict)
+  finalizedBy           User?                         @relation("EmployeePayrollBatchFinalizer", fields: [finalizedByUserId], references: [id], onDelete: Restrict)
+  cancelledBy           User?                         @relation("EmployeePayrollBatchCanceller", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+  lines                 EmployeePayrollLine[]
+  payments              EmployeePayrollPayment[]
+  idempotencies         EmployeePayrollIdempotency[]
+  commissionAllocations CommissionPayrollAllocation[]
 
   @@index([branchId, periodStart, periodEnd, status])
   @@index([status, createdAt])
 }
 
 model EmployeePayrollLine {
-  id                  Int                      @id @default(autoincrement())
-  payrollBatchId      Int
-  employeeId          Int
-  employeeCode        String                   @db.VarChar(32)
-  employeeName        String                   @db.VarChar(160)
-  departmentName      String?                  @db.VarChar(120)
-  jobTitleName        String?                  @db.VarChar(120)
-  bankName            String?                  @db.VarChar(120)
-  bankAccountNumber   String?                  @db.VarChar(80)
-  bankAccountName     String?                  @db.VarChar(120)
-  employmentStartDate DateTime?                @db.Date
-  employmentEndDate   DateTime?                @db.Date
-  activeCalendarDays  Int                      @default(0)
-  periodCalendarDays  Int                      @default(0)
-  scheduledShifts     Int                      @default(0)
-  completedSessions   Int                      @default(0)
-  actualMinutes       Int                      @default(0)
-  confirmedAbsences   Int                      @default(0)
-  missingCheckouts    Int                      @default(0)
-  reviewRequiredCount Int                      @default(0)
-  grossAmount         Int                      @default(0)
-  bonusAmount         Int                      @default(0)
-  deductionAmount     Int                      @default(0)
-  netAmount           Int                      @default(0)
-  paidAmount          Int                      @default(0)
-  remainingAmount     Int                      @default(0)
-  calculationStatus   PayrollCalculationStatus @default(READY)
-  warningCodes        Json
-  sourceSnapshot      Json
-  calculatedAt        DateTime
-  createdAt           DateTime                 @default(now())
-  updatedAt           DateTime                 @updatedAt
+  id                            Int                      @id @default(autoincrement())
+  payrollBatchId                Int
+  employeeId                    Int
+  employeeCode                  String                   @db.VarChar(32)
+  employeeName                  String                   @db.VarChar(160)
+  departmentName                String?                  @db.VarChar(120)
+  jobTitleName                  String?                  @db.VarChar(120)
+  bankName                      String?                  @db.VarChar(120)
+  bankAccountNumber             String?                  @db.VarChar(80)
+  bankAccountName               String?                  @db.VarChar(120)
+  employmentStartDate           DateTime?                @db.Date
+  employmentEndDate             DateTime?                @db.Date
+  activeCalendarDays            Int                      @default(0)
+  periodCalendarDays            Int                      @default(0)
+  scheduledShifts               Int                      @default(0)
+  completedSessions             Int                      @default(0)
+  actualMinutes                 Int                      @default(0)
+  confirmedAbsences             Int                      @default(0)
+  missingCheckouts              Int                      @default(0)
+  reviewRequiredCount           Int                      @default(0)
+  grossAmount                   Int                      @default(0)
+  bonusAmount                   Int                      @default(0)
+  deductionAmount               Int                      @default(0)
+  commissionAmount              Int                      @default(0)
+  commissionDeferredDebitAmount Int                      @default(0)
+  netAmount                     Int                      @default(0)
+  paidAmount                    Int                      @default(0)
+  remainingAmount               Int                      @default(0)
+  calculationStatus             PayrollCalculationStatus @default(READY)
+  warningCodes                  Json
+  sourceSnapshot                Json
+  calculatedAt                  DateTime
+  createdAt                     DateTime                 @default(now())
+  updatedAt                     DateTime                 @updatedAt
 
-  payrollBatch EmployeePayrollBatch        @relation(fields: [payrollBatchId], references: [id], onDelete: Restrict)
-  employee     Employee                    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  adjustments  EmployeePayrollAdjustment[]
-  payments     EmployeePayrollPayment[]
+  payrollBatch          EmployeePayrollBatch          @relation(fields: [payrollBatchId], references: [id], onDelete: Restrict)
+  employee              Employee                      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  adjustments           EmployeePayrollAdjustment[]
+  payments              EmployeePayrollPayment[]
+  commissionAllocations CommissionPayrollAllocation[]
 
   @@unique([payrollBatchId, employeeId], map: "EmployeePayrollLine_batch_employee_key")
   @@index([employeeId, calculatedAt])
@@ -1026,11 +1087,13 @@ model MenuItem {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  category            Category             @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  category            Category              @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   modifierGroups      ModifierGroup[]
   orderItems          OrderItem[]
   priceListItems      PriceListItem[]
   menuItemIngredients MenuItemIngredient[]
+  commissionRules     CommissionRule[]
+  commissionSaleBases CommissionSaleBasis[]
 }
 
 model PriceListItem {
@@ -1168,6 +1231,8 @@ model Order {
   inventoryTransactions InventoryTransaction[]
   returns               OrderReturn[]
   paymentTransactions   OrderPaymentTransaction[]
+  commissionSaleBases   CommissionSaleBasis[]
+  commissionEntries     CommissionEntry[]
 
   @@unique([idempotencyScope, idempotencyKey])
   @@index([voucherId])
@@ -1206,12 +1271,19 @@ model OrderItem {
   subtotal              Int // quantity * (unitPrice + modifiers)
   selectedModifiersJson Json? // Snapshot cac options da chon
   notes                 String?
+  commissionEmployeeId  Int?
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  order       Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  menuItem    MenuItem          @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
-  returnLines OrderReturnLine[]
+  order               Order                       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem            MenuItem                    @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  returnLines         OrderReturnLine[]
+  commissionEmployee  Employee?                   @relation("OrderItemCommissionEmployee", fields: [commissionEmployeeId], references: [id], onDelete: SetNull)
+  commissionSaleBasis CommissionSaleBasis?
+  commissionEntries   CommissionEntry[]
+  commissionIssue     CommissionRecognitionIssue?
+
+  @@index([commissionEmployeeId, orderId])
 }
 
 model OrderReturn {
@@ -1239,6 +1311,7 @@ model OrderReturn {
   financialAccount      FinancialAccount?      @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
   lines                 OrderReturnLine[]
   inventoryTransactions InventoryTransaction[]
+  commissionEntries     CommissionEntry[]
 
   @@index([status, returnedAt])
   @@index([orderId, returnedAt])
@@ -1258,12 +1331,236 @@ model OrderReturnLine {
   lineAmount    Int
   createdAt     DateTime @default(now())
 
-  orderReturn OrderReturn @relation(fields: [orderReturnId], references: [id], onDelete: Cascade)
-  orderItem   OrderItem   @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  orderReturn       OrderReturn       @relation(fields: [orderReturnId], references: [id], onDelete: Cascade)
+  orderItem         OrderItem         @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  commissionEntries CommissionEntry[]
 
   @@unique([orderReturnId, orderItemId])
   @@index([orderItemId])
   @@index([menuItemId])
+}
+
+model CommissionPlan {
+  id                Int                  @id @default(autoincrement())
+  code              String               @db.VarChar(40)
+  name              String               @db.VarChar(160)
+  branchId          Int                  @default(1)
+  status            CommissionPlanStatus @default(DRAFT)
+  effectiveFrom     DateTime             @db.Date
+  effectiveTo       DateTime?            @db.Date
+  revision          Int                  @default(1)
+  createdByUserId   Int?
+  activatedByUserId Int?
+  activatedAt       DateTime?
+  archivedByUserId  Int?
+  archivedAt        DateTime?
+  archiveReason     String?              @db.VarChar(500)
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  branch    Branch                   @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  employees CommissionPlanEmployee[]
+  rules     CommissionRule[]
+  entries   CommissionEntry[]
+
+  @@unique([branchId, code])
+  @@index([branchId, status, effectiveFrom, effectiveTo])
+}
+
+model CommissionPlanEmployee {
+  id               Int       @id @default(autoincrement())
+  planId           Int
+  employeeId       Int
+  effectiveFrom    DateTime  @db.Date
+  effectiveTo      DateTime? @db.Date
+  autoAssignOwnPos Boolean   @default(false)
+  createdByUserId  Int?
+  endedByUserId    Int?
+  endedAt          DateTime?
+  endReason        String?   @db.VarChar(500)
+  createdAt        DateTime  @default(now())
+
+  plan     CommissionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  employee Employee       @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([planId, employeeId, effectiveFrom])
+  @@index([employeeId, effectiveFrom, effectiveTo])
+}
+
+model CommissionRule {
+  id              Int                @id @default(autoincrement())
+  planId          Int
+  menuItemId      Int
+  revision        Int
+  type            CommissionRuleType
+  fixedAmount     Int?
+  rateBps         Int?
+  effectiveFrom   DateTime           @db.Date
+  effectiveTo     DateTime?          @db.Date
+  createdByUserId Int?
+  endedByUserId   Int?
+  endedAt         DateTime?
+  endReason       String?            @db.VarChar(500)
+  createdAt       DateTime           @default(now())
+
+  plan     CommissionPlan    @relation(fields: [planId], references: [id], onDelete: Restrict)
+  menuItem MenuItem          @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  entries  CommissionEntry[]
+
+  @@unique([planId, menuItemId, effectiveFrom, revision])
+  @@index([planId, menuItemId, effectiveFrom, effectiveTo])
+}
+
+model CommissionSaleBasis {
+  id                            Int                  @id @default(autoincrement())
+  eventKey                      String               @unique @db.VarChar(191)
+  orderId                       Int
+  orderItemId                   Int                  @unique
+  menuItemId                    Int
+  commissionEmployeeIdAtPayment Int?
+  employeeCodeAtPayment         String?              @db.VarChar(32)
+  employeeNameAtPayment         String?              @db.VarChar(160)
+  soldQuantity                  Int
+  saleBusinessDate              DateTime             @db.Date
+  paidAt                        DateTime
+  itemSku                       String               @db.VarChar(80)
+  itemName                      String               @db.VarChar(200)
+  unitPrice                     Int
+  modifierSnapshot              Json?
+  grossRevenue                  Int
+  allocatedDiscount             Int
+  netRevenue                    Int
+  costStatus                    CommissionCostStatus
+  unitCost                      Int?
+  totalCost                     Int?
+  bomSnapshot                   Json?
+  ruleCandidatesSnapshot        Json
+  createdAt                     DateTime             @default(now())
+
+  order             Order                       @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  orderItem         OrderItem                   @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  menuItem          MenuItem                    @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  employeeAtPayment Employee?                   @relation("CommissionSaleBasisEmployee", fields: [commissionEmployeeIdAtPayment], references: [id], onDelete: SetNull)
+  resolutions       CommissionBasisResolution[]
+  entries           CommissionEntry[]
+  issue             CommissionRecognitionIssue?
+
+  @@index([orderId, saleBusinessDate])
+  @@index([commissionEmployeeIdAtPayment, saleBusinessDate])
+}
+
+model CommissionBasisResolution {
+  id              Int                           @id @default(autoincrement())
+  eventKey        String                        @unique @db.VarChar(191)
+  saleBasisId     Int
+  type            CommissionBasisResolutionType
+  resolution      Json
+  reason          String                        @db.VarChar(500)
+  createdByUserId Int
+  createdByName   String                        @db.VarChar(160)
+  requestDigest   String                        @db.Char(64)
+  createdAt       DateTime                      @default(now())
+
+  saleBasis CommissionSaleBasis @relation(fields: [saleBasisId], references: [id], onDelete: Restrict)
+
+  @@index([saleBasisId, createdAt])
+}
+
+model CommissionRecognitionIssue {
+  id               Int                              @id @default(autoincrement())
+  orderItemId      Int                              @unique
+  saleBasisId      Int                              @unique
+  type             CommissionRecognitionIssueType
+  status           CommissionRecognitionIssueStatus @default(OPEN)
+  resolutionCode   String?                          @db.VarChar(80)
+  diagnostic       Json?
+  firstDetectedAt  DateTime                         @default(now())
+  lastDetectedAt   DateTime                         @default(now())
+  resolvedAt       DateTime?
+  resolvedByUserId Int?
+
+  orderItem OrderItem           @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  saleBasis CommissionSaleBasis @relation(fields: [saleBasisId], references: [id], onDelete: Restrict)
+
+  @@index([status, type, lastDetectedAt])
+}
+
+model CommissionEntry {
+  id                     Int                 @id @default(autoincrement())
+  eventKey               String              @unique @db.VarChar(191)
+  type                   CommissionEntryType
+  correlationKey         String?             @db.VarChar(191)
+  originalEntryId        Int?
+  sourceEntryId          Int?
+  saleBasisId            Int
+  orderId                Int
+  orderItemId            Int
+  orderReturnId          Int?
+  orderReturnLineId      Int?
+  employeeId             Int
+  commissionPlanId       Int?
+  commissionRuleId       Int?
+  saleBusinessDate       DateTime            @db.Date
+  accountingDate         DateTime            @db.Date
+  occurredAt             DateTime
+  quantityDelta          Int
+  grossRevenueDelta      Int
+  allocatedDiscountDelta Int
+  netRevenueDelta        Int
+  costAmountDelta        Int
+  grossProfitDelta       Int
+  commissionAmountDelta  Int
+  employeeSnapshot       Json
+  itemSnapshot           Json
+  ruleSnapshot           Json
+  reason                 String?             @db.VarChar(500)
+  createdByUserId        Int?
+  createdByName          String?             @db.VarChar(160)
+  createdAt              DateTime            @default(now())
+
+  originalEntry   CommissionEntry?              @relation("CommissionEntryRoot", fields: [originalEntryId], references: [id], onDelete: Restrict)
+  rootChildren    CommissionEntry[]             @relation("CommissionEntryRoot")
+  sourceEntry     CommissionEntry?              @relation("CommissionEntrySource", fields: [sourceEntryId], references: [id], onDelete: Restrict)
+  sourceChildren  CommissionEntry[]             @relation("CommissionEntrySource")
+  saleBasis       CommissionSaleBasis           @relation(fields: [saleBasisId], references: [id], onDelete: Restrict)
+  order           Order                         @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  orderItem       OrderItem                     @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  orderReturn     OrderReturn?                  @relation(fields: [orderReturnId], references: [id], onDelete: Restrict)
+  orderReturnLine OrderReturnLine?              @relation(fields: [orderReturnLineId], references: [id], onDelete: Restrict)
+  employee        Employee                      @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  commissionPlan  CommissionPlan?               @relation(fields: [commissionPlanId], references: [id], onDelete: Restrict)
+  commissionRule  CommissionRule?               @relation(fields: [commissionRuleId], references: [id], onDelete: Restrict)
+  allocations     CommissionPayrollAllocation[]
+
+  @@unique([orderReturnLineId, type], map: "CommissionEntry_orderReturnLineId_type_key")
+  @@index([originalEntryId, occurredAt])
+  @@index([sourceEntryId, occurredAt])
+  @@index([employeeId, accountingDate, id])
+  @@index([orderItemId, occurredAt])
+}
+
+model CommissionPayrollAllocation {
+  id                Int                                  @id @default(autoincrement())
+  allocationKey     String                               @db.VarChar(191)
+  type              CommissionPayrollAllocationEventType
+  priorEventId      Int?                                 @unique
+  commissionEntryId Int
+  payrollBatchId    Int
+  payrollLineId     Int
+  allocatedAmount   Int
+  reason            String?                              @db.VarChar(500)
+  createdByUserId   Int?
+  createdAt         DateTime                             @default(now())
+
+  priorEvent      CommissionPayrollAllocation? @relation("CommissionAllocationChain", fields: [priorEventId], references: [id], onDelete: Restrict)
+  nextEvent       CommissionPayrollAllocation? @relation("CommissionAllocationChain")
+  commissionEntry CommissionEntry              @relation(fields: [commissionEntryId], references: [id], onDelete: Restrict)
+  payrollBatch    EmployeePayrollBatch         @relation(fields: [payrollBatchId], references: [id], onDelete: Restrict)
+  payrollLine     EmployeePayrollLine          @relation(fields: [payrollLineId], references: [id], onDelete: Restrict)
+
+  @@index([allocationKey, createdAt])
+  @@index([commissionEntryId, type])
+  @@index([payrollBatchId, payrollLineId])
 }
 
 model AuditLog {

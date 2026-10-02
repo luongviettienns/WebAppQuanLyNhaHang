@@ -10,7 +10,7 @@ import type { PayrollSettingsSnapshot } from './employee-payroll.calculation';
 type PayrollQueryClient = Pick<
   typeof prisma,
   'employeePayrollBatch' | 'employee' | 'employeeCompensation' | 'employeeAttendanceSession' | 'employeeScheduleRule' |
-  'branchPayrollPolicyVersion' | 'branchAttendancePolicyVersion' | 'branchWorkweekPolicyVersion' | 'branchHolidayPeriod'
+  'branchPayrollPolicyVersion' | 'branchAttendancePolicyVersion' | 'branchWorkweekPolicyVersion' | 'branchHolidayPeriod' | 'commissionEntry'
 >;
 
 const isoDate = (value: Date) => value.toISOString().slice(0, 10);
@@ -62,6 +62,8 @@ export class EmployeePayrollQueryService {
           totalNetAmount: true,
           totalPaidAmount: true,
           totalRemainingAmount: true,
+          totalCommissionAmount: true,
+          totalCommissionDeferredDebitAmount: true,
           createdAt: true,
           updatedAt: true,
           _count: { select: { lines: true } }
@@ -78,7 +80,9 @@ export class EmployeePayrollQueryService {
           totalAdjustmentAmount: true,
           totalNetAmount: true,
           totalPaidAmount: true,
-          totalRemainingAmount: true
+          totalRemainingAmount: true,
+          totalCommissionAmount: true,
+          totalCommissionDeferredDebitAmount: true
         }
       })
     ]);
@@ -100,6 +104,8 @@ export class EmployeePayrollQueryService {
         totalNetAmount: item.totalNetAmount,
         totalPaidAmount: item.totalPaidAmount,
         totalRemainingAmount: item.totalRemainingAmount,
+        totalCommissionAmount: item.totalCommissionAmount,
+        totalCommissionDeferredDebitAmount: item.totalCommissionDeferredDebitAmount,
         createdAt: isoDateTime(item.createdAt),
         updatedAt: isoDateTime(item.updatedAt)
       })),
@@ -108,7 +114,9 @@ export class EmployeePayrollQueryService {
         totalAdjustmentAmount: sums.totalAdjustmentAmount ?? 0,
         totalNetAmount: sums.totalNetAmount ?? 0,
         totalPaidAmount: sums.totalPaidAmount ?? 0,
-        totalRemainingAmount: sums.totalRemainingAmount ?? 0
+        totalRemainingAmount: sums.totalRemainingAmount ?? 0,
+        totalCommissionAmount: sums.totalCommissionAmount ?? 0,
+        totalCommissionDeferredDebitAmount: sums.totalCommissionDeferredDebitAmount ?? 0
       },
       pagination: {
         page: query.page,
@@ -156,7 +164,7 @@ export class EmployeePayrollQueryService {
       const employeeIds = [...new Set(batch.lines.map(line => line.employeeId))];
       const periodEndExclusive = new Date(batch.periodEnd);
       periodEndExclusive.setUTCDate(periodEndExclusive.getUTCDate() + 1);
-      const [employees, compensations, sessions, schedules] = await Promise.all([
+      const [employees, compensations, sessions, schedules, newerCommissionEntries] = await Promise.all([
         this.db.employee.findMany({ where: { id: { in: employeeIds } }, select: { id: true, updatedAt: true } }),
         this.db.employeeCompensation.findMany({
           where: { employeeId: { in: employeeIds }, effectiveFrom: { lte: batch.periodEnd } },
@@ -178,6 +186,9 @@ export class EmployeePayrollQueryService {
             OR: [{ endDate: null }, { endDate: { gte: batch.periodStart } }]
           },
           select: { id: true, updatedAt: true }
+        }),
+        this.db.commissionEntry.count({
+          where: { employeeId: { in: employeeIds }, accountingDate: { lte: batch.periodEnd }, createdAt: { gt: batch.calculatedAt } }
         })
       ]);
       const sourceTimestamps = [
@@ -187,6 +198,7 @@ export class EmployeePayrollQueryService {
         ...schedules.map(row => row.updatedAt)
       ];
       sourceStale = sourceTimestamps.some(timestamp => timestamp > batch.calculatedAt!);
+      sourceStale ||= newerCommissionEntries > 0;
       const frozenSettings = batch.lines.map(line => storedSettingsSnapshot(line.sourceSnapshot)).find(Boolean);
       if (frozenSettings) {
         const currentSettings = await buildPayrollSettingsProjection(
@@ -214,6 +226,8 @@ export class EmployeePayrollQueryService {
       totalNetAmount: batch.totalNetAmount,
       totalPaidAmount: batch.totalPaidAmount,
       totalRemainingAmount: batch.totalRemainingAmount,
+      totalCommissionAmount: batch.totalCommissionAmount,
+      totalCommissionDeferredDebitAmount: batch.totalCommissionDeferredDebitAmount,
       version: batch.version,
       createdBy: batch.createdBy,
       calculatedBy: batch.calculatedBy,
@@ -269,6 +283,8 @@ export class EmployeePayrollQueryService {
         actualMinutes: line.actualMinutes,
         confirmedAbsences: line.confirmedAbsences,
         grossAmount: line.grossAmount,
+        commissionAmount: line.commissionAmount,
+        commissionDeferredDebitAmount: line.commissionDeferredDebitAmount,
         bonusAmount: line.bonusAmount,
         deductionAmount: line.deductionAmount,
         netAmount: line.netAmount,

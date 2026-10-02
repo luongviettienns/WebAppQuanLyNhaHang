@@ -136,10 +136,12 @@ describe('employee management screen', () => {
     vi.mocked(fetchEmployeesApi).mockResolvedValue({ ...emptyResult, pagination: { page: 1, pageSize: 30, totalRows: 31, totalPages: 2 } });
     let screen: any;
     await act(async () => { screen = create(<EmployeeManagementScreen />); await Promise.resolve(); });
-    const nextButton = screen.root.findAllByType('Pressable').find((node: any) => node.findAllByType('Text').some((text: any) => text.children.includes('Sau')));
+    const findNextButton = () => screen.root.findAllByType('Pressable').find((node: any) => node.findAllByType('Text').some((text: any) => text.children.includes('Sau')));
+    await vi.waitFor(() => expect(findNextButton()?.props.disabled).toBe(false));
+    const nextButton = findNextButton();
     expect(nextButton).toBeDefined();
-    await act(async () => { nextButton.props.onPress(); await Promise.resolve(); });
-    expect(fetchEmployeesApi).toHaveBeenLastCalledWith('admin-token', expect.objectContaining({ page: 2 }));
+    await act(async () => { nextButton.props.onPress(); });
+    await vi.waitFor(() => expect(fetchEmployeesApi).toHaveBeenLastCalledWith('admin-token', expect.objectContaining({ page: 2 })));
     await act(async () => { screen.root.findByProps({ testID: 'employee-search' }).props.onChangeText('Minh'); });
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 300)); });
     expect(fetchEmployeesApi).toHaveBeenLastCalledWith('admin-token', expect.objectContaining({ page: 1, search: 'Minh' }));

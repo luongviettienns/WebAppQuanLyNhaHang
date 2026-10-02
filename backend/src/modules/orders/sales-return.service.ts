@@ -8,6 +8,7 @@ import type { SalesReturnCandidateQuery, SalesReturnCreateInput, SalesReturnQuer
 import type { SalesReturnExportRow } from './sales-return.export';
 import { CashbookPostingService, normalizeCashbookPersistenceError, resolveCashbookAccountForPayment } from '../cashbook/cashbook-posting.service';
 import { cashbookChangedEvent } from '../cashbook/cashbook.events';
+import { EmployeeCommissionRecognitionService } from '../employee-commissions/employee-commission.recognition.service';
 
 async function getPrisma(): Promise<PrismaClient> { return (await import('../../config/prisma')).prisma; }
 const returnInclude = { lines: { orderBy: { id: 'asc' as const } }, order: { select: { id: true, code: true, table: { select: { tableNumber: true } } } } } satisfies Prisma.OrderReturnInclude;
@@ -137,13 +138,14 @@ export class SalesReturnService {
       const menuChanges: Array<{ menuItemId: number; stockQuantity: number; trackStock: boolean; isAvailable: boolean }> = [];
       for (const line of lines) { const menu = await tx.menuItem.findUnique({ where: { id: line.menuItemId } }); if (menu?.trackStock) { const updated = await tx.menuItem.update({ where: { id: menu.id }, data: { stockQuantity: { increment: line.quantity } }, select: { id: true, stockQuantity: true, trackStock: true, isAvailable: true } }); menuChanges.push({ menuItemId: updated.id, stockQuantity: updated.stockQuantity, trackStock: updated.trackStock, isAvailable: updated.isAvailable }); } }
       await tx.auditLog.create({ data: { action: 'ORDER_RETURN_COMPLETED', targetType: 'OrderReturn', targetId: saved.id, actorId: actor.id, actorName: actor.name, metadata: { returnCode: saved.returnCode, orderId: order.id, totalRefundDue, lineCount: lines.length } } });
-      return { row: saved, ingredientIds, menuChanges, voucher, replayed: false };
+      const commission = await EmployeeCommissionRecognitionService.reverseReturn(tx, saved.id, actor);
+      return { row: saved, ingredientIds, menuChanges, voucher, commission, replayed: false };
     }, txOptions).catch(async error => {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         const replay = await prisma.orderReturn.findFirst({ where: { createdByUserId: actor.id, idempotencyKey }, include: returnInclude });
         if (replay) {
           if (replay.requestDigest !== requestDigest) throw ApiError.conflict('Idempotency-Key đã được dùng cho yêu cầu trả hàng khác.', 'SALES_RETURN_IDEMPOTENCY_KEY_REUSED');
-          return { row: replay, ingredientIds: [] as number[], menuChanges: [] as Array<{ menuItemId: number; stockQuantity: number; trackStock: boolean; isAvailable: boolean }>, voucher: null, replayed: true };
+          return { row: replay, ingredientIds: [] as number[], menuChanges: [] as Array<{ menuItemId: number; stockQuantity: number; trackStock: boolean; isAvailable: boolean }>, voucher: null, commission: null, replayed: true };
         }
       }
       return normalizeCashbookPersistenceError(error);
@@ -152,6 +154,10 @@ export class SalesReturnService {
     if (!outcome.replayed && outcome.menuChanges.length) emitToAll('menu:stockChanged', { items: outcome.menuChanges });
     if (!outcome.replayed) emitToAll('order:returnCompleted', { returnId: outcome.row.id, returnCode: outcome.row.returnCode, orderId: outcome.row.orderId });
     if (!outcome.replayed && outcome.voucher) emitToAll('cashbook:changed', cashbookChangedEvent(outcome.voucher));
+    if (!outcome.replayed && outcome.commission?.changed) emitToAll('employee-commission:changed', {
+      revision: Date.now(), branchId: 1, reason: 'RETURN_REVERSED', affectedPlanIds: [], affectedEmployeeIds: [],
+      affectedOrderItemIds: outcome.commission.orderItemIds, updatedAt: new Date().toISOString()
+    });
     return toDto(outcome.row);
   }
 }

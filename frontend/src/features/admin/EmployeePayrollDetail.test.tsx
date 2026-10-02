@@ -14,7 +14,7 @@ import { fetchCashbookSettingsApi } from '../../api/cashbook';
 
 const detail = (status: EmployeePayrollDetailDto['status'] = 'CALCULATED'): EmployeePayrollDetailDto => ({
   id: 1, code: 'BL202609001', name: 'Bảng lương tháng 9/2026', branch: { id: 1, code: 'MAIN', name: 'Trung tâm' }, frequency: 'MONTHLY',
-  periodStart: '2026-09-01', periodEnd: '2026-09-30', status, totalGrossAmount: 12_000_000, totalAdjustmentAmount: 0, totalNetAmount: 12_000_000,
+  periodStart: '2026-09-01', periodEnd: '2026-09-30', status, totalGrossAmount: 12_000_000, totalAdjustmentAmount: 0, totalCommissionAmount: 0, totalCommissionDeferredDebitAmount: 0, totalNetAmount: 12_000_000,
   totalPaidAmount: 0, totalRemainingAmount: 12_000_000, createdAt: '', updatedAt: '', version: 1, sourceStale: false,
   createdBy: { id: 1, name: 'Admin' }, calculatedBy: { id: 1, name: 'Admin' }, finalizedBy: null, cancelledBy: null,
   calculatedAt: '', finalizedAt: null, cancelledAt: null, cancelReason: null,
@@ -22,7 +22,7 @@ const detail = (status: EmployeePayrollDetailDto['status'] = 'CALCULATED'): Empl
     id: 10, employeeId: 4, employeeCode: 'NV004', employeeName: 'Nguyễn Minh Anh', departmentName: 'Phục vụ', jobTitleName: 'Nhân viên',
     bankName: 'VCB', bankAccountNumber: '0123', bankAccountName: 'NGUYEN MINH ANH', activeCalendarDays: 30, periodCalendarDays: 30,
     scheduledShifts: 22, completedSessions: 20, actualMinutes: 9600, confirmedAbsences: 1, missingCheckouts: 0, reviewRequiredCount: 0,
-    grossAmount: 12_000_000, bonusAmount: 0, deductionAmount: 0, netAmount: 12_000_000, paidAmount: 0, remainingAmount: 12_000_000,
+    grossAmount: 12_000_000, bonusAmount: 0, deductionAmount: 0, commissionAmount: 0, commissionDeferredDebitAmount: 0, netAmount: 12_000_000, paidAmount: 0, remainingAmount: 12_000_000,
     calculationStatus: 'READY', warningCodes: ['UNSCHEDULED_ATTENDANCE', 'CONFIRMED_ABSENCE'], sourceSnapshot: { compensationTerms: [{ payBasis: 'MONTHLY' }] },
     calculatedAt: '', adjustments: [], payments: []
   }]

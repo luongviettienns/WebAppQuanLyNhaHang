@@ -8,6 +8,7 @@ export const selectedModifierSchema = z.object({
 export const orderItemCreateSchema = z.object({
   menuItemId: z.number({ required_error: 'menuItemId là bắt buộc' }),
   quantity: z.number().int().min(1, 'Số lượng tối thiểu là 1'),
+  commissionEmployeeId: z.number().int().positive().nullable().optional(),
   selectedModifiers: z.array(selectedModifierSchema).optional().default([]),
   notes: z.string().max(120).optional()
 });

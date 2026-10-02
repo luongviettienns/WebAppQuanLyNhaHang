@@ -23,8 +23,16 @@ const unpaidOrder = (id: number) => ({
   tableId: 1,
   paymentStatus: 'UNPAID',
   status: 'PENDING',
+  finalAmount: 10_000,
   table: { id: 1, tableNumber: 1 },
   items: []
+});
+
+const cashbookDependencies = () => ({
+  cashbookSetting: { findUnique: vi.fn().mockResolvedValue({ activatedAt: null }) },
+  financialAccount: { findFirst: vi.fn().mockResolvedValue(null) },
+  orderPaymentTransaction: { create: vi.fn().mockResolvedValue({ id: 1, amount: 10_000 }) },
+  cashFlowCategory: { findUniqueOrThrow: vi.fn().mockResolvedValue({ id: 1 }) }
 });
 
 describe('multiple unpaid orders on one table', () => {
@@ -87,6 +95,7 @@ describe('multiple unpaid orders on one table', () => {
     (prisma.$transaction as any).mockImplementation(async (callback: (client: any) => Promise<unknown>) => {
       const tx = {
         $queryRaw: vi.fn(() => transactionEvents.push('lock-table')),
+        ...cashbookDependencies(),
         order: {
           findUnique: vi.fn(async () => {
             transactionEvents.push('read-order');
@@ -159,6 +168,7 @@ describe('multiple unpaid orders on one table', () => {
     (prisma.$transaction as any).mockImplementation(async (callback: (client: any) => Promise<unknown>) => {
       const tx = {
         $queryRaw: vi.fn(),
+        ...cashbookDependencies(),
         order: {
           findUnique: vi.fn().mockResolvedValue(unpaidOrder(1)),
           update: vi.fn().mockResolvedValue({ ...unpaidOrder(1), paymentStatus: 'PAID' }),

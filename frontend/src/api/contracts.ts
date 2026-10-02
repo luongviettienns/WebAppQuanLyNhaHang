@@ -367,6 +367,7 @@ export interface SelectedModifierDto {
 export interface OrderItemCreateDto {
   menuItemId: number;
   quantity: number;
+  commissionEmployeeId?: number | null;
   selectedModifiers?: SelectedModifierDto[];
   notes?: string;
 }
@@ -393,6 +394,7 @@ export interface OrderItemDto {
   quantity: number;
   unitPrice: number;
   subtotal: number;
+  commissionEmployeeId?: number | null;
   selectedModifiersJson?: SelectedModifierDto[] | null;
   notes?: string | null;
 }
