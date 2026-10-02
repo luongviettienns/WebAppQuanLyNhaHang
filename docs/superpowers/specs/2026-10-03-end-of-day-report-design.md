@@ -79,7 +79,8 @@ Một response báo cáo là một read snapshot duy nhất:
 
 - Backend chuẩn hóa đúng một bộ `from`, `to`, `timezone`, concern và filters trước khi đọc dữ liệu.
 - `summary`, `rows`, `pagination`, `filterOptions` và các invariant Tổng hợp chạy trong cùng một read-consistent transaction MySQL với isolation `REPEATABLE READ` hoặc mức mạnh hơn.
-- Transaction lấy `asOf` từ database clock ở đầu transaction. Tất cả truy vấn trong request nhìn cùng database snapshot; không ghép các lần đọc độc lập bên ngoài transaction.
+- `asOf` lấy từ database clock ngay trước lần đọc báo cáo đầu tiên bên trong transaction và là mốc đại diện/correlation marker của read snapshot, không được mô tả như timestamp nội bộ chính xác mà MySQL dùng để tạo MVCC read view.
+- Tính nhất quán được bảo đảm bởi việc mọi truy vấn dữ liệu chạy trong cùng transaction `REPEATABLE READ` và được chứng minh bằng integration test có ghi đồng thời; không suy luận tính nhất quán chỉ từ giá trị `asOf` và không ghép các lần đọc độc lập bên ngoài transaction.
 - `generatedAt` được tạo khi server hoàn thành payload. `asOf` là mốc snapshot; `generatedAt` là mốc response được sinh. Hai trường không bị đánh đồng.
 - Không trả partial response. Nếu một phần snapshot thất bại, toàn request thất bại và frontend giữ snapshot thành công gần nhất nếu có.
 
@@ -95,11 +96,11 @@ interface EndOfDayReportMetadata {
   generatedAt: string;
   concern: 'SALES' | 'CASHFLOW' | 'GOODS' | 'CANCELLED_ITEMS' | 'SUMMARY';
   view: 'VERTICAL' | 'HORIZONTAL';
-  branch: { id: 1; code: 'MAIN'; name: 'Nhà hàng chính'; locked: true };
+  operatingScope: { code: 'MAIN'; name: 'Nhà hàng chính'; locked: true };
 }
 ```
 
-`branch` là metadata giao diện cho phạm vi nhà hàng duy nhất, không phải tuyên bố Order đã branch-scoped.
+`operatingScope` là metadata giao diện cho phạm vi nhà hàng duy nhất, không chứa `id` và không phải FK/tuyên bố Order đã branch-scoped.
 
 ## Thiết kế dữ liệu
 
@@ -159,6 +160,16 @@ Query:
 - Bộ lọc nullable: `customerId`, `receiverEmployeeId`, `creatorUserId`, `paymentMethods`, `delivery`, `areaId`, `tableId`, `cancelReason`, `recordTypes`, `search`.
 - `page` mặc định 1; `pageSize` mặc định 50, tối đa 200; sort chỉ cho allow-list theo concern.
 
+Validation theo concern:
+
+- `fromTime` và `toTime` hoặc cùng vắng mặt, hoặc cùng có mặt. Chỉ gửi một phía, `fromTime >= toTime`, thời gian sai định dạng hoặc khoảng qua nửa đêm đều trả `400 VALIDATION_ERROR`.
+- `SALES` hỗ trợ `customerId`, `receiverEmployeeId`, `creatorUserId`, `paymentMethods`, `delivery`, `areaId`, `tableId`, `search`.
+- `CASHFLOW` hỗ trợ `customerId`, `creatorUserId`, `paymentMethods`, `recordTypes`, `search`.
+- `GOODS` hỗ trợ `creatorUserId`, `recordTypes`, `search`.
+- `CANCELLED_ITEMS` hỗ trợ `receiverEmployeeId`, `creatorUserId`, `delivery`, `areaId`, `tableId`, `cancelReason`, `search`.
+- `SUMMARY` chỉ hỗ trợ bộ lọc thời gian/phạm vi vận hành trong lát này; filter theo domain phải được xem ở concern tương ứng để không áp một dimension lên những domain không có dimension đó.
+- `recordTypes` dùng allow-list riêng của concern: Cashflow nhận các money-event source types; Goods nhận `SALE_ITEM`, `INVENTORY_EVENT` hoặc inventory transaction types đã công bố. Giá trị sai concern hoặc filter không nằm trong danh sách trên phải trả `400 VALIDATION_ERROR`, không silently ignore.
+
 Response:
 
 ```ts
@@ -210,6 +221,8 @@ KPI:
 - `salesReturnValue`: tổng `OrderReturn.totalRefundDue` của return rows. `refundedAmount` thuộc cashflow thực trả và có thể khác số cần trả.
 - `netInvoiceValue = grossInvoiceValue - salesReturnValue`.
 - Các breakdown `goodsAmount`, `discountAmount`, `vatAmount`, `deliveryFee` lấy snapshot Order tương ứng và luôn có nhãn rõ.
+
+`Order.finalAmount` trong invoice row là snapshot giá trị hóa đơn tại lúc hoàn tất. Luồng trả hàng không được giảm hoặc viết lại hồi tố snapshot này; mọi điều chỉnh sau bán phải đi qua `OrderReturn`. Implementation plan phải có regression test khóa invariant đó. Nếu khảo sát implementation phát hiện luồng hiện tại mutate `finalAmount` sau return, phải dừng và sửa đặc tả trước khi triển khai báo cáo.
 
 Payment-method filter của Bán hàng chọn Order có ít nhất một `OrderPaymentTransaction.status=SUCCESS` với phương thức đã chọn. Chỉ dùng `Order.paymentMethod` làm legacy fallback khi Order không có payment transactions; response gắn quality flag cho fallback. Filter không thay đổi timestamp ghi nhận doanh thu: Order vẫn phải hoàn tất trong `[from,to)`.
 
@@ -268,8 +281,8 @@ KPI bán món và KPI biến động nguyên liệu tách nhãn; không cộng s
 - Tái sử dụng normalized outputs của Sales, Cashflow, Goods và CancelledItems trong cùng transaction.
 - Không cộng `netInvoiceValue` và `netCashFlow` thành một “tổng tiền”; hai đại lượng được trình bày riêng.
 - `netSalesCogs = abs(AUTO_DEDUCT cost) - abs(SALES_RETURN cost)` từ các inventory events phát sinh trong khoảng. Giá trị trả kho làm giảm giá vốn; không lấy `SALE_ITEM` để tính giá vốn lần thứ hai.
-- `estimatedGrossProfit = netInvoiceValue - netSalesCogs`. Tên trường và nhãn phải có chữ “ước tính” vì doanh thu và ledger kho cùng tuân theo timestamp nghiệp vụ của chính chúng, không giả định đây là kỳ kế toán đã khóa sổ.
-- `operatingContributionAfterWaste = estimatedGrossProfit - kitchenWasteCost`. `kitchenWasteCost` vẫn hiển thị riêng; không nhập nó vào `netSalesCogs` hoặc gắn nhãn sai là giá vốn bán hàng.
+- `estimatedContributionBeforeWaste = netInvoiceValue - netSalesCogs`. Vì `netInvoiceValue` dựa trên `finalAmount` có thể gồm VAT và delivery fee, đây là chỉ số đóng góp vận hành ước tính, không phải “lợi nhuận gộp” hay “gross margin” kế toán.
+- `estimatedContributionAfterWaste = estimatedContributionBeforeWaste - kitchenWasteCost`. `kitchenWasteCost` vẫn hiển thị riêng; không nhập nó vào `netSalesCogs` hoặc gắn nhãn sai là giá vốn bán hàng.
 - Dashboard cũ có thể tiếp tục dùng contract `grossProfit` trong giai đoạn chuyển tiếp, nhưng Báo cáo cuối ngày không tái sử dụng nhãn kế toán mơ hồ đó. Các CashVoucher chi khác trình bày riêng, không tự gọi là lợi nhuận ròng khi hệ thống chưa có kế toán đầy đủ.
 - Invariant bắt buộc: tổng hàng Tổng hợp cho từng domain khớp summary của concern tương ứng trong cùng response snapshot.
 
@@ -369,6 +382,8 @@ Responsive:
 14. Tất cả filters, faceted filter options, sort allow-list và pagination đúng concern.
 15. Tổng hợp invariant khớp bốn concern trong cùng snapshot.
 16. Export và màn hình cùng filter trên fixture ổn định có cùng totalRows/aggregates; export quá giới hạn trả lỗi có hướng dẫn.
+17. Chỉ có một trong `fromTime`/`toTime`, filter sai concern hoặc `recordTypes` sai allow-list đều trả `400 VALIDATION_ERROR`; không filter nào bị bỏ qua âm thầm.
+18. Tạo return không thay đổi `Order.finalAmount`; invoice row giữ gross snapshot và return row làm giảm `netInvoiceValue` đúng một lần.
 
 ### Frontend
 
@@ -395,7 +410,7 @@ Responsive:
 
 1. Admin mở Báo cáo → Cuối ngày và xem đủ năm mối quan tâm trên giao diện đồng bộ Crispy Bite, responsive và hỗ trợ dark mode.
 2. Số liệu dùng đúng timestamp nghiệp vụ và khoảng ngày nửa mở theo `Asia/Ho_Chi_Minh`.
-3. `summary`, `rows`, pagination và filter options luôn thuộc cùng snapshot; metadata công khai `from`, `to`, timezone, `asOf`, `generatedAt`.
+3. `summary`, `rows`, pagination và filter options luôn thuộc cùng snapshot; metadata công khai `from`, `to`, timezone, `asOf`, `generatedAt` và `operatingScope` không có branch FK giả.
 4. Bán hàng và dòng tiền được tách; payment/CashVoucher không double count; cọc không được nhận nhầm là doanh thu.
 5. Hàng hóa giải thích rõ dòng món bán và inventory movement; Hủy món có audit source mới và fallback lịch sử không trùng.
 6. Người nhận đơn đầu tiên được ghi bằng FK Employee, concurrency-safe, bất biến và không backfill giả.
