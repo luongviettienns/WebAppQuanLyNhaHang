@@ -14,6 +14,24 @@ enum Role {
   ADMIN
 }
 
+enum OrderItemCancellationSource {
+  ORDER_VOID
+  ITEM_CANCEL
+}
+
+enum CancellationPreparationState {
+  NOT_STARTED
+  PREPARING
+  READY
+  UNKNOWN
+}
+
+enum CancellationInventoryEffect {
+  NONE
+  RESTORED
+  WASTE_RECORDED
+}
+
 enum EmployeeStatus {
   WORKING
   RESIGNED
@@ -351,6 +369,7 @@ model User {
   handledCashVouchers               CashVoucher[]                   @relation("CashVoucherHandler")
   cancelledCashVouchers             CashVoucher[]                   @relation("CashVoucherCanceller")
   activatedCashbooks                CashbookSetting[]               @relation("CashbookActivator")
+  orderItemCancellations            OrderItemCancellation[]         @relation("OrderItemCancellationActor")
 }
 
 model Branch {
@@ -535,6 +554,8 @@ model Employee {
   commissionOrderItems      OrderItem[]                     @relation("OrderItemCommissionEmployee")
   commissionSaleBases       CommissionSaleBasis[]           @relation("CommissionSaleBasisEmployee")
   commissionEntries         CommissionEntry[]
+
+  receivedOrders Order[] @relation("OrderReceiver")
 
   @@index([status, createdAt])
   @@index([name])
@@ -1087,13 +1108,14 @@ model MenuItem {
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
 
-  category            Category              @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  category            Category                @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   modifierGroups      ModifierGroup[]
   orderItems          OrderItem[]
   priceListItems      PriceListItem[]
   menuItemIngredients MenuItemIngredient[]
   commissionRules     CommissionRule[]
   commissionSaleBases CommissionSaleBasis[]
+  cancellations       OrderItemCancellation[]
 }
 
 model PriceListItem {
@@ -1200,10 +1222,11 @@ model Order {
   notes              String?
 
   // Audit fields
-  createdByUserId Int?
-  voidedByUserId  Int?
-  voidReason      String?
-  voidedAt        DateTime?
+  createdByUserId      Int?
+  receivedByEmployeeId Int?
+  voidedByUserId       Int?
+  voidReason           String?
+  voidedAt             DateTime?
 
   // Lifecycle Timestamps
   preparingAt DateTime?
@@ -1225,6 +1248,7 @@ model Order {
   deliveryPartner       DeliveryPartner?          @relation(fields: [deliveryPartnerId], references: [id], onDelete: Restrict)
   priceList             PriceList?                @relation(fields: [priceListId], references: [id], onDelete: SetNull)
   createdByUser         User?                     @relation("CreatedOrders", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  receivedByEmployee    Employee?                 @relation("OrderReceiver", fields: [receivedByEmployeeId], references: [id], onDelete: Restrict)
   voidedByUser          User?                     @relation("VoidedOrders", fields: [voidedByUserId], references: [id], onDelete: SetNull)
   voucher               Voucher?                  @relation(fields: [voucherId], references: [id], onDelete: SetNull)
   items                 OrderItem[]
@@ -1233,12 +1257,15 @@ model Order {
   paymentTransactions   OrderPaymentTransaction[]
   commissionSaleBases   CommissionSaleBasis[]
   commissionEntries     CommissionEntry[]
+  itemCancellations     OrderItemCancellation[]
 
   @@unique([idempotencyScope, idempotencyKey])
   @@index([voucherId])
   @@index([deliveryPartnerId, status])
   @@index([customerId, createdAt])
   @@index([reservationId])
+  @@index([status, completedAt])
+  @@index([receivedByEmployeeId, completedAt])
 }
 
 model OrderPaymentTransaction {
@@ -1282,8 +1309,48 @@ model OrderItem {
   commissionSaleBasis CommissionSaleBasis?
   commissionEntries   CommissionEntry[]
   commissionIssue     CommissionRecognitionIssue?
+  cancellations       OrderItemCancellation[]
 
   @@index([commissionEmployeeId, orderId])
+}
+
+// Append-only audit snapshots. Corrections must create a separate history event.
+model OrderItemCancellation {
+  id                       Int                          @id @default(autoincrement())
+  orderId                  Int
+  orderItemId              Int
+  menuItemId               Int
+  menuItemSku              String
+  menuItemName             String
+  quantity                 Int
+  unitPrice                Int
+  lineAmount               Int
+  reason                   String                       @db.VarChar(1000)
+  cancelledAt              DateTime
+  cancelledByUserId        Int?
+  orderStatusSnapshot      OrderStatus
+  preparationStateSnapshot CancellationPreparationState
+  inventoryEffect          CancellationInventoryEffect
+  // VOID_RESTORE is reconciled via orderId; waste has an explicit source FK.
+  inventoryWasteId         Int?
+  source                   OrderItemCancellationSource
+  // ORDER_VOID:<orderId>:<orderItemId>; writers must preserve this exact key.
+  sourceKey                String                       @unique @db.VarChar(191)
+  createdAt                DateTime                     @default(now())
+
+  order           Order           @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  orderItem       OrderItem       @relation(fields: [orderItemId], references: [id], onDelete: Restrict)
+  menuItem        MenuItem        @relation(fields: [menuItemId], references: [id], onDelete: Restrict)
+  cancelledByUser User?           @relation("OrderItemCancellationActor", fields: [cancelledByUserId], references: [id], onDelete: Restrict)
+  inventoryWaste  InventoryWaste? @relation(fields: [inventoryWasteId], references: [id], onDelete: Restrict)
+
+  @@index([cancelledAt, orderId])
+  @@index([cancelledByUserId, cancelledAt])
+  @@index([source, orderId])
+  @@index([orderId])
+  @@index([orderItemId])
+  @@index([menuItemId])
+  @@index([inventoryWasteId])
 }
 
 model OrderReturn {
@@ -1313,10 +1380,10 @@ model OrderReturn {
   inventoryTransactions InventoryTransaction[]
   commissionEntries     CommissionEntry[]
 
+  @@unique([createdByUserId, idempotencyKey], map: "OrderReturn_actor_idempotency_key")
   @@index([status, returnedAt])
   @@index([orderId, returnedAt])
   @@index([financialAccountId, completedAt])
-  @@unique([createdByUserId, idempotencyKey], map: "OrderReturn_actor_idempotency_key")
 }
 
 model OrderReturnLine {
@@ -1735,6 +1802,7 @@ model InventoryWaste {
 
   lines                 InventoryWasteLine[]
   inventoryTransactions InventoryTransaction[]
+  itemCancellations     OrderItemCancellation[]
 
   @@index([status, wastedAt])
   @@index([wastedAt])
