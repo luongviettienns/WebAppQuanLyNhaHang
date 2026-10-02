@@ -11,11 +11,15 @@ describe('cash voucher print view', () => {
     const html = buildCashVoucherPrintHtml({
       id: 2, code: 'PT-002', direction: 'RECEIPT', status: 'POSTED', occurredAt: '2026-10-02T08:00:00.000Z', updatedAt: '2026-10-02T08:00:00.000Z',
       amount: 125000, accountId: 1, categoryId: 3, paymentMethod: 'CASH', note: '<script>alert(1)</script>', counterpartyName: 'Khách & đối tác',
+      sourceType: 'PURCHASE_RECEIPT_PAYMENT', sourceTransactionId: 7, sourceCode: 'PN-001', sourceInvoiceNumber: 'INV<&-01', sourceInvoiceDate: '2026-10-01T00:00:00.000Z',
       reversalOf: { id: 1, code: 'PT-001', direction: 'PAYMENT', amount: 125000 }, reversal: null
     });
     expect(html).toContain('125.000 ₫');
     expect(html).toContain('Đã ghi sổ');
     expect(html).toContain('Bút toán đảo của PT-001');
+    expect(html).toContain('PN-001');
+    expect(html).toContain('Thanh toán nhập hàng');
+    expect(html).toContain('INV&lt;&amp;-01');
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).not.toContain('<script>alert(1)</script>');
   });

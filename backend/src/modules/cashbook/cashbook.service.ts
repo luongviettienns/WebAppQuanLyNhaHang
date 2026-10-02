@@ -160,6 +160,8 @@ export class CashbookService {
       Mã: row.code, Ngày: row.occurredAt, Loại: row.direction === 'RECEIPT' ? 'Thu' : 'Chi',
       Tài_khoản: row.account.name, Danh_mục: row.category.name, Số_tiền: row.amount,
       Trạng_thái: row.status, Đối_tượng: row.counterpartyName, Nội_dung: row.note,
+      Loại_nguồn: row.sourceType, Mã_chứng_từ_nguồn: row.sourceCode, Mã_giao_dịch_nguồn: row.sourceTransactionId,
+      Số_hóa_đơn: row.sourceInvoiceNumber, Ngày_hóa_đơn: row.sourceInvoiceDate?.toISOString() ?? null,
       Mã_phiếu_gốc: row.reversalOfId
     })));
     if (format === 'csv') return { contentType: 'text/csv; charset=utf-8', filename: 'so-quy.csv', body: `\uFEFF${utils.sheet_to_csv(sheet)}` };

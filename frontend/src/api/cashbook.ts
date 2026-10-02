@@ -47,7 +47,8 @@ export interface CashFlowCategoryCreateInput {
 export interface CashVoucherDto {
   id: number; code: string; direction: CashbookDirection; status: CashbookStatus; occurredAt: string; amount: number;
   accountId: number; categoryId: number; paymentMethod: CashbookPaymentMethod | null; note: string | null;
-  counterpartyName: string | null; updatedAt: string; account?: Pick<FinancialAccountDto, 'id' | 'code' | 'name' | 'type'>;
+  counterpartyName: string | null; updatedAt: string; sourceType: string; sourceTransactionId: number | null; sourceCode: string | null;
+  sourceInvoiceNumber: string | null; sourceInvoiceDate: string | null; account?: Pick<FinancialAccountDto, 'id' | 'code' | 'name' | 'type'>;
   category?: CashFlowCategoryDto; reversalOf?: Pick<CashVoucherDto, 'id' | 'code' | 'direction' | 'amount'> | null;
   reversal?: Pick<CashVoucherDto, 'id' | 'code' | 'occurredAt' | 'amount'> | null;
   [key: string]: unknown;

@@ -22,3 +22,14 @@ export function getVoucherRelationshipLabel(voucher: Pick<CashVoucherDto, 'id' |
 export function getVoucherStatusLabel(status: CashVoucherDto['status']): string {
   return status === 'POSTED' ? 'Đã ghi sổ' : 'Đã hủy';
 }
+
+const sourceTypeLabels: Record<string, string> = {
+  MANUAL: 'Phiếu thủ công', RESERVATION_DEPOSIT: 'Thu cọc đặt bàn', RESERVATION_REFUND: 'Hoàn cọc đặt bàn',
+  ORDER_PAYMENT: 'Thanh toán đơn hàng', SALES_RETURN_REFUND: 'Hoàn tiền trả hàng',
+  PURCHASE_RECEIPT_PAYMENT: 'Thanh toán nhập hàng', SUPPLIER_PAYMENT: 'Thanh toán công nợ nhà cung cấp',
+  PURCHASE_RETURN_REFUND: 'Nhận hoàn tiền trả hàng', PAYROLL_PAYMENT: 'Chi lương', REVERSAL: 'Bút toán đảo'
+};
+
+export function getVoucherSourceTypeLabel(sourceType: string): string {
+  return sourceTypeLabels[sourceType] ?? sourceType;
+}

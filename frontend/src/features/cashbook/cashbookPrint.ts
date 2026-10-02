@@ -1,4 +1,5 @@
 import type { CashVoucherDto } from '../../api/cashbook';
+import { getVoucherSourceTypeLabel } from './cashbookViewModel';
 
 const escapeHtml = (value: string) => value.replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]!));
 const vnd = (value: number) => new Intl.NumberFormat('vi-VN').format(value) + ' ₫';
@@ -31,6 +32,10 @@ export function buildCashVoucherPrintHtml(voucher: CashVoucherDto): string {
     ['Ngày ghi nhận', new Date(voucher.occurredAt).toLocaleString('vi-VN')],
     ['Tài khoản quỹ', voucher.account?.name ?? `Quỹ #${voucher.accountId}`],
     ['Danh mục', voucher.category?.name ?? `Danh mục #${voucher.categoryId}`],
+    ['Nghiệp vụ nguồn', getVoucherSourceTypeLabel(voucher.sourceType)],
+    ['Chứng từ nguồn', voucher.sourceCode ?? '—'],
+    ['Số hóa đơn', voucher.sourceInvoiceNumber ?? '—'],
+    ...(voucher.sourceInvoiceDate ? [['Ngày hóa đơn', new Date(voucher.sourceInvoiceDate).toLocaleDateString('vi-VN')] as [string, string]] : []),
     ['Người nộp / nhận', voucher.counterpartyName ?? '—'],
     ['Nội dung', voucher.note ?? '—'],
     ['Trạng thái', voucher.status === 'POSTED' ? 'Đã ghi sổ' : 'Đã hủy']

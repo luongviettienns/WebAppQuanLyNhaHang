@@ -11,7 +11,7 @@ import {
   fetchCashbookApi, fetchCashbookCounterpartiesApi, fetchCashbookSettingsApi, type CashbookDirection, type CashbookFilter,
   type CashbookListDto, type CashVoucherDto, type CashbookSettingsDto, type CashFlowCategoryCreateInput, type FinancialAccountCreateInput, type ManualCashVoucherInput
 } from '../../api/cashbook';
-import { getCashbookSummaryCards, getVoucherRelationshipLabel, getVoucherStatusLabel, formatVnd } from './cashbookViewModel';
+import { getCashbookSummaryCards, getVoucherRelationshipLabel, getVoucherSourceTypeLabel, getVoucherStatusLabel, formatVnd } from './cashbookViewModel';
 import { ManualVoucherIdempotency } from './manualVoucherIdempotency';
 import { printCashVoucher } from './cashbookPrint';
 
@@ -144,6 +144,7 @@ export const CashbookScreen: React.FC = () => {
                 <View style={styles.rowTitleLine}><Text style={[styles.code, { color: theme.textPrimary }]}>{voucher.code}</Text><Text style={[styles.status, { color: voucher.status === 'POSTED' ? theme.success : theme.textSecondary }]}>{getVoucherStatusLabel(voucher.status)}</Text></View>
                 <Text style={[styles.subtle, { color: theme.textSecondary }]}>{new Date(voucher.occurredAt).toLocaleString('vi-VN')} · {voucher.account?.name ?? `Quỹ #${voucher.accountId}`} · {voucher.category?.name ?? `Danh mục #${voucher.categoryId}`}</Text>
                 {voucher.counterpartyName ? <Text style={[styles.subtle, { color: theme.textSecondary }]}>{voucher.counterpartyName}</Text> : null}
+                {voucher.sourceCode || voucher.sourceInvoiceNumber ? <Text style={[styles.subtle, { color: theme.textSecondary }]}>{getVoucherSourceTypeLabel(voucher.sourceType)} · {voucher.sourceCode ?? 'Chưa có mã nguồn'}{voucher.sourceInvoiceNumber ? ` · HĐ ${voucher.sourceInvoiceNumber}` : ''}</Text> : null}
                 {relationship ? <Text style={[styles.relationship, { color: theme.secondary }]}>{relationship}</Text> : null}
               </View>
               <Text style={[styles.amount, { color: voucher.direction === 'RECEIPT' ? theme.success : theme.danger }]}>{voucher.direction === 'RECEIPT' ? '+' : '−'}{formatVnd(voucher.amount)}</Text>
@@ -187,6 +188,10 @@ export const CashbookScreen: React.FC = () => {
             <DetailLine label="Ngày ghi nhận" value={new Date(selected.occurredAt).toLocaleString('vi-VN')} />
             <DetailLine label="Tài khoản" value={selected.account?.name ?? `Quỹ #${selected.accountId}`} />
             <DetailLine label="Danh mục" value={selected.category?.name ?? `Danh mục #${selected.categoryId}`} />
+            <DetailLine label="Nghiệp vụ nguồn" value={getVoucherSourceTypeLabel(selected.sourceType)} />
+            <DetailLine label="Chứng từ nguồn" value={selected.sourceCode ?? '—'} />
+            <DetailLine label="Số hóa đơn" value={selected.sourceInvoiceNumber ?? '—'} />
+            {selected.sourceInvoiceDate ? <DetailLine label="Ngày hóa đơn" value={new Date(selected.sourceInvoiceDate).toLocaleDateString('vi-VN')} /> : null}
             <DetailLine label="Đối tượng" value={selected.counterpartyName ?? '—'} />
             <DetailLine label="Nội dung" value={selected.note ?? '—'} />
             {getVoucherRelationshipLabel(selected) ? <Text style={[styles.relationship, { color: theme.secondary }]}>{getVoucherRelationshipLabel(selected)}</Text> : null}

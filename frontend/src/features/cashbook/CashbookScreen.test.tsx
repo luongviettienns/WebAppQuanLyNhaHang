@@ -27,7 +27,7 @@ describe('CashbookScreen', () => {
       page: 1, pageSize: 25,
       balanceSummary: { openingBalance: 800000, closingBalance: 650000, accountCount: 1, from: null, to: null },
       filteredSummary: { rowCount: 2, totalReceipts: 100000, totalPayments: 250000, netMovement: -150000 },
-      items: [{ id: 2, code: 'PT-002', direction: 'RECEIPT', status: 'POSTED', occurredAt: '2026-10-02T07:00:00.000Z', updatedAt: '2026-10-02T07:00:00.000Z', amount: 100000, accountId: 1, categoryId: 1, paymentMethod: 'CASH', note: null, counterpartyName: 'Khách', account: { id: 1, code: 'CASH', name: 'Tiền mặt', type: 'CASH' }, category: { id: 1, code: 'DEPOSIT', name: 'Cọc', direction: 'RECEIPT', affectsBusinessResultDefault: false, isSystem: true, isActive: true }, reversalOf: { id: 1, code: 'PT-001', direction: 'PAYMENT', amount: 100000 }, reversal: null }]
+      items: [{ id: 2, code: 'PT-002', direction: 'RECEIPT', status: 'POSTED', occurredAt: '2026-10-02T07:00:00.000Z', updatedAt: '2026-10-02T07:00:00.000Z', amount: 100000, accountId: 1, categoryId: 1, paymentMethod: 'CASH', note: null, counterpartyName: 'Khách', sourceType: 'ORDER_PAYMENT', sourceCode: 'HD-20261002-0001', sourceInvoiceNumber: 'INV-001', sourceInvoiceDate: '2026-10-01T00:00:00.000Z', account: { id: 1, code: 'CASH', name: 'Tiền mặt', type: 'CASH' }, category: { id: 1, code: 'DEPOSIT', name: 'Cọc', direction: 'RECEIPT', affectsBusinessResultDefault: false, isSystem: true, isActive: true }, reversalOf: { id: 1, code: 'PT-001', direction: 'PAYMENT', amount: 100000 }, reversal: null }]
     };
   });
 
@@ -38,7 +38,20 @@ describe('CashbookScreen', () => {
     expect(serialized).toContain('Số dư thực của quỹ');
     expect(serialized).toContain('Tổng thu theo bộ lọc');
     expect(serialized).toContain('Bút toán đảo của PT-001');
+    expect(serialized).toContain('HD-20261002-0001');
+    expect(serialized).toContain('INV-001');
     expect(serialized).toContain('Đã ghi sổ');
+    await act(async () => screen.unmount());
+  });
+
+  it('prints source voucher and supplier invoice references for reconciliation', async () => {
+    let screen: any;
+    await act(async () => { screen = create(<CashbookScreen />); await Promise.resolve(); });
+    const row = screen.root.findAllByType('Pressable').find((item: any) => item.findAllByType('Text').some((text: any) => text.children.includes('PT-002')));
+    await act(async () => row.props.onPress());
+    const serialized = JSON.stringify(screen.toJSON());
+    expect(serialized).toContain('Chứng từ nguồn');
+    expect(serialized).toContain('Số hóa đơn');
     await act(async () => screen.unmount());
   });
 
