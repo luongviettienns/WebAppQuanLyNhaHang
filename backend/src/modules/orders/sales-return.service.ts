@@ -1,16 +1,18 @@
 import { Prisma, OrderReturnStatus, PaymentStatus, OrderStatus } from '@prisma/client';
 import type { PrismaClient } from '@prisma/client';
-import { randomUUID } from 'crypto';
+import { createHash, randomUUID } from 'crypto';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { emitInventoryChanged } from '../inventory/inventory.events';
 import type { SalesReturnCandidateQuery, SalesReturnCreateInput, SalesReturnQuery } from './sales-return.schemas';
 import type { SalesReturnExportRow } from './sales-return.export';
+import { CashbookPostingService, normalizeCashbookPersistenceError, resolveCashbookAccountForPayment } from '../cashbook/cashbook-posting.service';
+import { cashbookChangedEvent } from '../cashbook/cashbook.events';
 
 async function getPrisma(): Promise<PrismaClient> { return (await import('../../config/prisma')).prisma; }
 const returnInclude = { lines: { orderBy: { id: 'asc' as const } }, order: { select: { id: true, code: true, table: { select: { tableNumber: true } } } } } satisfies Prisma.OrderReturnInclude;
 type ReturnRecord = Prisma.OrderReturnGetPayload<{ include: typeof returnInclude }>;
-type Actor = { id: number; name?: string };
+type Actor = { id: number; name?: string; role: 'ADMIN' | 'CASHIER' };
 const txOptions = { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted, timeout: 30000 };
 
 function dateFilter(from?: string, to?: string): Prisma.DateTimeFilter | undefined {
@@ -77,10 +79,23 @@ export class SalesReturnService {
 
   static async exportRows(query: SalesReturnQuery): Promise<SalesReturnExportRow[]> { const prisma = await getPrisma(); const where = baseWhere(query); if (query.statuses) where.status = { in: query.statuses }; const rows = await prisma.orderReturn.findMany({ where, include: returnInclude, orderBy: [{ returnedAt: 'desc' }, { id: 'desc' }] }); return rows.map(row => ({ returnCode: row.returnCode, orderCode: row.order.code, returnedAt: row.returnedAt.toISOString(), tableNumber: row.order.table?.tableNumber ?? null, customerName: null, totalRefundDue: row.totalRefundDue, refundedAmount: row.refundedAmount, status: row.status })); }
 
-  static async create(input: SalesReturnCreateInput, actor: Actor) {
+  static async create(input: SalesReturnCreateInput, actor: Actor, idempotencyKey: string) {
     const prisma = await getPrisma();
+    const requestDigest = createHash('sha256').update(JSON.stringify({
+      orderId: input.orderId,
+      lines: [...input.lines].sort((a, b) => a.orderItemId - b.orderItemId),
+      refundMethod: input.refundMethod,
+      financialAccountId: input.financialAccountId ?? null,
+      refundedAmount: input.refundedAmount ?? null,
+      note: input.note ?? null
+    }), 'utf8').digest('hex');
     const outcome = await prisma.$transaction(async tx => {
       await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${input.orderId} FOR UPDATE`;
+      const replay = await tx.orderReturn.findFirst({ where: { createdByUserId: actor.id, idempotencyKey }, include: returnInclude });
+      if (replay) {
+        if (replay.requestDigest !== requestDigest) throw ApiError.conflict('Idempotency-Key đã được dùng cho yêu cầu trả hàng khác.', 'SALES_RETURN_IDEMPOTENCY_KEY_REUSED');
+        return { row: replay, ingredientIds: [] as number[], menuChanges: [] as Array<{ menuItemId: number; stockQuantity: number; trackStock: boolean; isAvailable: boolean }>, voucher: null, replayed: true };
+      }
       const order = await tx.order.findUnique({ where: { id: input.orderId }, include: { items: { include: { menuItem: true } }, table: true } });
       if (!order) throw ApiError.notFound('Hóa đơn không tồn tại');
       if (order.status !== OrderStatus.COMPLETED || order.paymentStatus !== PaymentStatus.PAID) throw ApiError.conflict('Chỉ hóa đơn đã hoàn thành và đã thanh toán mới được trả hàng');
@@ -96,8 +111,23 @@ export class SalesReturnService {
       });
       const totalRefundDue = lines.reduce((sum, line) => sum + line.lineAmount, 0); const refundedAmount = input.refundedAmount ?? totalRefundDue;
       if (refundedAmount !== totalRefundDue) throw ApiError.badRequest('Số tiền đã trả phải bằng số tiền hệ thống tính trong MVP');
-      const created = await tx.orderReturn.create({ data: { returnCode: 'PENDING-' + randomUUID(), orderId: order.id, totalRefundDue, refundedAmount, refundMethod: input.refundMethod, note: input.note ?? null, createdByUserId: actor.id, createdByName: actor.name ?? null, completedAt: new Date(), lines: { create: lines } }, include: returnInclude });
+      const completedAt = new Date();
+      const financialAccountId = refundedAmount > 0
+        ? await resolveCashbookAccountForPayment(tx, input.refundMethod, input.financialAccountId)
+        : null;
+      const created = await tx.orderReturn.create({ data: { returnCode: 'PENDING-' + randomUUID(), orderId: order.id, totalRefundDue, refundedAmount, refundMethod: input.refundMethod, financialAccountId, idempotencyKey, requestDigest, note: input.note ?? null, createdByUserId: actor.id, createdByName: actor.name ?? null, completedAt, lines: { create: lines } }, include: returnInclude });
       const saved = await tx.orderReturn.update({ where: { id: created.id }, data: { returnCode: 'THD' + String(created.id).padStart(6, '0') }, include: returnInclude });
+      let voucher = null;
+      if (financialAccountId !== null && refundedAmount > 0) {
+        const category = await tx.cashFlowCategory.findUniqueOrThrow({ where: { code: 'CUSTOMER_REFUND' } });
+        voucher = await CashbookPostingService.post(tx, {
+          direction: 'PAYMENT', amount: refundedAmount, accountId: financialAccountId, categoryId: category.id,
+          paymentMethod: input.refundMethod, occurredAt: completedAt, sourceType: 'SALES_RETURN_REFUND',
+          sourceTransactionId: saved.id, sourceCode: saved.returnCode,
+          counterpartyType: order.customerId ? 'CUSTOMER' : null, counterpartyId: order.customerId ?? null,
+          note: input.note ?? `Hoàn tiền trả hàng ${saved.returnCode}`
+        }, { id: actor.id, name: actor.name ?? null, role: actor.role });
+      }
       const bomByIngredient = new Map<number, { quantity: number; costPerUnit: number }>();
       const boms = await tx.menuItemIngredient.findMany({ where: { menuItemId: { in: [...new Set(lines.map(line => line.menuItemId))] } }, include: { ingredient: true } });
       for (const line of lines) for (const bom of boms.filter(row => row.menuItemId === line.menuItemId)) { const current = bomByIngredient.get(bom.ingredientId) ?? { quantity: 0, costPerUnit: bom.ingredient.costPerUnit }; current.quantity += bom.quantityRequired * line.quantity; bomByIngredient.set(bom.ingredientId, current); }
@@ -107,11 +137,21 @@ export class SalesReturnService {
       const menuChanges: Array<{ menuItemId: number; stockQuantity: number; trackStock: boolean; isAvailable: boolean }> = [];
       for (const line of lines) { const menu = await tx.menuItem.findUnique({ where: { id: line.menuItemId } }); if (menu?.trackStock) { const updated = await tx.menuItem.update({ where: { id: menu.id }, data: { stockQuantity: { increment: line.quantity } }, select: { id: true, stockQuantity: true, trackStock: true, isAvailable: true } }); menuChanges.push({ menuItemId: updated.id, stockQuantity: updated.stockQuantity, trackStock: updated.trackStock, isAvailable: updated.isAvailable }); } }
       await tx.auditLog.create({ data: { action: 'ORDER_RETURN_COMPLETED', targetType: 'OrderReturn', targetId: saved.id, actorId: actor.id, actorName: actor.name, metadata: { returnCode: saved.returnCode, orderId: order.id, totalRefundDue, lineCount: lines.length } } });
-      return { row: saved, ingredientIds, menuChanges };
-    }, txOptions);
-    if (outcome.ingredientIds.length) emitInventoryChanged({ sourceType: 'INGREDIENT', sourceIds: outcome.ingredientIds, reason: 'SALES_RETURN', updatedAt: outcome.row.updatedAt.toISOString() });
-    if (outcome.menuChanges.length) emitToAll('menu:stockChanged', { items: outcome.menuChanges });
-    emitToAll('order:returnCompleted', { returnId: outcome.row.id, returnCode: outcome.row.returnCode, orderId: outcome.row.orderId });
+      return { row: saved, ingredientIds, menuChanges, voucher, replayed: false };
+    }, txOptions).catch(async error => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const replay = await prisma.orderReturn.findFirst({ where: { createdByUserId: actor.id, idempotencyKey }, include: returnInclude });
+        if (replay) {
+          if (replay.requestDigest !== requestDigest) throw ApiError.conflict('Idempotency-Key đã được dùng cho yêu cầu trả hàng khác.', 'SALES_RETURN_IDEMPOTENCY_KEY_REUSED');
+          return { row: replay, ingredientIds: [] as number[], menuChanges: [] as Array<{ menuItemId: number; stockQuantity: number; trackStock: boolean; isAvailable: boolean }>, voucher: null, replayed: true };
+        }
+      }
+      return normalizeCashbookPersistenceError(error);
+    });
+    if (!outcome.replayed && outcome.ingredientIds.length) emitInventoryChanged({ sourceType: 'INGREDIENT', sourceIds: outcome.ingredientIds, reason: 'SALES_RETURN', updatedAt: outcome.row.updatedAt.toISOString() });
+    if (!outcome.replayed && outcome.menuChanges.length) emitToAll('menu:stockChanged', { items: outcome.menuChanges });
+    if (!outcome.replayed) emitToAll('order:returnCompleted', { returnId: outcome.row.id, returnCode: outcome.row.returnCode, orderId: outcome.row.orderId });
+    if (!outcome.replayed && outcome.voucher) emitToAll('cashbook:changed', cashbookChangedEvent(outcome.voucher));
     return toDto(outcome.row);
   }
 }

@@ -3,6 +3,8 @@ import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { AuditService } from '../audit/audit.service';
 import { emitInventoryChanged } from './inventory.events';
+import { CashbookPostingService, normalizeCashbookPersistenceError, resolveCashbookAccountForPayment } from '../cashbook/cashbook-posting.service';
+import { cashbookChangedEvent } from '../cashbook/cashbook.events';
 import { calculateNewWeightedAverageCost } from './inventory.math';
 import { calculatePurchaseReceiptTotals } from './purchase-receipt.math';
 import { parsePurchaseReceiptExcelBuffer } from './inventory.excel';
@@ -141,6 +143,9 @@ function toReceiptDto(receipt: ReceiptRecord): PurchaseReceiptDto {
     discountAmount: receipt.discountAmount,
     payableAmount: totals.payableAmount,
     paidAmount: receipt.paidAmount,
+    paymentMethod: receipt.paymentMethod,
+    financialAccountId: receipt.financialAccountId,
+    paymentExternalReference: receipt.paymentExternalReference,
     outstandingAmount: totals.outstandingAmount,
     note: receipt.note,
     createdByUserId: receipt.createdByUserId,
@@ -340,6 +345,9 @@ export class PurchaseReceiptService {
               subtotalAmount: totals.subtotalAmount,
               discountAmount: input.discountAmount,
               paidAmount: input.paidAmount,
+              paymentMethod: input.paymentMethod,
+              financialAccountId: input.financialAccountId ?? null,
+              paymentExternalReference: input.paymentExternalReference ?? null,
               note: input.note ?? null,
               createdByUserId: actor.id,
               lines: { create: lines }
@@ -386,6 +394,8 @@ export class PurchaseReceiptService {
         : await snapshotLines(tx, input.lines);
       const discountAmount = input.discountAmount ?? current.discountAmount;
       const paidAmount = input.paidAmount ?? current.paidAmount;
+      const paymentMethod = input.paymentMethod ?? current.paymentMethod;
+      const financialAccountId = input.financialAccountId === undefined ? current.financialAccountId : input.financialAccountId;
       const totals = calculateTotals(lines, discountAmount, paidAmount);
 
       const claimed = await tx.purchaseReceipt.updateMany({
@@ -398,6 +408,9 @@ export class PurchaseReceiptService {
           subtotalAmount: totals.subtotalAmount,
           discountAmount,
           paidAmount,
+          paymentMethod,
+          financialAccountId,
+          paymentExternalReference: input.paymentExternalReference,
           note: input.note
         }
       });
@@ -443,7 +456,7 @@ export class PurchaseReceiptService {
   }
 
   static async postReceipt(id: number, actor: PurchaseReceiptActor): Promise<PurchaseReceiptDto> {
-    let outcome: { receipt: ReceiptRecord; ingredientIds: number[] };
+    let outcome: { receipt: ReceiptRecord; ingredientIds: number[]; voucher: Awaited<ReturnType<typeof CashbookPostingService.post>> };
     try {
       outcome = await prisma.$transaction(async tx => {
         const claimed = await tx.purchaseReceipt.updateMany({
@@ -461,10 +474,32 @@ export class PurchaseReceiptService {
         if (!receipt.supplierId || !receipt.supplier?.isActive) {
           throw ApiError.badRequest('Phiếu nhập cần một nhà cung cấp đang hoạt động');
         }
+        await tx.$queryRaw`SELECT id FROM Supplier WHERE id = ${receipt.supplierId} FOR UPDATE`;
         if (receipt.lines.length === 0) {
           throw ApiError.badRequest('Phiếu nhập cần ít nhất một nguyên liệu');
         }
         const totals = calculateTotals(receipt.lines, receipt.discountAmount, receipt.paidAmount);
+        let voucher: Awaited<ReturnType<typeof CashbookPostingService.post>> = null;
+        if (receipt.paidAmount > 0) {
+          const financialAccountId = await resolveCashbookAccountForPayment(tx, receipt.paymentMethod, receipt.financialAccountId);
+          const payment = await tx.supplierPayment.create({ data: {
+            supplierId: receipt.supplierId, purchaseReceiptId: receipt.id, financialAccountId,
+            amount: receipt.paidAmount, paymentMethod: receipt.paymentMethod, paidAt: new Date(),
+            externalReference: receipt.paymentExternalReference,
+            createdByUserId: actor.id, createdByName: actor.name, note: `Thanh toán ban đầu phiếu nhập ${receipt.receiptCode}`
+          } });
+          if (financialAccountId !== null) {
+            const category = await tx.cashFlowCategory.findUniqueOrThrow({ where: { code: 'SUPPLIER_PAYMENT' } });
+            voucher = await CashbookPostingService.post(tx, {
+              direction: 'PAYMENT', amount: payment.amount, accountId: financialAccountId, categoryId: category.id,
+              paymentMethod: receipt.paymentMethod, occurredAt: payment.paidAt, sourceType: 'PURCHASE_RECEIPT_PAYMENT',
+              sourceTransactionId: payment.id, sourceCode: receipt.receiptCode,
+              counterpartyType: 'SUPPLIER', counterpartyId: receipt.supplierId, counterpartyName: receipt.supplier.name,
+              linkedPurchaseReceiptId: receipt.id, sourceInvoiceNumber: receipt.invoiceNumber,
+              sourceInvoiceDate: receipt.invoiceDate, note: payment.note
+            }, { id: actor.id, name: actor.name, role: 'ADMIN' });
+          }
+        }
         const ingredientIds = [...new Set(receipt.lines.map(line => line.ingredientId))].sort((left, right) => left - right);
 
         await tx.$queryRaw(Prisma.sql`
@@ -510,8 +545,8 @@ export class PurchaseReceiptService {
           data: { subtotalAmount: totals.subtotalAmount },
           include: receiptInclude
         });
-        return { receipt: posted, ingredientIds };
-      });
+        return { receipt: posted, ingredientIds, voucher };
+      }).catch(normalizeCashbookPersistenceError);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
         const current = await prisma.purchaseReceipt.findUnique({ where: { id }, select: { status: true } });
@@ -536,6 +571,10 @@ export class PurchaseReceiptService {
       reason: 'PURCHASE_RECEIPT_POSTED',
       updatedAt: dto.updatedAt.toISOString()
     });
+    if (outcome.voucher) {
+      const { emitToAll } = await import('../../lib/socket');
+      emitToAll('cashbook:changed', cashbookChangedEvent(outcome.voucher));
+    }
     return dto;
   }
 }

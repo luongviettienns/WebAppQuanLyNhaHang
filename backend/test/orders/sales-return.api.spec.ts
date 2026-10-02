@@ -16,6 +16,7 @@ describe('Sales returns API', () => {
   const root = '/api/orders/returns';
 
   const auth = () => ({ Authorization: `Bearer ${token}` });
+  const postReturn = (body: Record<string, unknown>, idempotencyKey: string) => request(app).post(root).set(auth()).set('Idempotency-Key', idempotencyKey).send(body);
   const sign = (user: { id: number; username: string; name: string; role: 'ADMIN' | 'KITCHEN' | 'CASHIER' }) => jwt.sign(
     { sub: String(user.id), username: user.username, name: user.name, role: user.role },
     env.JWT_SECRET,
@@ -51,7 +52,7 @@ describe('Sales returns API', () => {
     expect(candidates.body.data.items[0]).toMatchObject({ orderId, code: expect.stringContaining('HD-RETURN'), tableNumber: 41 });
     expect(candidates.body.data.items[0].remainingItems[0]).toMatchObject({ orderItemId, soldQuantity: 2, returnedQuantity: 0, remainingQuantity: 2, unitPrice: 50000 });
 
-    const created = await request(app).post(root).set(auth()).send({ orderId, lines: [{ orderItemId, quantity: 1 }], refundMethod: 'CASH' });
+    const created = await postReturn({ orderId, lines: [{ orderItemId, quantity: 1 }], refundMethod: 'CASH' }, 'partial-return-001');
     expect(created.status).toBe(201);
     expect(created.body.data).toMatchObject({ orderId, status: 'COMPLETED', totalRefundDue: 50000, refundedAmount: 50000 });
     expect(created.body.data.returnCode).toMatch(/^THD\d{6,}$/);
@@ -62,19 +63,41 @@ describe('Sales returns API', () => {
   });
 
   it('rejects over-return and serializes concurrent attempts', async () => {
-    const first = await request(app).post(root).set(auth()).send({ orderId, lines: [{ orderItemId, quantity: 1 }] });
+    const first = await postReturn({ orderId, lines: [{ orderItemId, quantity: 1 }] }, 'return-first-001');
     expect(first.status).toBe(201);
-    const over = await request(app).post(root).set(auth()).send({ orderId, lines: [{ orderItemId, quantity: 2 }] });
+    const over = await postReturn({ orderId, lines: [{ orderItemId, quantity: 2 }] }, 'return-over-001');
     expect(over.status).toBe(409);
     const concurrent = await Promise.all([
-      request(app).post(root).set(auth()).send({ orderId, lines: [{ orderItemId, quantity: 1 }] }),
-      request(app).post(root).set(auth()).send({ orderId, lines: [{ orderItemId, quantity: 1 }] })
+      postReturn({ orderId, lines: [{ orderItemId, quantity: 1 }] }, 'return-concurrent-a'),
+      postReturn({ orderId, lines: [{ orderItemId, quantity: 1 }] }, 'return-concurrent-b')
     ]);
     expect(concurrent.map(response => response.status).sort()).toEqual([201, 409]);
   });
 
+  it('replays a partial-return retry without duplicating the refund or inventory movement', async () => {
+    const activatedAt = new Date('2026-01-01T00:00:00.000Z');
+    await prismaTest.financialAccount.update({ where: { code: 'CASH' }, data: { openingBalance: 100_000, openingAt: activatedAt } });
+    await prismaTest.cashbookSetting.update({ where: { id: 1 }, data: { activatedAt } });
+    const input = { orderId, lines: [{ orderItemId, quantity: 1 }], refundMethod: 'CASH' };
+    const [first, retry] = await Promise.all([
+      postReturn(input, 'sales-return-same-key-1'),
+      postReturn(input, 'sales-return-same-key-1')
+    ]);
+
+    expect(first.status).toBe(201);
+    expect(retry.status).toBe(201);
+    expect(first.body.data.id).toBe(retry.body.data.id);
+    expect(await prismaTest.orderReturn.count({ where: { orderId } })).toBe(1);
+    expect(await prismaTest.inventoryTransaction.count({ where: { orderReturnId: first.body.data.id, type: 'SALES_RETURN' } })).toBe(1);
+    expect(await prismaTest.cashVoucher.count({ where: { sourceType: 'SALES_RETURN_REFUND', sourceTransactionId: first.body.data.id } })).toBe(1);
+
+    const mismatch = await postReturn({ ...input, note: 'Yêu cầu khác' }, 'sales-return-same-key-1');
+    expect(mismatch.status).toBe(409);
+    expect(mismatch.body.error.code).toBe('SALES_RETURN_IDEMPOTENCY_KEY_REUSED');
+  });
+
   it('lists and loads a completed return and enforces roles', async () => {
-    const created = await request(app).post(root).set(auth()).send({ orderId, lines: [{ orderItemId, quantity: 1 }], note: 'Khách đổi ý' });
+    const created = await postReturn({ orderId, lines: [{ orderItemId, quantity: 1 }], note: 'Khách đổi ý' }, 'return-list-001');
     const list = await request(app).get(`${root}?statuses=COMPLETED&tableId=${tableId}`).set(auth());
     expect(list.status).toBe(200);
     expect(list.body.data.items[0]).toMatchObject({ returnCode: created.body.data.returnCode, sourceOrderCode: expect.stringContaining('HD-RETURN'), tableNumber: 41, refundedAmount: 50000 });

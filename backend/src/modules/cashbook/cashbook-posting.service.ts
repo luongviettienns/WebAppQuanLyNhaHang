@@ -47,6 +47,32 @@ export function normalizeCashbookPersistenceError(error: unknown): never {
   throw error;
 }
 
+export async function resolveCashbookAccountForPayment(
+  tx: Prisma.TransactionClient,
+  paymentMethod: CashbookPaymentMethod,
+  requestedAccountId?: number | null
+): Promise<number | null> {
+  // Fence source transactions against activation: a payment may be committed either
+  // before activation (outside the ledger) or after activation (inside it), never in-between.
+  await tx.$queryRaw`SELECT id FROM CashbookSetting WHERE id = 1 FOR SHARE`;
+  const setting = await tx.cashbookSetting.findUnique({ where: { id: 1 }, select: { activatedAt: true } });
+  const expectedType = requiredAccountType(paymentMethod);
+  const account = requestedAccountId
+    ? await tx.financialAccount.findUnique({ where: { id: requestedAccountId } })
+    : expectedType === 'CASH'
+      ? await tx.financialAccount.findFirst({ where: { type: 'CASH', isDefault: true, isActive: true } })
+      : null;
+  if (!account) {
+    if (setting?.activatedAt) throw ApiError.badRequest('Cần chọn tài khoản tài chính nhận khoản thanh toán.');
+    return null;
+  }
+  if (!account.isActive) throw ApiError.conflict('Tài khoản tài chính đã ngừng hoạt động.', 'CASHBOOK_ACCOUNT_INACTIVE');
+  if (account.type !== expectedType) {
+    throw ApiError.conflict('Tài khoản nhận tiền không khớp phương thức thanh toán.', 'CASHBOOK_PAYMENT_METHOD_ACCOUNT_MISMATCH');
+  }
+  return account.id;
+}
+
 function voucherCode(direction: CashVoucherDirection, now: Date): string {
   const prefix = direction === CashVoucherDirection.RECEIPT ? 'PT' : 'PC';
   const date = now.toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
@@ -98,6 +124,8 @@ export class CashbookPostingService {
     if (previous) return assertSameReplay(tx, previous, input);
 
     const now = new Date();
+    // Share the activation fence with account resolution, including callers that post directly.
+    await tx.$queryRaw`SELECT id FROM CashbookSetting WHERE id = 1 FOR SHARE`;
     const setting = await tx.cashbookSetting.findUnique({ where: { id: 1 } });
     if (!setting?.activatedAt) return null;
     const occurredAt = input.occurredAt;

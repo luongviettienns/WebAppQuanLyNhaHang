@@ -26,6 +26,13 @@ export function signedAmount(direction: CashbookDirection, amount: number): numb
   return direction === 'RECEIPT' ? validAmount : -validAmount;
 }
 
+export function amountReceivedAfterCredit(totalDue: number, appliedCredit: number): number {
+  if (!Number.isSafeInteger(totalDue) || totalDue < 0 || !Number.isSafeInteger(appliedCredit) || appliedCredit < 0 || appliedCredit > totalDue) {
+    throw new Error('Khoản tiền áp dụng không hợp lệ so với tổng hóa đơn');
+  }
+  return totalDue - appliedCredit;
+}
+
 export function sourceTransactionKey(sourceType: string, transactionId: number): string {
   if (!sourceType.trim() || !Number.isSafeInteger(transactionId) || transactionId <= 0) {
     throw new Error('Nguồn tiền phải gắn với ID giao dịch hợp lệ');

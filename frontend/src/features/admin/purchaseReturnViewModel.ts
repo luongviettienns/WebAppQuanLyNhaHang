@@ -1,4 +1,4 @@
-import type { PurchaseReturnDto, PurchaseReturnLineInput, PurchaseReturnStatus } from '../../api/contracts';
+import type { PurchaseReturnDto, PurchaseReturnLineInput, PurchaseReturnRefundMethod, PurchaseReturnStatus } from '../../api/contracts';
 
 export interface PurchaseReturnComposerLine extends PurchaseReturnLineInput {
   ingredientSku: string;
@@ -16,8 +16,8 @@ export function summarizePurchaseReturn(lines: Array<Pick<PurchaseReturnComposer
   const payableAmount = subtotalAmount - discountAmount + vatAmount;
   return { subtotalAmount, payableAmount, debtReductionAmount: payableAmount - refundAmount, refundAmount };
 }
-export function toPurchaseReturnDraftInput(value: { supplierId: number | null; returnedAt: string; discountAmount: number; vatAmount: number; refundAmount: number; refundMethod: 'CASH' | 'BANK_TRANSFER'; note: string; lines: PurchaseReturnComposerLine[] }) {
-  return { supplierId: value.supplierId, returnedAt: value.returnedAt, discountAmount: value.discountAmount, vatAmount: value.vatAmount, refundAmount: value.refundAmount, refundMethod: value.refundMethod, note: value.note.trim() || null, lines: value.lines.map(line => ({ ingredientId: line.ingredientId, quantity: line.quantity, returnUnitPrice: line.returnUnitPrice })) };
+export function toPurchaseReturnDraftInput(value: { supplierId: number | null; returnedAt: string; discountAmount: number; vatAmount: number; refundAmount: number; refundMethod: PurchaseReturnRefundMethod; financialAccountId: number | null; note: string; lines: PurchaseReturnComposerLine[] }) {
+  return { supplierId: value.supplierId, returnedAt: value.returnedAt, discountAmount: value.discountAmount, vatAmount: value.vatAmount, refundAmount: value.refundAmount, refundMethod: value.refundMethod, financialAccountId: value.financialAccountId, note: value.note.trim() || null, lines: value.lines.map(line => ({ ingredientId: line.ingredientId, quantity: line.quantity, returnUnitPrice: line.returnUnitPrice })) };
 }
 export function getPurchaseReturnStatusPresentation(status: PurchaseReturnStatus) {
   if (status === 'COMPLETED') return { label: 'Hoàn thành', tone: 'success' as const };
@@ -33,6 +33,6 @@ export function validatePurchaseReturnForCompletion(input: { supplierId: number 
   if (input.refundAmount > input.payableAmount) errors.push('Số tiền hoàn không được vượt giá trị phải trả');
   return errors;
 }
-export function applyPurchaseReturnDetail(data: PurchaseReturnDto): { id: number; code: string; status: PurchaseReturnStatus; version: number; supplierId: number | null; lines: PurchaseReturnComposerLine[]; note: string; returnedAt: string; discountAmount: number; vatAmount: number; refundAmount: number; refundMethod: 'CASH' | 'BANK_TRANSFER' } {
-  return { id: data.id, code: data.returnCode, status: data.status, version: data.version, supplierId: data.supplierId, note: data.note || '', returnedAt: data.returnedAt.slice(0, 10), discountAmount: data.discountAmount, vatAmount: data.vatAmount, refundAmount: data.refundAmount, refundMethod: data.refundMethod, lines: data.lines.map(line => ({ ingredientId: line.ingredientId, ingredientSku: line.ingredientSku, ingredientName: line.ingredientName, unit: line.unit, currentStock: line.quantity, quantity: line.quantity, returnUnitPrice: line.returnUnitPrice, purchaseUnitCost: line.purchaseUnitCost })) };
+export function applyPurchaseReturnDetail(data: PurchaseReturnDto): { id: number; code: string; status: PurchaseReturnStatus; version: number; supplierId: number | null; lines: PurchaseReturnComposerLine[]; note: string; returnedAt: string; discountAmount: number; vatAmount: number; refundAmount: number; refundMethod: PurchaseReturnRefundMethod; financialAccountId: number | null } {
+  return { id: data.id, code: data.returnCode, status: data.status, version: data.version, supplierId: data.supplierId, note: data.note || '', returnedAt: data.returnedAt.slice(0, 10), discountAmount: data.discountAmount, vatAmount: data.vatAmount, refundAmount: data.refundAmount, refundMethod: data.refundMethod, financialAccountId: data.financialAccountId ?? null, lines: data.lines.map(line => ({ ingredientId: line.ingredientId, ingredientSku: line.ingredientSku, ingredientName: line.ingredientName, unit: line.unit, currentStock: line.quantity, quantity: line.quantity, returnUnitPrice: line.returnUnitPrice, purchaseUnitCost: line.purchaseUnitCost })) };
 }

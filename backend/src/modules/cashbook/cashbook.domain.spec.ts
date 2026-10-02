@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assertPostingTimePolicy,
   assertVndAmount,
+  amountReceivedAfterCredit,
   manualSourceKey,
   requiredAccountType,
   signedAmount,
@@ -9,6 +10,12 @@ import {
 } from './cashbook.domain';
 
 describe('cashbook money domain', () => {
+  it('counts only new money after an already-paid deposit credit', () => {
+    expect(amountReceivedAfterCredit(1_000_000, 250_000)).toBe(750_000);
+    expect(amountReceivedAfterCredit(1_000_000, 1_000_000)).toBe(0);
+    expect(() => amountReceivedAfterCredit(1_000_000, 1_000_001)).toThrow();
+  });
+
   it('accepts only positive whole VND amounts within the voucher limit', () => {
     expect(assertVndAmount(1)).toBe(1);
     expect(assertVndAmount(2_000_000_000)).toBe(2_000_000_000);

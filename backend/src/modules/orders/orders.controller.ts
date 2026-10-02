@@ -74,7 +74,7 @@ export class OrdersController {
       const orderId = parseInt(req.params.id, 10);
       const input = payOrderSchema.parse(req.body);
 
-      const result = await OrdersService.payOrder(orderId, input, req.user?.id, req.user?.name);
+      const result = await OrdersService.payOrder(orderId, input, req.user?.id, req.user?.name, req.user?.role === 'ADMIN' ? 'ADMIN' : 'CASHIER');
 
       res.status(200).json({
         data: {
@@ -99,7 +99,7 @@ export class OrdersController {
   static async confirmReservationOrderPayment(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const input = confirmOrderPaymentSchema.parse(req.body);
-      const order = await OrdersService.confirmReservationOrderPayment(parseInt(req.params.id, 10), input, req.user!.id, req.user!.name);
+      const order = await OrdersService.confirmReservationOrderPayment(parseInt(req.params.id, 10), input, req.user!.id, req.user!.name, req.user!.role === 'ADMIN' ? 'ADMIN' : 'CASHIER');
       res.status(200).json({ data: order });
     } catch (error) {
       next(error);

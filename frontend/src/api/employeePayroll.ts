@@ -57,7 +57,7 @@ export interface EmployeePayrollMutationDto {
 export interface CreateEmployeePayrollInput { branchId: number; month: string; scope: 'ALL' | 'CUSTOM'; employeeIds?: number[] }
 export interface PayrollReasonInput { reason: string }
 export interface PayrollAdjustmentInput extends PayrollReasonInput { type: 'BONUS' | 'DEDUCTION'; amount: number }
-export interface PayrollPaymentInput { amount: number; method: 'CASH' | 'BANK_TRANSFER' | 'OTHER'; externalReference?: string; note?: string; paidAt?: string }
+export interface PayrollPaymentInput { amount: number; method: 'CASH' | 'BANK_TRANSFER' | 'OTHER'; financialAccountId?: number | null; externalReference?: string; note?: string; paidAt?: string }
 
 export class EmployeePayrollApiError extends Error {
   constructor(message: string, readonly code: ErrorCode, readonly status: number, readonly details?: Record<string, unknown>) {

@@ -24,11 +24,12 @@ vi.mock('../../api/employeePayroll', () => ({
   reverseEmployeePayrollPaymentApi: vi.fn(), downloadEmployeePayrollApi: vi.fn()
 }));
 vi.mock('../../api/employeeManagement', () => ({ fetchEmployeesApi: vi.fn() }));
+vi.mock('../../api/cashbook', () => ({ getDefaultCashbookAccountId: vi.fn(async () => 12) }));
 vi.mock('./EmployeePayrollCreateModal', () => ({ EmployeePayrollCreateModal: (props: any) => React.createElement('Modal', { testID: 'payroll-create-modal', ...props }) }));
 vi.mock('./EmployeePayrollDetail', () => ({ EmployeePayrollDetail: (props: any) => React.createElement('View', { testID: 'payroll-detail', ...props }, React.createElement('Text', null, props.detail.name)) }));
 
 import { fetchEmployeesApi } from '../../api/employeeManagement';
-import { downloadEmployeePayrollApi, fetchEmployeePayrollDetailApi, fetchEmployeePayrollsApi } from '../../api/employeePayroll';
+import { downloadEmployeePayrollApi, fetchEmployeePayrollDetailApi, fetchEmployeePayrollsApi, recordEmployeePayrollPaymentApi } from '../../api/employeePayroll';
 import { EmployeePayrollScreen } from './EmployeePayrollScreen';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
@@ -68,6 +69,17 @@ describe('EmployeePayrollScreen', () => {
     await act(async () => { screen.root.findByProps({ testID: 'payroll-row-1' }).props.onPress(); await Promise.resolve(); });
     expect(fetchEmployeePayrollDetailApi).toHaveBeenCalledWith('admin-token', 1);
     expect(screen.root.findByProps({ testID: 'payroll-detail' })).toBeDefined();
+  });
+
+  it('uses the cashbook account selected in payroll detail instead of replacing it with a default', async () => {
+    let screen: any;
+    await act(async () => { screen = create(<EmployeePayrollScreen />); await Promise.resolve(); });
+    await act(async () => { screen.root.findByProps({ testID: 'payroll-row-1' }).props.onPress(); await Promise.resolve(); });
+    const detailView = screen.root.findByProps({ testID: 'payroll-detail' });
+    await act(async () => { await detailView.props.onPay(10, { amount: 250_000, method: 'BANK_TRANSFER', financialAccountId: 41 }); });
+
+    expect(recordEmployeePayrollPaymentApi).toHaveBeenCalledWith('admin-token', 1, 10,
+      { amount: 250_000, method: 'BANK_TRANSFER', financialAccountId: 41 }, expect.any(String));
   });
 
   it('opens the create modal and collapses filters on compact screens', async () => {

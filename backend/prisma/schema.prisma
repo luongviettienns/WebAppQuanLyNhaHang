@@ -607,31 +607,34 @@ model EmployeePayrollAdjustment {
 }
 
 model EmployeePayrollPayment {
-  id                Int                  @id @default(autoincrement())
-  payrollBatchId    Int
-  payrollLineId     Int
-  employeeId        Int
-  amount            Int
-  method            PayrollPaymentMethod
-  externalReference String?              @db.VarChar(120)
-  note              String?              @db.VarChar(500)
-  status            PayrollPaymentStatus @default(SUCCESS)
-  paidAt            DateTime
-  createdByUserId   Int
-  createdAt         DateTime             @default(now())
-  reversedAt        DateTime?
-  reversedByUserId  Int?
-  reverseReason     String?              @db.VarChar(500)
+  id                 Int                  @id @default(autoincrement())
+  payrollBatchId     Int
+  payrollLineId      Int
+  employeeId         Int
+  amount             Int
+  method             PayrollPaymentMethod
+  financialAccountId Int?
+  externalReference  String?              @db.VarChar(120)
+  note               String?              @db.VarChar(500)
+  status             PayrollPaymentStatus @default(SUCCESS)
+  paidAt             DateTime
+  createdByUserId    Int
+  createdAt          DateTime             @default(now())
+  reversedAt         DateTime?
+  reversedByUserId   Int?
+  reverseReason      String?              @db.VarChar(500)
 
-  payrollBatch EmployeePayrollBatch @relation(fields: [payrollBatchId], references: [id], onDelete: Restrict)
-  payrollLine  EmployeePayrollLine  @relation(fields: [payrollLineId], references: [id], onDelete: Restrict)
-  employee     Employee             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
-  createdBy    User                 @relation("EmployeePayrollPaymentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  reversedBy   User?                @relation("EmployeePayrollPaymentReverser", fields: [reversedByUserId], references: [id], onDelete: Restrict)
+  payrollBatch     EmployeePayrollBatch @relation(fields: [payrollBatchId], references: [id], onDelete: Restrict)
+  payrollLine      EmployeePayrollLine  @relation(fields: [payrollLineId], references: [id], onDelete: Restrict)
+  employee         Employee             @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  createdBy        User                 @relation("EmployeePayrollPaymentCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  reversedBy       User?                @relation("EmployeePayrollPaymentReverser", fields: [reversedByUserId], references: [id], onDelete: Restrict)
+  financialAccount FinancialAccount?    @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
 
   @@index([payrollLineId, status, paidAt])
   @@index([payrollBatchId, status, paidAt])
   @@index([employeeId, paidAt])
+  @@index([financialAccountId, paidAt])
 }
 
 model EmployeePayrollIdempotency {
@@ -937,23 +940,26 @@ model Reservation {
 }
 
 model ReservationDepositTransaction {
-  id                Int                                 @id @default(autoincrement())
-  reservationId     Int
-  orderId           Int?
-  type              ReservationDepositTransactionType
-  status            ReservationDepositTransactionStatus @default(PENDING)
-  amount            Int
-  paymentMethod     PaymentMethod?
-  externalReference String?                             @unique @db.VarChar(120)
-  reason            String?                             @db.VarChar(500)
-  confirmedByUserId Int?
-  confirmedAt       DateTime?
-  createdAt         DateTime                            @default(now())
+  id                 Int                                 @id @default(autoincrement())
+  reservationId      Int
+  orderId            Int?
+  type               ReservationDepositTransactionType
+  status             ReservationDepositTransactionStatus @default(PENDING)
+  amount             Int
+  paymentMethod      PaymentMethod?
+  financialAccountId Int?
+  externalReference  String?                             @unique @db.VarChar(120)
+  reason             String?                             @db.VarChar(500)
+  confirmedByUserId  Int?
+  confirmedAt        DateTime?
+  createdAt          DateTime                            @default(now())
 
-  reservation Reservation @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  reservation      Reservation       @relation(fields: [reservationId], references: [id], onDelete: Restrict)
+  financialAccount FinancialAccount? @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
 
   @@unique([reservationId, orderId])
   @@index([reservationId, createdAt])
+  @@index([financialAccountId, confirmedAt])
 }
 
 model ReservationChange {
@@ -1171,21 +1177,24 @@ model Order {
 }
 
 model OrderPaymentTransaction {
-  id                Int                           @id @default(autoincrement())
-  orderId           Int
-  status            OrderPaymentTransactionStatus @default(PENDING)
-  amount            Int
-  paymentMethod     PaymentMethod                 @default(BANK_TRANSFER)
-  externalReference String?                       @unique @db.VarChar(120)
-  reason            String?                       @db.VarChar(500)
-  confirmedByUserId Int?
-  confirmedAt       DateTime?
-  createdAt         DateTime                      @default(now())
+  id                 Int                           @id @default(autoincrement())
+  orderId            Int
+  status             OrderPaymentTransactionStatus @default(PENDING)
+  amount             Int
+  paymentMethod      PaymentMethod                 @default(BANK_TRANSFER)
+  financialAccountId Int?
+  externalReference  String?                       @unique @db.VarChar(120)
+  reason             String?                       @db.VarChar(500)
+  confirmedByUserId  Int?
+  confirmedAt        DateTime?
+  createdAt          DateTime                      @default(now())
 
-  order           Order @relation(fields: [orderId], references: [id], onDelete: Restrict)
-  confirmedByUser User? @relation("OrderPaymentConfirmer", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
+  order            Order             @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  financialAccount FinancialAccount? @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  confirmedByUser  User?             @relation("OrderPaymentConfirmer", fields: [confirmedByUserId], references: [id], onDelete: SetNull)
 
   @@index([orderId, status, createdAt])
+  @@index([financialAccountId, confirmedAt])
 }
 
 model OrderItem {
@@ -1206,29 +1215,35 @@ model OrderItem {
 }
 
 model OrderReturn {
-  id                Int               @id @default(autoincrement())
-  returnCode        String            @unique
-  orderId           Int
-  status            OrderReturnStatus @default(COMPLETED)
-  returnedAt        DateTime          @default(now())
-  totalRefundDue    Int               @default(0)
-  refundedAmount    Int               @default(0)
-  refundMethod      PaymentMethod     @default(CASH)
-  note              String?           @db.VarChar(1000)
-  createdByUserId   Int?
-  createdByName     String?           @db.VarChar(120)
-  completedAt       DateTime?
-  cancelledByUserId Int?
-  cancelledAt       DateTime?
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
+  id                 Int               @id @default(autoincrement())
+  returnCode         String            @unique
+  orderId            Int
+  status             OrderReturnStatus @default(COMPLETED)
+  returnedAt         DateTime          @default(now())
+  totalRefundDue     Int               @default(0)
+  refundedAmount     Int               @default(0)
+  refundMethod       PaymentMethod     @default(CASH)
+  financialAccountId Int?
+  idempotencyKey     String?           @db.VarChar(128)
+  requestDigest      String?           @db.Char(64)
+  note               String?           @db.VarChar(1000)
+  createdByUserId    Int?
+  createdByName      String?           @db.VarChar(120)
+  completedAt        DateTime?
+  cancelledByUserId  Int?
+  cancelledAt        DateTime?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
 
   order                 Order                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  financialAccount      FinancialAccount?      @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
   lines                 OrderReturnLine[]
   inventoryTransactions InventoryTransaction[]
 
   @@index([status, returnedAt])
   @@index([orderId, returnedAt])
+  @@index([financialAccountId, completedAt])
+  @@unique([createdByUserId, idempotencyKey], map: "OrderReturn_actor_idempotency_key")
 }
 
 model OrderReturnLine {
@@ -1455,6 +1470,11 @@ enum PurchaseReceiptStatus {
   CANCELLED
 }
 
+enum SupplierPaymentStatus {
+  SUCCESS
+  REVERSED
+}
+
 model Supplier {
   id             Int      @id @default(autoincrement())
   code           String   @unique
@@ -1476,6 +1496,7 @@ model Supplier {
 
   purchaseReceipts PurchaseReceipt[]
   purchaseReturns  PurchaseReturn[]
+  payments         SupplierPayment[]
   group            SupplierGroup?    @relation(fields: [groupId], references: [id], onDelete: Restrict)
 
   @@index([name])
@@ -1525,33 +1546,39 @@ model DeliveryPartnerGroup {
 }
 
 model PurchaseReceipt {
-  id                Int                   @id @default(autoincrement())
-  receiptCode       String                @unique
-  supplierId        Int?
-  receivedAt        DateTime
-  invoiceNumber     String?
-  invoiceDate       DateTime?
-  status            PurchaseReceiptStatus @default(DRAFT)
-  subtotalAmount    Int                   @default(0)
-  discountAmount    Int                   @default(0)
-  paidAmount        Int                   @default(0)
-  note              String?               @db.VarChar(1000)
-  createdByUserId   Int?
-  postedByUserId    Int?
-  postedAt          DateTime?
-  cancelledByUserId Int?
-  cancelledAt       DateTime?
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  id                       Int                   @id @default(autoincrement())
+  receiptCode              String                @unique
+  supplierId               Int?
+  receivedAt               DateTime
+  invoiceNumber            String?
+  invoiceDate              DateTime?
+  status                   PurchaseReceiptStatus @default(DRAFT)
+  subtotalAmount           Int                   @default(0)
+  discountAmount           Int                   @default(0)
+  paidAmount               Int                   @default(0)
+  paymentMethod            PaymentMethod         @default(CASH)
+  financialAccountId       Int?
+  paymentExternalReference String?               @unique @db.VarChar(120)
+  note                     String?               @db.VarChar(1000)
+  createdByUserId          Int?
+  postedByUserId           Int?
+  postedAt                 DateTime?
+  cancelledByUserId        Int?
+  cancelledAt              DateTime?
+  createdAt                DateTime              @default(now())
+  updatedAt                DateTime              @updatedAt
 
   supplier              Supplier?              @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   lines                 PurchaseReceiptLine[]
   purchaseReturns       PurchaseReturn[]
   inventoryTransactions InventoryTransaction[]
   cashVouchers          CashVoucher[]
+  financialAccount      FinancialAccount?      @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+  supplierPayments      SupplierPayment[]
 
   @@index([supplierId, receivedAt])
   @@index([status, receivedAt])
+  @@index([financialAccountId, receivedAt])
 }
 
 model PurchaseReceiptLine {
@@ -1593,9 +1620,46 @@ model FinancialAccount {
   createdAt        DateTime             @default(now()) @db.DateTime(3)
   updatedAt        DateTime             @updatedAt @db.DateTime(3)
 
-  vouchers CashVoucher[]
+  vouchers                       CashVoucher[]
+  reservationDepositTransactions ReservationDepositTransaction[]
+  orderPaymentTransactions       OrderPaymentTransaction[]
+  orderReturns                   OrderReturn[]
+  purchaseReceipts               PurchaseReceipt[]
+  purchaseReturns                PurchaseReturn[]
+  supplierPayments               SupplierPayment[]
+  employeePayrollPayments        EmployeePayrollPayment[]
 
   @@index([type, isActive, isDefault])
+}
+
+model SupplierPayment {
+  id                     Int                   @id @default(autoincrement())
+  supplierId             Int
+  purchaseReceiptId      Int?                  @unique
+  financialAccountId     Int?
+  amount                 Int
+  paymentMethod          PaymentMethod
+  status                 SupplierPaymentStatus @default(SUCCESS)
+  paidAt                 DateTime              @default(now()) @db.DateTime(3)
+  externalReference      String?               @unique @db.VarChar(120)
+  idempotencyKey         String?               @unique @db.VarChar(128)
+  requestDigest          String?               @db.Char(64)
+  reversalIdempotencyKey String?               @unique @db.VarChar(128)
+  reversalRequestDigest  String?               @db.Char(64)
+  note                   String?               @db.VarChar(500)
+  createdByUserId        Int?
+  createdByName          String?               @db.VarChar(120)
+  reversedAt             DateTime?             @db.DateTime(3)
+  reversedByUserId       Int?
+  reverseReason          String?               @db.VarChar(500)
+  createdAt              DateTime              @default(now()) @db.DateTime(3)
+
+  supplier         Supplier          @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  purchaseReceipt  PurchaseReceipt?  @relation(fields: [purchaseReceiptId], references: [id], onDelete: Restrict)
+  financialAccount FinancialAccount? @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
+
+  @@index([supplierId, status, paidAt])
+  @@index([financialAccountId, paidAt])
 }
 
 model CashFlowCategory {
@@ -1716,36 +1780,40 @@ enum PurchaseReturnStatus {
 }
 
 model PurchaseReturn {
-  id                Int                  @id @default(autoincrement())
-  returnCode        String               @unique
-  supplierId        Int?
-  sourceReceiptId   Int?
-  returnedAt        DateTime             @default(now())
-  status            PurchaseReturnStatus @default(DRAFT)
-  version           Int                  @default(1)
-  subtotalAmount    Int                  @default(0)
-  discountAmount    Int                  @default(0)
-  vatAmount         Int                  @default(0)
-  refundAmount      Int                  @default(0)
-  refundMethod      String               @default("CASH") @db.VarChar(20)
-  note              String?              @db.VarChar(1000)
-  createdByUserId   Int?
-  createdByName     String?              @db.VarChar(120)
-  completedByUserId Int?
-  completedAt       DateTime?
-  cancelledByUserId Int?
-  cancelledAt       DateTime?
-  createdAt         DateTime             @default(now())
-  updatedAt         DateTime             @updatedAt
+  id                      Int                  @id @default(autoincrement())
+  returnCode              String               @unique
+  supplierId              Int?
+  sourceReceiptId         Int?
+  returnedAt              DateTime             @default(now())
+  status                  PurchaseReturnStatus @default(DRAFT)
+  version                 Int                  @default(1)
+  subtotalAmount          Int                  @default(0)
+  discountAmount          Int                  @default(0)
+  vatAmount               Int                  @default(0)
+  refundAmount            Int                  @default(0)
+  refundMethod            String               @default("CASH") @db.VarChar(20)
+  financialAccountId      Int?
+  refundExternalReference String?              @unique @db.VarChar(120)
+  note                    String?              @db.VarChar(1000)
+  createdByUserId         Int?
+  createdByName           String?              @db.VarChar(120)
+  completedByUserId       Int?
+  completedAt             DateTime?
+  cancelledByUserId       Int?
+  cancelledAt             DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
 
   supplier              Supplier?              @relation(fields: [supplierId], references: [id], onDelete: Restrict)
   sourceReceipt         PurchaseReceipt?       @relation(fields: [sourceReceiptId], references: [id], onDelete: Restrict)
   lines                 PurchaseReturnLine[]
   inventoryTransactions InventoryTransaction[]
+  financialAccount      FinancialAccount?      @relation(fields: [financialAccountId], references: [id], onDelete: Restrict)
 
   @@index([status, returnedAt])
   @@index([supplierId, returnedAt])
   @@index([sourceReceiptId])
+  @@index([financialAccountId, completedAt])
 }
 
 model PurchaseReturnLine {

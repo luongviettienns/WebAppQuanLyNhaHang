@@ -27,7 +27,7 @@ describe('reservation deposit reconciliation API', () => {
 
   async function createWaitingReservation(phone: string) {
     const created = await request(app).post('/api/reservations').send({
-      name: 'Nguyễn Văn A', phone, scheduledAt: '2026-10-01T12:00:00.000Z', partySize: 4
+      name: 'Nguyễn Văn A', phone, scheduledAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(), partySize: 4
     });
     const declared = await request(app).post(`/api/reservations/public/${created.body.data.accessToken}/payment-declaration`).send({});
     expect(created.status).toBe(201);
@@ -126,7 +126,7 @@ describe('reservation deposit reconciliation API', () => {
   it('reschedules a confirmed reservation without changing its paid deposit', async () => {
     const booking = await createWaitingReservation('0903000205');
     expect((await confirmReservation(booking)).status).toBe(200);
-    const newScheduledAt = '2026-10-02T12:00:00.000Z';
+    const newScheduledAt = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
 
     const response = await request(app)
       .post(`/api/reservations/${booking.id}/reschedule`)

@@ -53,11 +53,17 @@ describe('supplier management workspace', () => {
 
   it('counts only posted net purchases and keeps lifetime outstanding when filtering Vietnam dates', async () => {
     const supplier = await prismaTest.supplier.create({ data: { code: 'NCC-A', name: 'Công ty A' } });
+    const [receiptA, receiptB] = await Promise.all([
+      prismaTest.purchaseReceipt.create({ data: { receiptCode: 'PN-A', supplierId: supplier.id, status: 'POSTED', receivedAt: new Date('2026-09-21T17:00:00Z'), subtotalAmount: 100000, discountAmount: 10000, paidAmount: 30000 } }),
+      prismaTest.purchaseReceipt.create({ data: { receiptCode: 'PN-B', supplierId: supplier.id, status: 'POSTED', receivedAt: new Date('2026-09-22T16:59:59Z'), subtotalAmount: 20000, paidAmount: 20000 } })
+    ]);
     await prismaTest.purchaseReceipt.createMany({ data: [
-      { receiptCode: 'PN-A', supplierId: supplier.id, status: 'POSTED', receivedAt: new Date('2026-09-21T17:00:00Z'), subtotalAmount: 100000, discountAmount: 10000, paidAmount: 30000 },
-      { receiptCode: 'PN-B', supplierId: supplier.id, status: 'POSTED', receivedAt: new Date('2026-09-22T16:59:59Z'), subtotalAmount: 20000, paidAmount: 20000 },
       { receiptCode: 'PN-C', supplierId: supplier.id, status: 'DRAFT', receivedAt: new Date('2026-09-22T05:00:00Z'), subtotalAmount: 999999 },
       { receiptCode: 'PN-D', supplierId: supplier.id, status: 'CANCELLED', receivedAt: new Date('2026-09-22T05:00:00Z'), subtotalAmount: 999999 }
+    ] });
+    await prismaTest.supplierPayment.createMany({ data: [
+      { supplierId: supplier.id, purchaseReceiptId: receiptA.id, amount: 30000, paymentMethod: 'CASH', paidAt: receiptA.receivedAt },
+      { supplierId: supplier.id, purchaseReceiptId: receiptB.id, amount: 20000, paymentMethod: 'CASH', paidAt: receiptB.receivedAt }
     ] });
     const list = await request(app).get(url + '/suppliers?from=2026-09-22&to=2026-09-22').set('Authorization', 'Bearer ' + token);
     expect(list.status).toBe(200);

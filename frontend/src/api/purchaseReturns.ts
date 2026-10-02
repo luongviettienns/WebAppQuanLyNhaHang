@@ -33,8 +33,8 @@ export async function savePurchaseReturnDraftApi(token: string | null, id: numbe
   if (!response.ok) await throwApiError(response, 'Lỗi lưu phiếu trả hàng nhập');
   return (await response.json() as { data: PurchaseReturnDetailDto }).data;
 }
-export async function completePurchaseReturnApi(token: string | null, id: number, expectedVersion: number): Promise<PurchaseReturnDetailDto> {
-  const response = await fetch(getApiBaseUrl() + '/api/inventory/purchase-returns/' + id + '/complete', { method: 'POST', headers: jsonHeaders(token), body: JSON.stringify({ expectedVersion }) });
+export async function completePurchaseReturnApi(token: string | null, id: number, expectedVersion: number, financialAccountId?: number | null): Promise<PurchaseReturnDetailDto> {
+  const response = await fetch(getApiBaseUrl() + '/api/inventory/purchase-returns/' + id + '/complete', { method: 'POST', headers: jsonHeaders(token), body: JSON.stringify({ expectedVersion, financialAccountId }) });
   if (!response.ok) await throwApiError(response, 'Lỗi hoàn thành phiếu trả hàng nhập');
   return (await response.json() as { data: PurchaseReturnDetailDto }).data;
 }

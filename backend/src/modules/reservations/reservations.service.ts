@@ -5,6 +5,8 @@ import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { AuditService } from '../audit/audit.service';
 import { getVietQrInstructions } from '../../lib/vietqr';
+import { CashbookPostingService, normalizeCashbookPersistenceError, resolveCashbookAccountForPayment } from '../cashbook/cashbook-posting.service';
+import { cashbookChangedEvent } from '../cashbook/cashbook.events';
 import {
   CheckInReservationInput,
   ConfirmDepositInput,
@@ -154,9 +156,9 @@ export class ReservationsService {
     return staffReservation;
   }
 
-  static async confirmDeposit(reservationId: number, input: ConfirmDepositInput, actorId: number, actorName: string) {
+  static async confirmDeposit(reservationId: number, input: ConfirmDepositInput, actorId: number, actorName: string, actorRole: 'ADMIN' | 'CASHIER' = 'CASHIER') {
     try {
-      const reservation = await prisma.$transaction(async tx => {
+      const result = await prisma.$transaction(async tx => {
         await tx.$queryRaw`SELECT id FROM Reservation WHERE id = ${reservationId} FOR UPDATE`;
         const current = await tx.reservation.findUnique({ where: { id: reservationId } });
         if (!current) throw ApiError.notFound('Không tìm thấy thông tin đặt bàn');
@@ -166,11 +168,20 @@ export class ReservationsService {
         if (input.amount !== current.depositAmount) throw ApiError.badRequest('Số tiền xác nhận phải khớp với tiền cọc yêu cầu');
 
         const confirmedAt = new Date();
-        await tx.reservationDepositTransaction.create({ data: {
+        const financialAccountId = await resolveCashbookAccountForPayment(tx, input.paymentMethod, input.financialAccountId);
+        const payment = await tx.reservationDepositTransaction.create({ data: {
           reservationId, type: 'DEPOSIT', status: 'SUCCESS', amount: input.amount,
-          paymentMethod: input.paymentMethod, externalReference: input.externalReference,
+          paymentMethod: input.paymentMethod, financialAccountId, externalReference: input.externalReference,
           confirmedByUserId: actorId, confirmedAt
         } });
+        const category = await tx.cashFlowCategory.findUniqueOrThrow({ where: { code: 'CUSTOMER_PAYMENT' } });
+        const voucher = financialAccountId === null ? null : await CashbookPostingService.post(tx, {
+          direction: 'RECEIPT', amount: payment.amount, accountId: financialAccountId, categoryId: category.id,
+          paymentMethod: input.paymentMethod, occurredAt: confirmedAt, sourceType: 'RESERVATION_DEPOSIT',
+          sourceTransactionId: payment.id, sourceCode: current.code,
+          counterpartyType: 'CUSTOMER', counterpartyId: current.customerId, counterpartyName: current.contactName,
+          note: 'Thu tiền cọc đặt bàn'
+        }, { id: actorId, name: actorName, role: actorRole });
         const updated = await tx.reservation.update({
           where: { id: reservationId }, data: { status: 'CONFIRMED', depositStatus: 'PAID' }
         });
@@ -179,15 +190,16 @@ export class ReservationsService {
           actorId, actorName,
           metadata: { amount: input.amount, paymentMethod: input.paymentMethod, externalReference: input.externalReference }
         });
-        return updated;
+        return { reservation: updated, voucher };
       });
-      emitToAll('reservations:changed', { ids: [reservation.id], updatedAt: new Date().toISOString() });
-      return reservation;
+      emitToAll('reservations:changed', { ids: [result.reservation.id], updatedAt: new Date().toISOString() });
+      if (result.voucher) emitToAll('cashbook:changed', cashbookChangedEvent(result.voucher));
+      return result.reservation;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
         throw ApiError.conflict('Mã giao dịch này đã được ghi nhận');
       }
-      throw error;
+      normalizeCashbookPersistenceError(error);
     }
   }
 
@@ -216,9 +228,9 @@ export class ReservationsService {
     return reservation;
   }
 
-  static async refundDeposit(reservationId: number, input: RefundDepositInput, actorId: number, actorName: string) {
+  static async refundDeposit(reservationId: number, input: RefundDepositInput, actorId: number, actorName: string, actorRole: 'ADMIN' | 'CASHIER' = 'CASHIER') {
     try {
-      const reservation = await prisma.$transaction(async tx => {
+      const result = await prisma.$transaction(async tx => {
         await tx.$queryRaw`SELECT id FROM Reservation WHERE id = ${reservationId} FOR UPDATE`;
         const current = await tx.reservation.findUnique({ where: { id: reservationId } });
         if (!current) throw ApiError.notFound('Không tìm thấy thông tin đặt bàn');
@@ -231,20 +243,37 @@ export class ReservationsService {
         const alreadyApplied = movements.filter(row => row.type === 'APPLY_TO_BILL' || row.type === 'FORFEIT').reduce((sum, row) => sum + row.amount, 0);
         const refundable = received - alreadyRefunded - alreadyApplied;
         if (input.amount > refundable) throw ApiError.badRequest('Số tiền hoàn vượt quá tiền cọc còn lại');
+        let pendingRefundId: number | null = null;
         if (current.depositStatus === 'REFUND_PENDING') {
           const pendingRefunds = await tx.reservationDepositTransaction.findMany({
-            where: { reservationId, status: 'PENDING', type: { in: ['REFUND', 'PARTIAL_REFUND'] } }, select: { amount: true }
+            where: { reservationId, status: 'PENDING', type: { in: ['REFUND', 'PARTIAL_REFUND'] } }, select: { id: true, amount: true, type: true }
           });
           const expectedAmount = pendingRefunds.reduce((sum, row) => sum + row.amount, 0);
           if (input.amount !== expectedAmount) throw ApiError.conflict('Số tiền hoàn phải khớp với khoản hoàn đang chờ xử lý');
+          if (pendingRefunds.length !== 1) throw ApiError.conflict('Cần xử lý từng khoản hoàn đang chờ riêng lẻ');
+          pendingRefundId = pendingRefunds[0].id;
         }
 
         const now = new Date();
-        await tx.reservationDepositTransaction.create({ data: {
-          reservationId, type: input.amount === current.depositAmount ? 'REFUND' : 'PARTIAL_REFUND', status: 'SUCCESS',
-          amount: input.amount, paymentMethod: 'BANK_TRANSFER', externalReference: input.externalReference,
-          reason: input.reason, confirmedByUserId: actorId, confirmedAt: now
-        } });
+        const financialAccountId = await resolveCashbookAccountForPayment(tx, 'BANK_TRANSFER', input.financialAccountId);
+        const refund = pendingRefundId !== null
+          ? await tx.reservationDepositTransaction.update({ where: { id: pendingRefundId }, data: {
+            status: 'SUCCESS', paymentMethod: 'BANK_TRANSFER', financialAccountId,
+            externalReference: input.externalReference, reason: input.reason, confirmedByUserId: actorId, confirmedAt: now
+          } })
+          : await tx.reservationDepositTransaction.create({ data: {
+            reservationId, type: input.amount === current.depositAmount ? 'REFUND' : 'PARTIAL_REFUND', status: 'SUCCESS',
+            amount: input.amount, paymentMethod: 'BANK_TRANSFER', financialAccountId, externalReference: input.externalReference,
+            reason: input.reason, confirmedByUserId: actorId, confirmedAt: now
+          } });
+        const category = await tx.cashFlowCategory.findUniqueOrThrow({ where: { code: 'CUSTOMER_REFUND' } });
+        const voucher = financialAccountId === null ? null : await CashbookPostingService.post(tx, {
+          direction: 'PAYMENT', amount: refund.amount, accountId: financialAccountId, categoryId: category.id,
+          paymentMethod: 'BANK_TRANSFER', occurredAt: now, sourceType: 'RESERVATION_REFUND',
+          sourceTransactionId: refund.id, sourceCode: current.code,
+          counterpartyType: 'CUSTOMER', counterpartyId: current.customerId, counterpartyName: current.contactName,
+          note: input.reason
+        }, { id: actorId, name: actorName, role: actorRole });
         const remainingAfterRefund = refundable - input.amount;
         const updated = await tx.reservation.update({ where: { id: reservationId }, data: {
           depositStatus: remainingAfterRefund === 0 ? 'REFUNDED' : 'PAID'
@@ -253,13 +282,14 @@ export class ReservationsService {
           action: 'RESERVATION_DEPOSIT_REFUNDED', targetType: 'Reservation', targetId: reservationId,
           actorId, actorName, metadata: { amount: input.amount, externalReference: input.externalReference, reason: input.reason }
         });
-        return updated;
+        return { reservation: updated, voucher };
       });
-      emitToAll('reservations:changed', { ids: [reservation.id], updatedAt: new Date().toISOString() });
-      return reservation;
+      emitToAll('reservations:changed', { ids: [result.reservation.id], updatedAt: new Date().toISOString() });
+      if (result.voucher) emitToAll('cashbook:changed', cashbookChangedEvent(result.voucher));
+      return result.reservation;
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw ApiError.conflict('Mã giao dịch này đã được ghi nhận');
-      throw error;
+      normalizeCashbookPersistenceError(error);
     }
   }
 

@@ -125,17 +125,17 @@ CREATE TABLE `CashVoucher` (
 ALTER TABLE `CashbookSetting`
   ADD CONSTRAINT `CashbookSetting_activatedByUserId_fkey` FOREIGN KEY (`activatedByUserId`) REFERENCES `User`(`id`) ON DELETE SET NULL ON UPDATE CASCADE;
 
-INSERT INTO `FinancialAccount` (`code`, `name`, `type`, `openingBalance`, `openingAt`, `isDefault`, `isActive`)
-VALUES ('CASH', 'Tiền mặt', 'CASH', 0, CURRENT_TIMESTAMP(3), true, true);
+INSERT INTO `FinancialAccount` (`code`, `name`, `type`, `openingBalance`, `openingAt`, `isDefault`, `isActive`, `updatedAt`)
+VALUES ('CASH', 'Tiền mặt', 'CASH', 0, CURRENT_TIMESTAMP(3), true, true, CURRENT_TIMESTAMP(3));
 
-INSERT INTO `CashFlowCategory` (`code`, `name`, `direction`, `affectsBusinessResultDefault`, `isSystem`, `isActive`) VALUES
-  ('CUSTOMER_PAYMENT', 'Khách thanh toán', 'RECEIPT', false, true, true),
-  ('SUPPLIER_REFUND', 'Nhà cung cấp hoàn tiền', 'RECEIPT', false, true, true),
-  ('OTHER_INCOME', 'Thu khác', 'RECEIPT', true, true, true),
-  ('SUPPLIER_PAYMENT', 'Trả nhà cung cấp', 'PAYMENT', false, true, true),
-  ('CUSTOMER_REFUND', 'Hoàn tiền khách', 'PAYMENT', false, true, true),
-  ('OPERATING_EXPENSE', 'Chi phí vận hành', 'PAYMENT', true, true, true),
-  ('OTHER_EXPENSE', 'Chi khác', 'PAYMENT', true, true, true);
+INSERT INTO `CashFlowCategory` (`code`, `name`, `direction`, `affectsBusinessResultDefault`, `isSystem`, `isActive`, `updatedAt`) VALUES
+  ('CUSTOMER_PAYMENT', 'Khách thanh toán', 'RECEIPT', false, true, true, CURRENT_TIMESTAMP(3)),
+  ('SUPPLIER_REFUND', 'Nhà cung cấp hoàn tiền', 'RECEIPT', false, true, true, CURRENT_TIMESTAMP(3)),
+  ('OTHER_INCOME', 'Thu khác', 'RECEIPT', true, true, true, CURRENT_TIMESTAMP(3)),
+  ('SUPPLIER_PAYMENT', 'Trả nhà cung cấp', 'PAYMENT', false, true, true, CURRENT_TIMESTAMP(3)),
+  ('CUSTOMER_REFUND', 'Hoàn tiền khách', 'PAYMENT', false, true, true, CURRENT_TIMESTAMP(3)),
+  ('OPERATING_EXPENSE', 'Chi phí vận hành', 'PAYMENT', true, true, true, CURRENT_TIMESTAMP(3)),
+  ('OTHER_EXPENSE', 'Chi khác', 'PAYMENT', true, true, true, CURRENT_TIMESTAMP(3));
 
-INSERT INTO `CashbookSetting` (`id`, `activatedAt`, `activatedByUserId`)
-VALUES (1, NULL, NULL);
+INSERT INTO `CashbookSetting` (`id`, `activatedAt`, `activatedByUserId`, `updatedAt`)
+VALUES (1, NULL, NULL, CURRENT_TIMESTAMP(3));

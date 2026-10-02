@@ -115,7 +115,7 @@ export class CashbookService {
       if (!result) throw ApiError.conflict('Sổ quỹ chưa được kích hoạt.', 'CASHBOOK_SETTING_INACTIVE');
       if (!isReplay) await AuditService.logInTransaction(tx, {
         action: 'CASHBOOK_VOUCHER_CREATED', targetType: 'CashVoucher', targetId: result.id,
-        actorId: actor.id, actorName: actor.name ?? null, metadata: { direction: result.direction, amount: result.amount, accountId: result.accountId }
+        actorId: actor.id, actorName: actor.name ?? null, metadata: { direction: result.direction, amount: result.amount, accountId: result.accountId, reason: input.reason ?? null }
       });
       return result;
     }).catch(normalizeCashbookPersistenceError);

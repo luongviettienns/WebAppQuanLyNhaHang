@@ -9,7 +9,7 @@ export type OrderType = 'DINE_IN' | 'TAKE_AWAY' | 'DELIVERY';
 export type DeliveryPartnerType = 'INDIVIDUAL' | 'COMPANY';
 export type OrderStatus = 'PENDING' | 'PREPARING' | 'READY' | 'COMPLETED' | 'CANCELLED';
 export type TableStatus = 'AVAILABLE' | 'OCCUPIED' | 'NEED_CLEANING' | 'DIRTY';
-export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD';
+export type PaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD' | 'E_WALLET';
 export type PaymentStatus = 'UNPAID' | 'WAITING_CONFIRMATION' | 'PAID' | 'VOIDED';
 export type MenuType = 'FOOD' | 'DRINK' | 'SERVICE' | 'OTHER';
 export type MenuItemType = 'REGULAR' | 'TOPPING' | 'COMBO' | 'SERVICE';
@@ -561,6 +561,7 @@ export interface SalesReturnCreateInput {
   orderId: number;
   lines: Array<{ orderItemId: number; quantity: number }>;
   refundMethod?: PaymentMethod;
+  financialAccountId?: number | null;
   refundedAmount?: number;
   note?: string;
 }
@@ -825,6 +826,8 @@ export interface PurchaseReceiptDto {
   discountAmount: number;
   payableAmount: number;
   paidAmount: number;
+  paymentMethod?: PaymentMethod;
+  financialAccountId?: number | null;
   outstandingAmount: number;
   note: string | null;
   createdByUserId: number | null;
@@ -874,6 +877,8 @@ export interface PurchaseReceiptDraftInput {
   invoiceDate?: string | null;
   discountAmount?: number;
   paidAmount?: number;
+  paymentMethod?: PaymentMethod;
+  financialAccountId?: number | null;
   note?: string | null;
   lines: PurchaseReceiptLineInput[];
 }
@@ -1096,7 +1101,7 @@ export interface InventoryWasteImportPreviewDto {
 export type InventoryWasteExportFormat = 'csv' | 'xlsx';
 
 export type PurchaseReturnStatus = 'DRAFT' | 'COMPLETED' | 'CANCELLED';
-export type PurchaseReturnRefundMethod = 'CASH' | 'BANK_TRANSFER';
+export type PurchaseReturnRefundMethod = PaymentMethod;
 
 export interface PurchaseReturnLineDto {
   id: number;
@@ -1128,6 +1133,7 @@ export interface PurchaseReturnDto {
   vatAmount: number;
   refundAmount: number;
   refundMethod: PurchaseReturnRefundMethod;
+  financialAccountId?: number | null;
   payableAmount: number;
   debtReductionAmount: number;
   note: string | null;
@@ -1166,6 +1172,7 @@ export interface PurchaseReturnDraftInput {
   vatAmount?: number;
   refundAmount?: number;
   refundMethod?: PurchaseReturnRefundMethod;
+  financialAccountId?: number | null;
   note?: string | null;
   expectedVersion?: number;
 }

@@ -1,7 +1,7 @@
 import { CashVoucherDirection, CashVoucherSourceType, Prisma, type CashVoucher } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { calculateChronologicalBalances } from '../../src/modules/cashbook/cashbook-balance.service';
-import { CashbookPostingService } from '../../src/modules/cashbook/cashbook-posting.service';
+import { CashbookPostingService, resolveCashbookAccountForPayment } from '../../src/modules/cashbook/cashbook-posting.service';
 
 describe('cashbook chronological balance invariants', () => {
   it('places a new voucher after existing vouchers at the same timestamp', () => {
@@ -41,7 +41,7 @@ describe('cashbook chronological balance invariants', () => {
       occurredAt, sourceType: CashVoucherSourceType.MANUAL, clientRequestId: 'retry-abc', note: 'Thu khác', reason: 'Chứng từ về trễ'
     }, { id: 7, role: 'ADMIN' });
 
-    expect(lock).toHaveBeenCalledOnce();
+    expect(lock).toHaveBeenCalledTimes(2);
     expect(lock.mock.invocationCallOrder[0]).toBeLessThan(ledgerRead.mock.invocationCallOrder[0]);
     expect(create).toHaveBeenCalledOnce();
     expect(create.mock.calls[0][0].data).toMatchObject({ sourceKey: 'MANUAL:7:retry-abc', sourceType: 'MANUAL', amount: 500 });
@@ -114,5 +114,24 @@ describe('cashbook chronological balance invariants', () => {
     await expect(CashbookPostingService.reverseManualVoucher(tx, 11, { id: 7, role: 'ADMIN' }, 'Hủy phiếu chi'))
       .rejects.toMatchObject({ code: 'CASHBOOK_REVERSAL_ALREADY_EXISTS' });
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('resolves the default cash account and rejects a mismatched non-cash account', async () => {
+    const fence = vi.fn().mockResolvedValue([]);
+    const readSetting = vi.fn().mockResolvedValue({ activatedAt: null });
+    const tx = {
+      $queryRaw: fence,
+      cashbookSetting: { findUnique: readSetting },
+      financialAccount: {
+        findFirst: vi.fn().mockResolvedValue({ id: 3, type: 'CASH', isActive: true }),
+        findUnique: vi.fn().mockResolvedValue({ id: 4, type: 'CASH', isActive: true })
+      }
+    } as unknown as Prisma.TransactionClient;
+
+    await expect(resolveCashbookAccountForPayment(tx, 'CASH')).resolves.toBe(3);
+    await expect(resolveCashbookAccountForPayment(tx, 'BANK_TRANSFER', 4))
+      .rejects.toMatchObject({ code: 'CASHBOOK_PAYMENT_METHOD_ACCOUNT_MISMATCH' });
+    expect(fence).toHaveBeenCalledTimes(2);
+    expect(fence.mock.invocationCallOrder[0]).toBeLessThan(readSetting.mock.invocationCallOrder[0]);
   });
 });

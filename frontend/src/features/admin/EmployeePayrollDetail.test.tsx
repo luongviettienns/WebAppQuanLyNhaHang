@@ -6,7 +6,10 @@ import type { EmployeePayrollDetailDto } from '../../api/employeePayroll';
 const { native } = vi.hoisted(() => ({ native: (name: string) => { const C = (props: any) => React.createElement(name, props, props.children); C.displayName = name; return C; } }));
 vi.mock('react-native', () => ({ Pressable: native('Pressable'), ScrollView: native('ScrollView'), StyleSheet: { create: (s: any) => s }, Text: native('Text'), TextInput: native('TextInput'), View: native('View') }));
 vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ theme: { surfaceBase: '#fff', surfaceCanvas: '#f5f7fa', surfaceRaised: '#fff', surfaceSunken: '#f4f6f8', textPrimary: '#172033', textSecondary: '#667085', textInverse: '#fff', borderSubtle: '#dfe7f1', primary: '#0b74e5', interactiveSecondary: '#eaf3ff', warning: '#a86100', danger: '#b42318', success: '#15803d' } }) }));
+vi.mock('../../api/cashbook', () => ({ fetchCashbookSettingsApi: vi.fn().mockResolvedValue({ activatedAt: null }) }));
+vi.mock('../cashbook/CashbookAccountChoice', () => ({ CashbookAccountChoice: (props: any) => React.createElement('Pressable', { testID: 'payroll-cashbook-account', onPress: () => props.onChange(22) }, React.createElement('Text', null, String(props.value ?? '')) ) }));
 import { EmployeePayrollDetail } from './EmployeePayrollDetail';
+import { fetchCashbookSettingsApi } from '../../api/cashbook';
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
 const detail = (status: EmployeePayrollDetailDto['status'] = 'CALCULATED'): EmployeePayrollDetailDto => ({
@@ -28,7 +31,7 @@ const detail = (status: EmployeePayrollDetailDto['status'] = 'CALCULATED'): Empl
 describe('EmployeePayrollDetail', () => {
   it('expands employee truthfully with actual time, planned shift context and separated warnings', async () => {
     let screen: any;
-    await act(async () => { screen = create(<EmployeePayrollDetail detail={detail()} onChanged={async () => {}} />); });
+    await act(async () => { screen = create(<EmployeePayrollDetail token="admin-token" detail={detail()} onChanged={async () => {}} />); });
     await act(async () => screen.root.findByProps({ testID: 'payroll-line-10' }).props.onPress());
     const text = screen.root.findAllByType('Text').flatMap((node: any) => node.props.children).join(' ');
     expect(text).toContain('Thời gian làm thực tế');
@@ -41,14 +44,37 @@ describe('EmployeePayrollDetail', () => {
 
   it('shows lifecycle actions only in the appropriate batch state', async () => {
     let calculated: any; let finalized: any;
-    await act(async () => { calculated = create(<EmployeePayrollDetail detail={detail('CALCULATED')} onChanged={async () => {}} />); });
+    await act(async () => { calculated = create(<EmployeePayrollDetail token="admin-token" detail={detail('CALCULATED')} onChanged={async () => {}} />); });
     expect(calculated.root.findByProps({ testID: 'payroll-action-recalculate' })).toBeDefined();
     expect(calculated.root.findByProps({ testID: 'payroll-action-finalize' })).toBeDefined();
     expect(() => calculated.root.findByProps({ testID: 'payroll-line-pay-10' })).toThrow();
-    await act(async () => { finalized = create(<EmployeePayrollDetail detail={detail('FINALIZED')} onChanged={async () => {}} />); });
+    await act(async () => { finalized = create(<EmployeePayrollDetail token="admin-token" detail={detail('FINALIZED')} onChanged={async () => {}} />); });
     expect(() => finalized.root.findByProps({ testID: 'payroll-action-recalculate' })).toThrow();
     await act(async () => finalized.root.findByProps({ testID: 'payroll-line-10' }).props.onPress());
     expect(finalized.root.findByProps({ testID: 'payroll-line-pay-10' })).toBeDefined();
+  });
+
+  it('passes the selected cashbook account into a payroll payment', async () => {
+    const onPay = vi.fn(async () => {});
+    let screen: any;
+    await act(async () => { screen = create(<EmployeePayrollDetail token="admin-token" detail={detail('FINALIZED')} onChanged={async () => {}} onPay={onPay} />); });
+    await act(async () => screen.root.findByProps({ testID: 'payroll-line-10' }).props.onPress());
+    const amountField = screen.root.findAllByType('TextInput').find((node: any) => String(node.props.placeholder).startsWith('Tối đa'));
+    await act(async () => amountField.props.onChangeText('250000'));
+    await act(async () => screen.root.findByProps({ testID: 'payroll-cashbook-account' }).props.onPress());
+    await act(async () => screen.root.findByProps({ testID: 'payroll-line-pay-10' }).props.onPress());
+    expect(onPay).toHaveBeenCalledWith(10, { amount: 250_000, method: 'BANK_TRANSFER', financialAccountId: 22 });
+  });
+
+  it('hides the unsupported OTHER payroll method after cashbook activation', async () => {
+    vi.mocked(fetchCashbookSettingsApi).mockResolvedValueOnce({ activatedAt: '2026-10-01T00:00:00.000Z' } as any);
+    let screen: any;
+    await act(async () => { screen = create(<EmployeePayrollDetail token="admin-token" detail={detail('FINALIZED')} onChanged={async () => {}} />); });
+    await act(async () => screen.root.findByProps({ testID: 'payroll-line-10' }).props.onPress());
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.root.findByProps({ testID: 'payroll-payment-method-cash' })).toBeDefined();
+    expect(screen.root.findByProps({ testID: 'payroll-payment-method-bank_transfer' })).toBeDefined();
+    expect(() => screen.root.findByProps({ testID: 'payroll-payment-method-other' })).toThrow();
   });
 
   it('shows frozen sources and append-only histories with reasoned reversal actions', async () => {
@@ -60,7 +86,7 @@ describe('EmployeePayrollDetail', () => {
     calculatedDetail.lines[0].adjustments = [{ id: 71, type: 'BONUS', amount: 500_000, reason: 'Thưởng tốt', createdAt: '', reversedAt: null, reverseReason: null }];
     const reverseAdjustment = vi.fn().mockResolvedValue(undefined);
     let calculated: any;
-    await act(async () => { calculated = create(<EmployeePayrollDetail detail={calculatedDetail} onChanged={async () => {}} onReverseAdjustment={reverseAdjustment} />); });
+    await act(async () => { calculated = create(<EmployeePayrollDetail token="admin-token" detail={calculatedDetail} onChanged={async () => {}} onReverseAdjustment={reverseAdjustment} />); });
     await act(async () => calculated.root.findByProps({ testID: 'payroll-line-10' }).props.onPress());
     const calculatedText = JSON.stringify(calculated.toJSON());
     expect(calculatedText).toContain('Nguồn tính lương đã đóng băng');
@@ -78,7 +104,7 @@ describe('EmployeePayrollDetail', () => {
     finalizedDetail.lines[0].payments = [{ id: 81, amount: 2_000_000, method: 'BANK_TRANSFER', status: 'SUCCESS', externalReference: 'FT001', note: null, paidAt: '2026-09-30T02:00:00.000Z', reversedAt: null, reverseReason: null }];
     const reversePayment = vi.fn().mockResolvedValue(undefined);
     let finalized: any;
-    await act(async () => { finalized = create(<EmployeePayrollDetail detail={finalizedDetail} onChanged={async () => {}} onReversePayment={reversePayment} />); });
+    await act(async () => { finalized = create(<EmployeePayrollDetail token="admin-token" detail={finalizedDetail} onChanged={async () => {}} onReversePayment={reversePayment} />); });
     await act(async () => finalized.root.findByProps({ testID: 'payroll-line-10' }).props.onPress());
     expect(JSON.stringify(finalized.toJSON())).toContain('FT001');
     expect(finalized.root.findByProps({ testID: 'payroll-payment-reverse-81' })).toBeDefined();
@@ -95,7 +121,7 @@ describe('EmployeePayrollDetail', () => {
       }
     };
     let screen: any;
-    await act(async () => { screen = create(<EmployeePayrollDetail detail={calculatedDetail} onChanged={async () => {}} />); });
+    await act(async () => { screen = create(<EmployeePayrollDetail token="admin-token" detail={calculatedDetail} onChanged={async () => {}} />); });
     await act(async () => screen.root.findByProps({ testID: 'payroll-line-10' }).props.onPress());
     const snapshot = screen.root.findByProps({ testID: 'payroll-settings-snapshot-10' });
     const text = snapshot.findAllByType('Text').map((node: any) => String(node.props.children)).join(' ');

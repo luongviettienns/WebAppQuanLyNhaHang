@@ -117,7 +117,7 @@ interface RestaurantContextType {
     notes?: string;
   }) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string, voucherCode?: string, reservationAccessToken?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
-  payOrder: (orderId: number, paymentMethod: PaymentMethod) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
+  payOrder: (orderId: number, paymentMethod: PaymentMethod, financialAccountId?: number | null) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   updateTableStatus: (tableId: number, status: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') => Promise<{ success: boolean; table?: DiningTableDto; error?: string }>;
   transferTable: (fromTableId: number, toTableId: number) => Promise<{ success: boolean; data?: { fromTable: DiningTableDto; toTable: DiningTableDto }; error?: string }>;
   voidOrder: (orderId: number, reason: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
@@ -134,6 +134,7 @@ interface RestaurantContextType {
   employeeSettingsRevision: number;
   reservationsRevision: number;
   orderPaymentsRevision: number;
+  cashbookRevision: number;
 
   // KDS State (Bếp thời gian thực)
   kdsOrders: OrderDto[];
@@ -232,6 +233,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
   const [employeeSettingsRevision, setEmployeeSettingsRevision] = useState(0);
   const [reservationsRevision, setReservationsRevision] = useState(0);
   const [orderPaymentsRevision, setOrderPaymentsRevision] = useState(0);
+  const [cashbookRevision, setCashbookRevision] = useState(0);
 
   // 1. Fetch Menu from Backend API
   const fetchMenu = useCallback(async () => {
@@ -633,6 +635,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     socket.on('employees:changed', () => setEmployeesRevision(revision => revision + 1));
     socket.on('reservations:changed', () => setReservationsRevision(revision => revision + 1));
     socket.on('order:paymentChanged', () => setOrderPaymentsRevision(revision => revision + 1));
+    socket.on('cashbook:changed', () => setCashbookRevision(revision => revision + 1));
 
     // Table Status Changed
     socket.on('table:statusChanged', (payload: SocketTableStatusChangedPayload) => {
@@ -945,7 +948,8 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const payOrder = async (
     orderId: number,
-    paymentMethod: PaymentMethod
+    paymentMethod: PaymentMethod,
+    financialAccountId?: number | null
   ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
     try {
       const response = await fetch(`${getApiBaseUrl()}/api/orders/${orderId}/pay`, {
@@ -954,7 +958,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         },
-        body: JSON.stringify({ paymentMethod })
+        body: JSON.stringify({ paymentMethod, ...(financialAccountId ? { financialAccountId } : {}) })
       });
 
       if (response.status === 401) {
@@ -1332,6 +1336,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         employeeSettingsRevision,
         reservationsRevision,
         orderPaymentsRevision,
+        cashbookRevision,
         kdsOrders,
         isLoadingKDS,
         kdsError,

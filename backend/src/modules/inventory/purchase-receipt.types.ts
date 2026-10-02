@@ -38,6 +38,9 @@ export type PurchaseReceiptDto = {
   discountAmount: number;
   payableAmount: number;
   paidAmount: number;
+  paymentMethod: 'CASH' | 'BANK_TRANSFER' | 'CREDIT_CARD' | 'E_WALLET';
+  financialAccountId: number | null;
+  paymentExternalReference: string | null;
   outstandingAmount: number;
   note: string | null;
   createdByUserId: number | null;

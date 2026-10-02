@@ -5,6 +5,8 @@ import { SupplierService } from './supplier.service';
 import { supplierGroupSchema, supplierImportFileSchema, supplierImportRowsSchema } from './supplier.schemas';
 import { SupplierReportService } from './supplier-report.service';
 import { SupplierTransferService } from './supplier-transfer.service';
+import { SupplierPaymentService } from './supplier-payment.service';
+import { parseSupplierPaymentIdempotencyKey, parseSupplierPaymentInput, parseSupplierPaymentReversalInput } from './supplier-payment.schemas';
 
 function parseId(value: string) {
   const id = Number(value);
@@ -30,6 +32,25 @@ export class SupplierController {
     try {
       const { page, pageSize } = supplierListQuerySchema.parse(req.query);
       res.json({ data: await SupplierReportService.receipts(parseId(req.params.id), page, pageSize) });
+    } catch (error) { next(error); }
+  }
+  static async recordPayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = await SupplierPaymentService.record(
+        parseId(req.params.id), parseSupplierPaymentInput(req.body),
+        parseSupplierPaymentIdempotencyKey(req.header('Idempotency-Key')),
+        { id: req.user!.id, name: req.user!.name }
+      );
+      res.status(201).json({ data });
+    } catch (error) { next(error); }
+  }
+  static async reversePayment(req: Request, res: Response, next: NextFunction) {
+    try {
+      res.json({ data: await SupplierPaymentService.reverse(
+        parseId(req.params.id), parseSupplierPaymentReversalInput(req.body).reason,
+        parseSupplierPaymentIdempotencyKey(req.header('Idempotency-Key')),
+        { id: req.user!.id, name: req.user!.name }
+      ) });
     } catch (error) { next(error); }
   }
   static async template(_req: Request, res: Response, next: NextFunction) {
