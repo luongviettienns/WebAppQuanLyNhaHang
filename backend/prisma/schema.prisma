@@ -135,6 +135,36 @@ enum PaymentMethod {
   CASH
   BANK_TRANSFER
   CREDIT_CARD
+  E_WALLET
+}
+
+enum FinancialAccountType {
+  CASH
+  BANK
+  E_WALLET
+}
+
+enum CashVoucherDirection {
+  RECEIPT
+  PAYMENT
+}
+
+enum CashVoucherStatus {
+  POSTED
+  CANCELLED
+}
+
+enum CashVoucherSourceType {
+  MANUAL
+  RESERVATION_DEPOSIT
+  RESERVATION_REFUND
+  ORDER_PAYMENT
+  SALES_RETURN_REFUND
+  PURCHASE_RECEIPT_PAYMENT
+  SUPPLIER_PAYMENT
+  PURCHASE_RETURN_REFUND
+  PAYROLL_PAYMENT
+  REVERSAL
 }
 
 enum PaymentStatus {
@@ -267,6 +297,10 @@ model User {
   createdHolidayPeriods             BranchHolidayPeriod[]           @relation("HolidayPeriodCreator")
   archivedHolidayPeriods            BranchHolidayPeriod[]           @relation("HolidayPeriodArchiver")
   scheduleIdempotencies             EmployeeScheduleIdempotency[]
+  createdCashVouchers               CashVoucher[]                   @relation("CashVoucherCreator")
+  handledCashVouchers               CashVoucher[]                   @relation("CashVoucherHandler")
+  cancelledCashVouchers             CashVoucher[]                   @relation("CashVoucherCanceller")
+  activatedCashbooks                CashbookSetting[]               @relation("CashbookActivator")
 }
 
 model Branch {
@@ -1514,6 +1548,7 @@ model PurchaseReceipt {
   lines                 PurchaseReceiptLine[]
   purchaseReturns       PurchaseReturn[]
   inventoryTransactions InventoryTransaction[]
+  cashVouchers          CashVoucher[]
 
   @@index([supplierId, receivedAt])
   @@index([status, receivedAt])
@@ -1540,6 +1575,117 @@ model PurchaseReceiptLine {
 
   @@unique([purchaseReceiptId, ingredientId])
   @@index([ingredientId])
+}
+
+model FinancialAccount {
+  id               Int                  @id @default(autoincrement())
+  code             String               @unique @db.VarChar(40)
+  name             String               @db.VarChar(120)
+  type             FinancialAccountType
+  openingBalance   Int                  @default(0)
+  openingAt        DateTime             @default(now()) @db.DateTime(3)
+  bankName         String?              @db.VarChar(120)
+  accountNumber    String?              @db.VarChar(100)
+  walletProvider   String?              @db.VarChar(120)
+  walletIdentifier String?              @db.VarChar(100)
+  isDefault        Boolean              @default(false)
+  isActive         Boolean              @default(true)
+  createdAt        DateTime             @default(now()) @db.DateTime(3)
+  updatedAt        DateTime             @updatedAt @db.DateTime(3)
+
+  vouchers CashVoucher[]
+
+  @@index([type, isActive, isDefault])
+}
+
+model CashFlowCategory {
+  id                           Int                  @id @default(autoincrement())
+  code                         String               @unique @db.VarChar(40)
+  name                         String               @db.VarChar(120)
+  direction                    CashVoucherDirection
+  affectsBusinessResultDefault Boolean              @default(false)
+  isSystem                     Boolean              @default(false)
+  isActive                     Boolean              @default(true)
+  createdAt                    DateTime             @default(now()) @db.DateTime(3)
+  updatedAt                    DateTime             @updatedAt @db.DateTime(3)
+
+  vouchers CashVoucher[]
+
+  @@index([direction, isActive])
+  @@index([isSystem, isActive])
+}
+
+model FinancialParty {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(160)
+  phone     String?  @db.VarChar(30)
+  note      String?  @db.VarChar(500)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.DateTime(3)
+  updatedAt DateTime @updatedAt @db.DateTime(3)
+
+  @@index([name])
+  @@index([isActive, name])
+}
+
+model CashbookSetting {
+  id                Int       @id @default(1)
+  activatedAt       DateTime? @db.DateTime(3)
+  activatedByUserId Int?
+  createdAt         DateTime  @default(now()) @db.DateTime(3)
+  updatedAt         DateTime  @updatedAt @db.DateTime(3)
+
+  activatedBy User? @relation("CashbookActivator", fields: [activatedByUserId], references: [id], onDelete: SetNull)
+}
+
+model CashVoucher {
+  id                      Int                   @id @default(autoincrement())
+  code                    String                @unique @db.VarChar(40)
+  direction               CashVoucherDirection
+  status                  CashVoucherStatus     @default(POSTED)
+  occurredAt              DateTime              @db.DateTime(3)
+  amount                  Int
+  accountId               Int
+  categoryId              Int
+  paymentMethod           PaymentMethod?
+  handlerUserId           Int?
+  handlerName             String?               @db.VarChar(120)
+  counterpartyType        String?               @db.VarChar(50)
+  counterpartyId          Int?
+  counterpartyName        String?               @db.VarChar(160)
+  note                    String?               @db.VarChar(1000)
+  affectsBusinessResult   Boolean               @default(false)
+  sourceType              CashVoucherSourceType
+  sourceTransactionId     Int?
+  sourceCode              String?               @db.VarChar(100)
+  sourceKey               String                @unique @db.VarChar(191)
+  clientRequestId         String?               @db.VarChar(128)
+  linkedPurchaseReceiptId Int?
+  sourceInvoiceNumber     String?               @db.VarChar(100)
+  sourceInvoiceDate       DateTime?             @db.DateTime(3)
+  reversalOfId            Int?                  @unique
+  cancelledAt             DateTime?             @db.DateTime(3)
+  cancelledByUserId       Int?
+  cancelReason            String?               @db.VarChar(500)
+  createdByUserId         Int
+  createdAt               DateTime              @default(now()) @db.DateTime(3)
+  updatedAt               DateTime              @updatedAt @db.DateTime(3)
+
+  account               FinancialAccount @relation(fields: [accountId], references: [id], onDelete: Restrict)
+  category              CashFlowCategory @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  handler               User?            @relation("CashVoucherHandler", fields: [handlerUserId], references: [id], onDelete: SetNull)
+  cancelledBy           User?            @relation("CashVoucherCanceller", fields: [cancelledByUserId], references: [id], onDelete: SetNull)
+  createdBy             User             @relation("CashVoucherCreator", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  linkedPurchaseReceipt PurchaseReceipt? @relation(fields: [linkedPurchaseReceiptId], references: [id], onDelete: SetNull)
+  reversalOf            CashVoucher?     @relation("CashVoucherReversal", fields: [reversalOfId], references: [id], onDelete: Restrict)
+  reversal              CashVoucher?     @relation("CashVoucherReversal")
+
+  @@unique([createdByUserId, clientRequestId])
+  @@index([accountId, occurredAt, id])
+  @@index([categoryId, occurredAt])
+  @@index([sourceType, sourceTransactionId])
+  @@index([createdByUserId, createdAt])
+  @@index([linkedPurchaseReceiptId])
 }
 
 model Voucher {
