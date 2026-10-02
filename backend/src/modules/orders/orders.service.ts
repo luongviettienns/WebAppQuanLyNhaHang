@@ -25,6 +25,7 @@ import { amountReceivedAfterCredit } from '../cashbook/cashbook.domain';
 import { EmployeeCommissionRecognitionService } from '../employee-commissions/employee-commission.recognition.service';
 import { assertCommissionEmployeeEligible } from '../employee-commissions/employee-commission.eligibility';
 import { claimInitialOrderReceiver, resolveEmployeeForUser } from './order-receiver.service';
+import { recordOrderVoidCancellations } from './order-cancellation.service';
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -1097,7 +1098,7 @@ export class OrdersService {
       await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
       const lockedOrder = await tx.order.findUnique({
         where: { id: orderId },
-        include: { items: true, table: true }
+        include: { items: { include: { menuItem: { select: { sku: true, name: true } } } }, table: true }
       });
 
       if (!lockedOrder) {
@@ -1172,6 +1173,29 @@ export class OrdersService {
         `;
       }
 
+      await recordOrderVoidCancellations(tx, lockedOrder, {
+        reason: input.reason,
+        cancelledAt: now,
+        cancelledByUserId: voidedByUserId ?? null,
+        restoredMenuItemIds: restoredStock.map(change => change.menuItemId)
+      });
+      await AuditService.logInTransaction(tx, {
+        action: 'ORDER_VOIDED',
+        targetType: 'Order',
+        targetId: updatedOrder.id,
+        actorId: voidedByUserId,
+        actorName,
+        metadata: {
+          code: updatedOrder.code,
+          reason: input.reason,
+          totalAmount: updatedOrder.totalAmount,
+          tableNumber: updatedOrder.table?.tableNumber,
+          source: 'ORDER_VOID',
+          trigger: 'MANUAL'
+        }
+      });
+
+      // Only this committed result may be used to publish inventory/KDS/order/table notifications.
       return { order: updatedOrder, tableState: nextTableState, stockChanges: restoredStock };
     });
 
@@ -1199,20 +1223,6 @@ export class OrdersService {
     if (tableState) {
       emitToAll('table:statusChanged', tableState);
     }
-
-    await AuditService.log({
-      action: 'ORDER_VOIDED',
-      targetType: 'Order',
-      targetId: orderDto.id,
-      actorId: voidedByUserId,
-      actorName,
-      metadata: {
-        code: orderDto.code,
-        reason: input.reason,
-        totalAmount: orderDto.totalAmount,
-        tableNumber: orderDto.tableNumber
-      }
-    });
 
     return { order: orderDto };
   }
@@ -1244,7 +1254,9 @@ export class OrdersService {
 
     const cancelledOrderIds: number[] = [];
     const now = new Date();
-    const defaultReason = 'Quá thời gian: Hơn 1 giờ chưa cập nhật trạng thái';
+    const defaultReason = timeoutMinutes === 60
+      ? 'Quá thời gian: Hơn 1 giờ chưa cập nhật trạng thái'
+      : `Quá thời gian: Hơn ${timeoutMinutes} phút chưa cập nhật trạng thái`;
 
     for (const expOrder of expiredOrders) {
       try {
@@ -1256,7 +1268,7 @@ export class OrdersService {
           await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${expOrder.id} FOR UPDATE`;
           const lockedOrder = await tx.order.findUnique({
             where: { id: expOrder.id },
-            include: { items: true, table: true }
+            include: { items: { include: { menuItem: { select: { sku: true, name: true } } } }, table: true }
           });
 
           if (!lockedOrder || lockedOrder.status !== 'PENDING' || lockedOrder.paymentStatus === 'PAID') {
@@ -1269,6 +1281,7 @@ export class OrdersService {
             data: {
               status: 'CANCELLED',
               paymentStatus: 'VOIDED',
+              voidedByUserId: null,
               voidReason: defaultReason,
               voidedAt: now,
               cancelledAt: now
@@ -1311,6 +1324,29 @@ export class OrdersService {
               };
             }
           }
+
+          await recordOrderVoidCancellations(tx, lockedOrder, {
+            reason: defaultReason,
+            cancelledAt: now,
+            cancelledByUserId: null,
+            restoredMenuItemIds: restoredStock.map(change => change.menuItemId)
+          });
+          await AuditService.logInTransaction(tx, {
+            action: 'ORDER_VOIDED',
+            targetType: 'Order',
+            targetId: updatedOrder.id,
+            actorId: null,
+            actorName: null,
+            metadata: {
+              code: updatedOrder.code,
+              reason: defaultReason,
+              totalAmount: updatedOrder.totalAmount,
+              tableNumber: updatedOrder.table?.tableNumber,
+              source: 'ORDER_VOID',
+              trigger: 'AUTO_CANCEL_TIMEOUT',
+              timeoutMinutes
+            }
+          });
 
           return { order: updatedOrder, tableState: nextTableState, stockChanges: restoredStock };
         });
