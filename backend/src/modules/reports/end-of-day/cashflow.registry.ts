@@ -35,9 +35,17 @@ export function canonicalMoneyEventKey(sourceType: CashflowRecordType, sourceTra
 }
 
 function keyOf(candidate: CashflowCandidate): string {
-  return candidate.sourceTransactionId !== null && candidate.sourceType !== 'MANUAL'
-    ? canonicalMoneyEventKey(candidate.sourceType as CashflowRecordType, candidate.sourceTransactionId)
-    : candidate.sourceKey;
+  if (candidate.sourceType === 'MANUAL' || candidate.sourceType === 'REVERSAL') return candidate.sourceKey;
+  const id = candidate.sourceTransactionId ?? stableTransactionId(candidate);
+  return id !== null ? canonicalMoneyEventKey(candidate.sourceType as CashflowRecordType, id)
+    : `${candidate.sourceType}:VOUCHER:${candidate.cashVoucherId}`;
+}
+
+/** Exact canonical integer key only; legacy text and zero-padded IDs are not domain links. */
+function stableTransactionId(candidate: CashflowCandidate): number | null {
+  const match = new RegExp(`^${candidate.sourceType}:([1-9][0-9]{0,9})$`).exec(candidate.sourceKey);
+  const id = match ? Number(match[1]) : null;
+  return id !== null && id <= 2_147_483_647 ? id : null;
 }
 
 /** Also used by the SQL adapter at its JSON boundary. Amount is signed exactly once. */
@@ -58,11 +66,13 @@ export function toCashflowEvent(candidate: CashflowCandidate, reconciled: boolea
 /** Pure reference registry. The adapter applies these rules in SQL before filtering/pagination. */
 export function buildCashflowRegistry(domains: CashflowCandidate[], vouchers: CashflowCandidate[]): CashflowEvent[] {
   const events = new Map<string, CashflowEvent>();
-  const nonCashReservationKeys = new Set<string>();
+  const targets = new Map<string, CashflowCandidate>();
   for (const domain of domains) {
-    if ((domain.sourceType === 'APPLY_TO_BILL' || domain.sourceType === 'FORFEIT') && domain.sourceTransactionId !== null) {
-      nonCashReservationKeys.add(canonicalMoneyEventKey('RESERVATION_DEPOSIT', domain.sourceTransactionId));
-      nonCashReservationKeys.add(canonicalMoneyEventKey('RESERVATION_REFUND', domain.sourceTransactionId));
+    if (domain.sourceTransactionId !== null) {
+      if (['RESERVATION_DEPOSIT', 'RESERVATION_REFUND', 'APPLY_TO_BILL', 'FORFEIT'].includes(domain.sourceType)) {
+        targets.set(canonicalMoneyEventKey('RESERVATION_DEPOSIT', domain.sourceTransactionId), domain);
+        targets.set(canonicalMoneyEventKey('RESERVATION_REFUND', domain.sourceTransactionId), domain);
+      } else targets.set(canonicalMoneyEventKey(domain.sourceType as CashflowRecordType, domain.sourceTransactionId), domain);
     }
     const isReturn = domain.sourceType === 'SALES_RETURN_REFUND';
     if (!['ORDER_PAYMENT', 'RESERVATION_DEPOSIT', 'RESERVATION_REFUND', 'SALES_RETURN_REFUND'].includes(domain.sourceType)
@@ -70,20 +80,34 @@ export function buildCashflowRegistry(domains: CashflowCandidate[], vouchers: Ca
     const event = toCashflowEvent({ ...domain, refundCompletedAt: isReturn ? domain.occurredAt : null }, false);
     if (!events.has(event.key)) events.set(event.key, event);
   }
-  // Choose the lowest ledger identity if historical data contains several links to one transaction.
+  const selectedKeys = new Set<string>();
+  // Resolve one target first, then choose the lowest ledger identity before any downstream filter.
   for (const voucher of [...vouchers].sort((a, b) => (a.cashVoucherId ?? 0) - (b.cashVoucherId ?? 0))) {
     if (voucher.status !== 'POSTED') continue;
-    const key = keyOf(voucher);
-    if ((voucher.sourceType === 'RESERVATION_DEPOSIT' || voucher.sourceType === 'RESERVATION_REFUND')
-      && (nonCashReservationKeys.has(key) || nonCashReservationKeys.has(voucher.sourceKey))) continue;
-    const domain = events.get(key) ?? events.get(voucher.sourceKey);
+    const independent = voucher.sourceType === 'MANUAL' || voucher.sourceType === 'REVERSAL';
+    const stableId = independent ? null : stableTransactionId(voucher);
+    const explicitTarget = !independent && voucher.sourceTransactionId !== null
+      ? targets.get(canonicalMoneyEventKey(voucher.sourceType as CashflowRecordType, voucher.sourceTransactionId)) : undefined;
+    const keyTarget = stableId !== null ? targets.get(canonicalMoneyEventKey(voucher.sourceType as CashflowRecordType, stableId)) : undefined;
+    const target = explicitTarget ?? keyTarget;
+    const resolved: CashflowCandidate = { ...voucher,
+      sourceTransactionId: independent ? voucher.sourceTransactionId : target?.sourceTransactionId ?? voucher.sourceTransactionId ?? stableId };
+    const key = keyOf(resolved);
+    if (selectedKeys.has(key)) continue;
+    selectedKeys.add(key);
+    if (target?.sourceType === 'APPLY_TO_BILL' || target?.sourceType === 'FORFEIT') continue;
+    const domain = independent ? undefined : events.get(key);
     if (domain) {
       if (domain.reconciliationStatus === 'RECONCILED') continue;
       events.set(domain.key, { ...domain, cashVoucherId: voucher.cashVoucherId,
         accountId: voucher.accountId, accountName: voucher.accountName,
         categoryId: voucher.categoryId, categoryName: voucher.categoryName,
         reconciliationStatus: 'RECONCILED' });
-    } else if (!events.has(key)) events.set(key, toCashflowEvent(voucher, true));
+    } else if (!events.has(key)) events.set(key, toCashflowEvent(target ? { ...resolved,
+      occurredAt: target.occurredAt, creatorUserId: target.creatorUserId, creatorUserName: target.creatorUserName,
+      customerId: target.customerId, customerName: target.customerName,
+      refundCompletedAt: voucher.sourceType === 'SALES_RETURN_REFUND' && target.status === 'COMPLETED' && target.amount > 0 ? target.occurredAt : null
+    } : resolved, true));
   }
   return [...events.values()];
 }

@@ -77,4 +77,55 @@ describe('canonical Cashflow registry', () => {
     ]);
     expect(JSON.parse(JSON.stringify(result))).toEqual(result);
   });
+  it('deduplicates integrated and missing-domain identity aliases using the lowest voucher id', () => {
+    const result = buildCashflowRegistry([
+      domain({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: 7, sourceKey: 'SUPPLIER_PAYMENT:7', customerId: null })
+    ], [
+      voucher({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: 7, sourceKey: 'legacy:supplier:7', cashVoucherId: 1, direction: 'PAYMENT', amount: 25 }),
+      voucher({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: null, sourceKey: 'SUPPLIER_PAYMENT:7', cashVoucherId: 2, direction: 'PAYMENT', amount: 999 }),
+      voucher({ sourceType: 'ORDER_PAYMENT', sourceTransactionId: 99, sourceKey: 'legacy:missing:99', cashVoucherId: 3 }),
+      voucher({ sourceType: 'ORDER_PAYMENT', sourceTransactionId: null, sourceKey: 'ORDER_PAYMENT:99', cashVoucherId: 4 })
+    ]);
+    expect(result.map(e => [e.key, e.cashVoucherId, e.amount, e.occurredAt])).toEqual([
+      ['SUPPLIER_PAYMENT:7', 1, -25, at], ['ORDER_PAYMENT:99', 3, 100, '2026-10-04T05:00:00.000Z']
+    ]);
+  });
+  it('chooses one authoritative explicit target despite a stable key naming another supplier payment', () => {
+    const result = buildCashflowRegistry([
+      domain({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: 7, sourceKey: 'SUPPLIER_PAYMENT:7', creatorUserId: 5 }),
+      domain({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: 8, sourceKey: 'SUPPLIER_PAYMENT:8', occurredAt: '2026-10-05T05:00:00.000Z', creatorUserId: 6 })
+    ], [voucher({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: 7, sourceKey: 'SUPPLIER_PAYMENT:8', direction: 'PAYMENT', amount: 25 })]);
+    expect(result).toMatchObject([{ key: 'SUPPLIER_PAYMENT:7', occurredAt: at, creatorUserId: 5, amount: -25 }]);
+    expect(result).toHaveLength(1);
+  });
+  it('resolves an existing pending explicit target before considering a successful stable-key target', () => {
+    const result = buildCashflowRegistry([
+      domain({ sourceTransactionId: 1, sourceKey: 'ORDER_PAYMENT:1', status: 'PENDING' }),
+      domain({ sourceTransactionId: 2, sourceKey: 'ORDER_PAYMENT:2' })
+    ], [voucher({ sourceTransactionId: 1, sourceKey: 'ORDER_PAYMENT:2' })]);
+    expect(result.find(e => e.key === 'ORDER_PAYMENT:1')).toMatchObject({ occurredAt: at, cashVoucherId: 21 });
+    expect(result.find(e => e.key === 'ORDER_PAYMENT:2')).toMatchObject({ cashVoucherId: null, reconciliationStatus: 'UNRECONCILED' });
+  });
+  it('suppresses non-cash reservation vouchers only when the resolved authoritative target is non-cash', () => {
+    const result = buildCashflowRegistry([
+      domain({ sourceType: 'RESERVATION_DEPOSIT', sourceTransactionId: 1, sourceKey: 'RESERVATION_DEPOSIT:1' }),
+      domain({ sourceType: 'FORFEIT', sourceTransactionId: 2 })
+    ], [voucher({ sourceType: 'RESERVATION_DEPOSIT', sourceTransactionId: 1, sourceKey: 'RESERVATION_DEPOSIT:2' })]);
+    expect(result).toMatchObject([{ key: 'RESERVATION_DEPOSIT:1', reconciliationStatus: 'RECONCILED' }]);
+    expect(result).toHaveLength(1);
+  });
+  it('keeps reversals independent of unrelated repeated transaction ids', () => {
+    const result = buildCashflowRegistry([], [
+      voucher({ sourceType: 'REVERSAL', sourceTransactionId: 5, sourceKey: 'REVERSAL:original-one', cashVoucherId: 1 }),
+      voucher({ sourceType: 'REVERSAL', sourceTransactionId: 5, sourceKey: 'REVERSAL:original-two', cashVoucherId: 2 })
+    ]);
+    expect(result.map(e => e.key)).toEqual(['REVERSAL:original-one', 'REVERSAL:original-two']);
+  });
+  it('uses voucher-unique identities for integrated vouchers without an id or exact parseable key', () => {
+    const result = buildCashflowRegistry([], [
+      voucher({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: null, sourceKey: 'legacy:unresolved', cashVoucherId: 7 }),
+      voucher({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: null, sourceKey: 'SUPPLIER_PAYMENT:0001', cashVoucherId: 8 })
+    ]);
+    expect(result.map(e => e.key)).toEqual(['SUPPLIER_PAYMENT:VOUCHER:7', 'SUPPLIER_PAYMENT:VOUCHER:8']);
+  });
 });

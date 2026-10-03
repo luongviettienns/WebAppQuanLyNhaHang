@@ -213,4 +213,94 @@ describe('End-of-day canonical Cashflow adapter', () => {
     expect((await read()).records[0].creatorUserId).toBeNull();
     expect((await read({ creatorUserId: otherActorId })).totalRows).toBe(0);
   });
+  it('deduplicates integrated vouchers before date, filter, summary, facet and page projections', async () => {
+    const supplier = await prismaTest.supplier.create({ data: { code: 'NCC-DUP', name: 'Nhà cung cấp' } });
+    const paid = await prismaTest.supplierPayment.create({ data: { supplierId: supplier.id, amount: 25, paymentMethod: 'CASH', paidAt: from, createdByUserId: actorId } });
+    const first = await voucher({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: paid.id, sourceKey: 'legacy:supplier:first', amount: 25, direction: 'PAYMENT', paymentMethod: 'CASH', occurredAt: to });
+    await voucher({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: paid.id, sourceKey: `SUPPLIER_PAYMENT:${paid.id}`, amount: 999, direction: 'PAYMENT', paymentMethod: 'CREDIT_CARD', occurredAt: from });
+    const result = await read({ recordTypes: 'SUPPLIER_PAYMENT', pageSize: '1' });
+    expect(result.totalRows).toBe(1);
+    expect(result.records).toMatchObject([{ key: `SUPPLIER_PAYMENT:${paid.id}`, sourceTransactionId: paid.id, cashVoucherId: first.id, amount: -25, occurredAt: from.toISOString(), creatorUserId: actorId }]);
+    expect(result.summary).toMatchObject({ totalPayments: 25, netCashFlow: -25, bySource: [{ value: 'SUPPLIER_PAYMENT', label: 'SUPPLIER_PAYMENT', totalReceipts: 0, totalPayments: 25, netCashFlow: -25, eventCount: 1 }] });
+    expect(result.filterOptions.paymentMethods?.map(o => o.value)).toEqual(['CASH']);
+    expect((await read({ paymentMethods: 'CREDIT_CARD' })).totalRows).toBe(0);
+    const page2 = await read({ page: '2', pageSize: '1' });
+    expect(page2.records).toEqual([]); expect(page2.summary).toEqual(result.summary);
+    expect((await read({ date: '2026-10-04' })).totalRows).toBe(0);
+  });
+  it('deduplicates missing-domain vouchers identified by explicit id and exact stable key before time filtering', async () => {
+    const first = await voucher({ sourceType: 'ORDER_PAYMENT', sourceTransactionId: 99999, sourceKey: 'legacy:missing:first', amount: 25, occurredAt: from, paymentMethod: 'CASH' });
+    await voucher({ sourceType: 'ORDER_PAYMENT', sourceTransactionId: null, sourceKey: 'ORDER_PAYMENT:99999', amount: 100, occurredAt: to, paymentMethod: 'BANK_TRANSFER' });
+    const result = await read();
+    expect(result.totalRows).toBe(1);
+    expect(result.records).toMatchObject([{ key: 'ORDER_PAYMENT:99999', sourceTransactionId: 99999, cashVoucherId: first.id, amount: 25 }]);
+    expect(result.summary).toMatchObject({ totalReceipts: 25, netCashFlow: 25 });
+    expect(result.filterOptions.paymentMethods?.map(o => o.value)).toEqual(['CASH']);
+    expect((await read({ date: '2026-10-04' })).totalRows).toBe(0);
+  });
+  it('resolves one supplier target by authoritative explicit id and counts its conflicting existing key target', async () => {
+    const supplier = await prismaTest.supplier.create({ data: { code: 'NCC-CONFLICT', name: 'Nhà cung cấp' } });
+    const a = await prismaTest.supplierPayment.create({ data: { supplierId: supplier.id, amount: 25, paymentMethod: 'CASH', paidAt: from, createdByUserId: actorId } });
+    const b = await prismaTest.supplierPayment.create({ data: { supplierId: supplier.id, amount: 60, paymentMethod: 'CASH', paidAt: to, createdByUserId: otherActorId } });
+    const linked = await voucher({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: a.id, sourceKey: `SUPPLIER_PAYMENT:${b.id}`, direction: 'PAYMENT', amount: 25, occurredAt: to });
+    const result = await read();
+    expect(result.totalRows).toBe(1);
+    expect(result.records).toMatchObject([{ key: `SUPPLIER_PAYMENT:${a.id}`, sourceTransactionId: a.id, cashVoucherId: linked.id, occurredAt: from.toISOString(), creatorUserId: actorId, amount: -25 }]);
+    expect(result.summary.totalPayments).toBe(25);
+    expect(result.invariantCounters.conflictingVoucherIdentityCount).toBe(1);
+    const tomorrow = await read({ date: '2026-10-04' });
+    expect(tomorrow.totalRows).toBe(0); expect(tomorrow.invariantCounters.conflictingVoucherIdentityCount).toBe(0);
+    expect((await read({ creatorUserId: otherActorId })).invariantCounters.conflictingVoucherIdentityCount).toBe(0);
+  });
+  it('reconciles only the explicit core target when one voucher identity names two existing payments', async () => {
+    const a = await payment({ confirmedAt: from });
+    const b = await payment({ amount: 40, paymentMethod: 'CREDIT_CARD' });
+    const linked = await voucher({ sourceType: 'ORDER_PAYMENT', sourceTransactionId: a.id, sourceKey: `ORDER_PAYMENT:${b.id}`, occurredAt: to });
+    const result = await read();
+    expect(result.totalRows).toBe(2);
+    expect(result.records.find(r => r.sourceTransactionId === a.id)).toMatchObject({ cashVoucherId: linked.id, reconciliationStatus: 'RECONCILED', occurredAt: from.toISOString() });
+    expect(result.records.find(r => r.sourceTransactionId === b.id)).toMatchObject({ cashVoucherId: null, reconciliationStatus: 'UNRECONCILED' });
+    expect(result.summary).toMatchObject({ totalReceipts: 140, unreconciledCount: 1 });
+    expect(result.invariantCounters.conflictingVoucherIdentityCount).toBe(1);
+    expect(new Set(result.records.map(r => r.key)).size).toBe(2);
+  });
+  it('preserves stable-key fallback when an explicit id does not resolve', async () => {
+    const paid = await payment();
+    const linked = await voucher({ sourceType: 'ORDER_PAYMENT', sourceTransactionId: 99999, sourceKey: `ORDER_PAYMENT:${paid.id}`, occurredAt: to });
+    const result = await read();
+    expect(result.totalRows).toBe(1);
+    expect(result.records[0]).toMatchObject({ key: `ORDER_PAYMENT:${paid.id}`, cashVoucherId: linked.id, reconciliationStatus: 'RECONCILED', sourceTransactionId: paid.id });
+    expect(result.invariantCounters.conflictingVoucherIdentityCount).toBe(0);
+  });
+  it('counts discarded conflicting vouchers using canonical core dimensions without adding their money', async () => {
+    const a = await payment({ confirmedAt: from });
+    const b = await payment({ amount: 40, paymentMethod: 'CREDIT_CARD' });
+    const chosen = await voucher({ sourceType: 'ORDER_PAYMENT', sourceTransactionId: a.id, sourceKey: 'legacy:chosen-core', paymentMethod: 'CASH' });
+    await voucher({ sourceType: 'ORDER_PAYMENT', sourceTransactionId: a.id, sourceKey: `ORDER_PAYMENT:${b.id}`, amount: 999, paymentMethod: 'CREDIT_CARD', sourceCode: 'CONFLICTING-LEDGER-CODE' });
+    const result = await read({ paymentMethods: 'CASH', search: 'HD-CASH' });
+    expect(result.totalRows).toBe(1);
+    expect(result.records[0].cashVoucherId).toBe(chosen.id);
+    expect(result.summary.totalReceipts).toBe(100);
+    expect(result.invariantCounters.conflictingVoucherIdentityCount).toBe(1);
+  });
+  it('applies non-cash suppression only to the single resolved reservation target', async () => {
+    const rs = await reservation();
+    const deposit = await prismaTest.reservationDepositTransaction.create({ data: { reservationId: rs.id, type: 'DEPOSIT', status: 'SUCCESS', amount: 100, confirmedAt: from } });
+    const forfeit = await prismaTest.reservationDepositTransaction.create({ data: { reservationId: rs.id, type: 'FORFEIT', status: 'SUCCESS', amount: 50, confirmedAt: middle } });
+    const linked = await voucher({ sourceType: 'RESERVATION_DEPOSIT', sourceTransactionId: deposit.id, sourceKey: `RESERVATION_DEPOSIT:${forfeit.id}` });
+    const result = await read();
+    expect(result.totalRows).toBe(1);
+    expect(result.records[0]).toMatchObject({ cashVoucherId: linked.id, reconciliationStatus: 'RECONCILED' });
+    expect(result.invariantCounters.suppressedNonCashReservationVoucherCount).toBe(0);
+    expect(result.invariantCounters.conflictingVoucherIdentityCount).toBe(1);
+  });
+  it('keeps manual and reversal vouchers independent when transaction ids happen to repeat', async () => {
+    for (const [sourceType, sourceKey] of [
+      ['MANUAL', 'MANUAL:first'], ['MANUAL', 'MANUAL:second'], ['REVERSAL', 'REVERSAL:first'], ['REVERSAL', 'REVERSAL:second']
+    ] as const) await voucher({ sourceType, sourceTransactionId: 1, sourceKey, amount: 10 });
+    const result = await read();
+    expect(result.totalRows).toBe(4);
+    expect(new Set(result.records.map(r => r.key)).size).toBe(4);
+    expect(result.summary.totalReceipts).toBe(40);
+  });
 });
