@@ -143,9 +143,14 @@ function canonicalSource(): Prisma.Sql {
     UNION ALL
     SELECT m.* FROM voucherMoney m JOIN posted v ON v.id = m.cashVoucherId
     WHERE NOT EXISTS (SELECT 1 FROM domains d WHERE ${keyMatch})
+  ), issueCounts AS (
+    SELECT sourceKey, SUM(suppressedNonCashReservationVoucher) AS suppressedIssueCount,
+      SUM(conflictingVoucherIdentity) AS conflictingIssueCount FROM voucherMoney GROUP BY sourceKey
   ), identityIssues AS (
-    SELECT e.*, c.name AS customerName, u.name AS creatorUserName, a.name AS accountName, g.name AS categoryName
-    FROM voucherMoney e LEFT JOIN Customer c ON c.id = e.customerId LEFT JOIN User u ON u.id = e.creatorUserId
+    SELECT e.*, issues.suppressedIssueCount, issues.conflictingIssueCount,
+      c.name AS customerName, u.name AS creatorUserName, a.name AS accountName, g.name AS categoryName
+    FROM canonical e JOIN issueCounts issues ON issues.sourceKey = e.sourceKey
+    LEFT JOIN Customer c ON c.id = e.customerId LEFT JOIN User u ON u.id = e.creatorUserId
     LEFT JOIN FinancialAccount a ON a.id = e.accountId LEFT JOIN CashFlowCategory g ON g.id = e.categoryId
   ), events AS (
     SELECT e.*, c.name AS customerName, u.name AS creatorUserName, a.name AS accountName, g.name AS categoryName
@@ -166,7 +171,8 @@ function filters(query: EndOfDayReportQuery, omitted?: EndOfDayFilter, includeSu
     OR LOCATE(${query.search}, customerName) > 0 OR LOCATE(${query.search}, creatorUserName) > 0
     OR LOCATE(${query.search}, accountName) > 0 OR LOCATE(${query.search}, categoryName) > 0
     OR EXISTS (SELECT 1 FROM CashVoucher searched WHERE searched.id = events.cashVoucherId
-      AND (LOCATE(${query.search}, searched.code) > 0 OR LOCATE(${query.search}, searched.note) > 0)))`);
+      AND (LOCATE(${query.search}, searched.code) > 0 OR LOCATE(${query.search}, searched.sourceCode) > 0
+        OR LOCATE(${query.search}, searched.note) > 0)))`);
   return Prisma.sql`WHERE ${Prisma.join(conditions, ' AND ')}`;
 }
 
@@ -187,8 +193,8 @@ export class CashflowReportAdapter {
     const [totals] = await tx.$queryRaw<SqlTotals[]>(Prisma.sql`${source}
       SELECT COUNT(*) AS totalRows, ${totalsProjection}, COALESCE(SUM(reconciled = 0), 0) AS unreconciledCount,
         COALESCE(SUM(direction = 'RECEIPT'), 0) AS receiptCount, COALESCE(SUM(direction = 'PAYMENT'), 0) AS paymentCount,
-        (SELECT COUNT(*) FROM identityIssues events ${filters(query, undefined, true)} AND suppressedNonCashReservationVoucher = 1) AS suppressedNonCashReservationVoucherCount,
-        (SELECT COUNT(*) FROM identityIssues events ${filters(query, undefined, true)} AND conflictingVoucherIdentity = 1) AS conflictingVoucherIdentityCount
+        (SELECT COALESCE(SUM(suppressedIssueCount), 0) FROM identityIssues events ${filters(query, undefined, true)}) AS suppressedNonCashReservationVoucherCount,
+        (SELECT COALESCE(SUM(conflictingIssueCount), 0) FROM identityIssues events ${filters(query, undefined, true)}) AS conflictingVoucherIdentityCount
       FROM events ${predicate}`);
     const sortColumns = { occurredAt: Prisma.sql`occurredAt`, amount: Prisma.sql`CASE WHEN direction = 'RECEIPT' THEN amount ELSE -amount END`, sourceType: Prisma.sql`sourceType` };
     const sortBy = query.sortBy ?? 'occurredAt';

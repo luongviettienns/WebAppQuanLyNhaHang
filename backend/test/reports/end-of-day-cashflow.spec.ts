@@ -303,4 +303,61 @@ describe('End-of-day canonical Cashflow adapter', () => {
     expect(new Set(result.records.map(r => r.key)).size).toBe(4);
     expect(result.summary.totalReceipts).toBe(40);
   });
+  it('filters integrated issue multiplicity through the selected canonical voucher dimensions', async () => {
+    const supplier = await prismaTest.supplier.create({ data: { code: 'NCC-ISSUES', name: 'Nhà cung cấp' } });
+    const a = await prismaTest.supplierPayment.create({ data: { supplierId: supplier.id, amount: 25, paymentMethod: 'CASH', paidAt: from, createdByUserId: actorId } });
+    const b = await prismaTest.supplierPayment.create({ data: { supplierId: supplier.id, amount: 60, paymentMethod: 'CASH', paidAt: to, createdByUserId: otherActorId } });
+    const selected = await voucher({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: a.id, sourceKey: 'legacy:canonical-selected', direction: 'PAYMENT', amount: 25, paymentMethod: 'CASH', sourceCode: 'CANONICAL-SELECTED', note: 'CANONICAL-NOTE' });
+    await voucher({ sourceType: 'SUPPLIER_PAYMENT', sourceTransactionId: a.id, sourceKey: `SUPPLIER_PAYMENT:${b.id}`, direction: 'PAYMENT', amount: 999, paymentMethod: 'CREDIT_CARD', sourceCode: 'DISCARDED-CONFLICT', note: 'DISCARDED-NOTE' });
+    for (const [filter, count] of [
+      [{}, 1], [{ paymentMethods: 'CASH' }, 1], [{ paymentMethods: 'CREDIT_CARD' }, 0],
+      [{ search: 'CANONICAL-SELECTED' }, 1], [{ search: 'CANONICAL-NOTE' }, 1],
+      [{ search: 'DISCARDED-CONFLICT' }, 0], [{ search: 'DISCARDED-NOTE' }, 0]
+    ] as const) {
+      const result = await read(filter);
+      expect(result.totalRows).toBe(count);
+      expect(result.invariantCounters.conflictingVoucherIdentityCount).toBe(count);
+      expect(result.summary.totalPayments).toBe(count ? 25 : 0);
+    }
+    const first = await read({ paymentMethods: 'CASH', search: 'CANONICAL-SELECTED', pageSize: '1' });
+    const next = await read({ paymentMethods: 'CASH', search: 'CANONICAL-SELECTED', pageSize: '1', page: '2' });
+    expect(first.records[0].cashVoucherId).toBe(selected.id);
+    expect(next.records).toEqual([]);
+    expect(next.summary).toEqual(first.summary);
+    expect(next.filterOptions).toEqual(first.filterOptions);
+    expect(next.invariantCounters.conflictingVoucherIdentityCount).toBe(1);
+  });
+  it('filters core issues using domain facts and only selected ledger enrichment', async () => {
+    const a = await payment({ confirmedAt: from, externalReference: 'DOMAIN-REFERENCE' });
+    const b = await payment({ amount: 40, paymentMethod: 'CREDIT_CARD' });
+    const discardedAccount = await prismaTest.financialAccount.create({ data: { code: 'DISCARDED', name: 'DISCARDED-ACCOUNT', type: 'CASH' } });
+    const discardedCategory = await prismaTest.cashFlowCategory.create({ data: { code: 'DISCARDED', name: 'DISCARDED-CATEGORY', direction: 'RECEIPT' } });
+    await voucher({ sourceType: 'ORDER_PAYMENT', sourceTransactionId: a.id, sourceKey: 'legacy:core-selected', sourceCode: 'CANONICAL-SELECTED', note: 'CANONICAL-NOTE' });
+    await voucher({ sourceType: 'ORDER_PAYMENT', sourceTransactionId: a.id, sourceKey: `ORDER_PAYMENT:${b.id}`, paymentMethod: 'CREDIT_CARD', accountId: discardedAccount.id, categoryId: discardedCategory.id, note: 'DISCARDED-NOTE' });
+    for (const [search, count] of [
+      ['CANONICAL-NOTE', 1], ['CANONICAL-SELECTED', 1], ['DOMAIN-REFERENCE', 1],
+      ['DISCARDED-NOTE', 0], ['DISCARDED-ACCOUNT', 0], ['DISCARDED-CATEGORY', 0]
+    ] as const) {
+      const result = await read({ search });
+      expect(result.totalRows).toBe(count);
+      expect(result.invariantCounters.conflictingVoucherIdentityCount).toBe(count);
+    }
+  });
+  it('places all suppressed alias multiplicity on the selected fallback day when domain time is null', async () => {
+    const rs = await reservation();
+    const forfeit = await prismaTest.reservationDepositTransaction.create({ data: { reservationId: rs.id, type: 'FORFEIT', status: 'PENDING', amount: 100, confirmedAt: null } });
+    await voucher({ sourceType: 'RESERVATION_REFUND', sourceTransactionId: forfeit.id, sourceKey: 'legacy:suppressed-selected', occurredAt: from, paymentMethod: 'CASH', note: 'SUPPRESSED-SELECTED' });
+    await voucher({ sourceType: 'RESERVATION_REFUND', sourceTransactionId: null, sourceKey: `RESERVATION_REFUND:${forfeit.id}`, occurredAt: to, paymentMethod: 'CREDIT_CARD', note: 'SUPPRESSED-DISCARDED' });
+    const today = await read();
+    expect(today.totalRows).toBe(0);
+    expect(today.invariantCounters.suppressedNonCashReservationVoucherCount).toBe(2);
+    const tomorrow = await read({ date: '2026-10-04' });
+    expect(tomorrow.totalRows).toBe(0);
+    expect(tomorrow.invariantCounters.suppressedNonCashReservationVoucherCount).toBe(0);
+    expect((await read({ paymentMethods: 'CASH', search: 'SUPPRESSED-SELECTED', page: '2', pageSize: '1' })).invariantCounters.suppressedNonCashReservationVoucherCount).toBe(2);
+    expect((await read({ paymentMethods: 'CREDIT_CARD' })).invariantCounters.suppressedNonCashReservationVoucherCount).toBe(0);
+    expect((await read({ search: 'SUPPRESSED-DISCARDED' })).invariantCounters.suppressedNonCashReservationVoucherCount).toBe(0);
+    expect(today.summary).toMatchObject({ totalReceipts: 0, totalPayments: 0 });
+    expect(today.filterOptions.recordTypes).toEqual([]);
+  });
 });
