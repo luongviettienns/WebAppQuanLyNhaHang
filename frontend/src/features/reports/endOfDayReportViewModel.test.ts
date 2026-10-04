@@ -1,7 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { CONCERN_OPTIONS, visibleFiltersForConcern, formatReceiver, changeConcern, detailCells, qualityFlags } from './endOfDayReportViewModel';
-import { SUPPORTED_FILTERS_BY_CONCERN } from '../../../../backend/src/modules/reports/end-of-day/end-of-day.schemas';
+import { RECORD_TYPES_BY_CONCERN, SUPPORTED_FILTERS_BY_CONCERN, parseEndOfDayQuery } from '../../../../backend/src/modules/reports/end-of-day/end-of-day.schemas';
 describe('end-of-day presentation contracts', () => {
+  it.each([
+    { source: 'CASHFLOW', destination: 'GOODS', recordType: 'MANUAL' },
+    { source: 'GOODS', destination: 'CASHFLOW', recordType: 'STOCK_IN' }
+  ] as const)('clears concern-specific record types from $source to $destination', ({ source, destination, recordType }) => {
+    expect(RECORD_TYPES_BY_CONCERN[source] as readonly string[]).toContain(recordType);
+    expect(RECORD_TYPES_BY_CONCERN[destination] as readonly string[]).not.toContain(recordType);
+    const draft = { concern: source, recordTypes: [recordType], creatorUserId: 7, date: '2026-10-03', page: 2 };
+    const switched = changeConcern(draft, destination);
+    expect(switched).toEqual({ concern: destination, creatorUserId: 7, date: '2026-10-03', page: 1 });
+    expect(() => parseEndOfDayQuery(switched)).not.toThrow();
+    expect(changeConcern(draft, source).recordTypes).toEqual([recordType]);
+  });
   it('shows quality counters without falsely warning about ordinary nonzero row counts', () => {
     expect(qualityFlags({ totalRows: 4, completedInvoiceCount: 4 })).toEqual([]);
     expect(qualityFlags({ 'goods.quantitySignMismatchRows': 2, 'sales.legacyPaymentMethodFallbackRows': 0 })).toEqual(['Số lượng kho sai dấu: 2']);

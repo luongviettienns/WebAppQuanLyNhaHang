@@ -26,7 +26,11 @@ export function qualityFlags(counters: Record<string, number>): string[] {
 }
 export function changeConcern(filter: EndOfDayReportFilter, concern: EndOfDayConcern): EndOfDayReportFilter {
   const next: EndOfDayReportFilter = { concern, date: filter.date, fromTime: filter.fromTime, toTime: filter.toTime, view: filter.view, page: 1, pageSize: filter.pageSize };
-  for (const key of visibleFiltersForConcern(concern)) if (filter[key] !== undefined) Object.assign(next, { [key]: filter[key] });
+  for (const key of visibleFiltersForConcern(concern)) {
+    // Shared field name, distinct concern-specific record-type allow-lists.
+    if (key === 'recordTypes' && (filter.concern ?? 'SALES') !== concern) continue;
+    if (filter[key] !== undefined) Object.assign(next, { [key]: filter[key] });
+  }
   return Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined));
 }
 export const DETAIL_HEADERS = ['Mối quan tâm', 'Loại bản ghi', 'Thời điểm', 'Chứng từ', 'Nội dung', 'Người nhận', 'Người tạo', 'Số lượng / ĐVT', 'Giá trị', 'Ghi chú / chất lượng'];
