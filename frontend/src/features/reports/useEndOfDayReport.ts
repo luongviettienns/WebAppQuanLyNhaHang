@@ -3,14 +3,16 @@ import { z } from 'zod';
 import { buildEndOfDayReportQuery, fetchEndOfDayReportApi, type EndOfDayConcern, type EndOfDayReportFilter, type EndOfDayReportResponse } from '../../api/endOfDayReports';
 
 function normalize(filter: EndOfDayReportFilter): EndOfDayReportFilter {
+  const { search, ...filters } = filter;
+  const normalizedSearch = search?.trim();
   const concern = filter.concern ?? 'SALES';
   return {
-    ...filter, date: filter.date ?? new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10),
+    ...filters, date: filter.date ?? new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10),
     concern, view: filter.view ?? 'VERTICAL', page: filter.page ?? 1, pageSize: filter.pageSize ?? 50,
     ...(concern === 'SUMMARY' ? {} : { sortBy: filter.sortBy ?? 'occurredAt', sortOrder: filter.sortOrder ?? 'desc' }),
     ...(filter.paymentMethods ? { paymentMethods: [...new Set(filter.paymentMethods)].sort() } : {}),
     ...(filter.recordTypes ? { recordTypes: [...new Set(filter.recordTypes)].sort() } : {}),
-    ...(filter.search !== undefined ? { search: filter.search.trim() } : {}),
+    ...(normalizedSearch ? { search: normalizedSearch } : {}),
     ...(filter.cancelReason !== undefined ? { cancelReason: filter.cancelReason.trim() } : {})
   };
 }

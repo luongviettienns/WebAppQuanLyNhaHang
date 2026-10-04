@@ -27,6 +27,19 @@ describe('atomic end-of-day requests', () => {
     expect(state.snapshot).toBe(report); expect(state.snapshot?.metadata.generatedAt).toBe('2026-10-03T12:00:01Z');
     expect(state.stale).toBe(true); expect(state.error).toContain('Offline'); expect(state.refreshAttemptedAt).toBeTruthy();
   });
+  it.each([
+    { initialSearch: undefined, nextSearch: '' },
+    { initialSearch: undefined, nextSearch: '  ' },
+    { initialSearch: '', nextSearch: undefined },
+    { initialSearch: '  ', nextSearch: undefined }
+  ])('retains the snapshot when search changes from $initialSearch to $nextSearch and the request fails', async ({ initialSearch, nextSearch }) => {
+    vi.mocked(fetchEndOfDayReportApi).mockResolvedValueOnce(report).mockRejectedValueOnce(new Error('Offline'));
+    await mount(); await act(async () => { await state.load({ ...query, ...(initialSearch !== undefined ? { search: initialSearch } : {}) }); });
+    await act(async () => { await state.load({ ...query, ...(nextSearch !== undefined ? { search: nextSearch } : {}) }); });
+    expect(state.snapshot).toBe(report); expect(state.snapshot?.metadata.generatedAt).toBe('2026-10-03T12:00:01Z');
+    expect(state.stale).toBe(true); expect(state.error).toContain('Offline'); expect(state.refreshAttemptedAt).toBeTruthy();
+    expect(state.committedFilter).not.toHaveProperty('search');
+  });
   it.each([0, null, { ...report, rows: undefined }, { ...report, rows: [{}] }, { ...report, summary: {} }, { ...report, summary: { ...report.summary, netInvoiceValue: null } }])('does not replace a valid snapshot with malformed response %j', async bad => {
     vi.mocked(fetchEndOfDayReportApi).mockResolvedValueOnce(report).mockResolvedValueOnce(bad as EndOfDayReportResponse);
     await mount(); await act(async () => { await state.load(query); }); await act(async () => { await state.refresh(); });
