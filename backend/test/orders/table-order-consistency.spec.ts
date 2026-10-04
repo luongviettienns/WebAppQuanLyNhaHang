@@ -148,6 +148,7 @@ describe('multiple unpaid orders on one table', () => {
         $queryRaw: mockRawQueries(transactionEvents),
         priceList: { findFirst: vi.fn().mockResolvedValue(null) },
         priceListItem: { findMany: vi.fn().mockResolvedValue([]) },
+        employee: { findUnique: vi.fn().mockResolvedValue(null) },
         menuItem: { findMany: vi.fn().mockResolvedValue([{ id: 10, basePrice: 50_000 }]) },
         order: {
           create: vi.fn(async ({ data }) => {

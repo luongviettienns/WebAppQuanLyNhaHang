@@ -59,6 +59,11 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
     expect(updated.cancelledAt).not.toBeNull();
     expect(updated.voidedAt).not.toBeNull();
 
+    expect(await prismaTest.orderItemCancellation.findMany({ where: { orderId: created.order.id } }))
+      .toEqual([expect.objectContaining({ source: 'ORDER_VOID', reason: updated.voidReason, cancelledByUserId: null })]);
+    expect(await prismaTest.auditLog.findMany({ where: { action: 'ORDER_VOIDED', targetId: created.order.id } }))
+      .toEqual([expect.objectContaining({ actorId: null, actorName: null })]);
+
     // Table should return to AVAILABLE because it has no other unpaid orders
     const updatedTable = await prismaTest.diningTable.findUniqueOrThrow({ where: { id: table.id } });
     expect(updatedTable.status).toBe('AVAILABLE');

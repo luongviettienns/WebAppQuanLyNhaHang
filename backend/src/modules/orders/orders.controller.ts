@@ -60,7 +60,7 @@ export class OrdersController {
     try {
       const orderId = parseInt(req.params.id, 10);
       const input = updateOrderStatusSchema.parse(req.body);
-      const userId = req.user?.id;
+      const userId = req.user!.id;
 
       const order = await OrdersService.updateOrderStatus(orderId, input.status, userId);
       res.status(200).json({ data: order });
