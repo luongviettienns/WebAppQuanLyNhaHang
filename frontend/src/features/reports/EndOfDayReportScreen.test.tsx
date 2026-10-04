@@ -9,6 +9,7 @@ vi.mock('../../api/endOfDayReports', async importOriginal => ({ ...await importO
 import { downloadEndOfDayReportApi, EndOfDayReportApiError, fetchEndOfDayReportApi } from '../../api/endOfDayReports';
 import { Platform } from 'react-native';
 import { chromium } from '@playwright/test';
+import { spawnSync } from 'node:child_process';
 let width = 1200;
 let palette = lightTheme;
 vi.mock('react-native', () => ({ Pressable: 'Pressable', View: 'View', Text: 'Text', TextInput: 'TextInput', ScrollView: 'ScrollView', ActivityIndicator: 'ActivityIndicator', Platform: { OS: 'web' }, useWindowDimensions: () => ({ width, height: 800 }), StyleSheet: { create: (s: unknown) => s } }));
@@ -25,6 +26,20 @@ const flatten = (s: any): any => Object.assign({}, ...([s].flat(Infinity).filter
 beforeEach(() => { vi.mocked(fetchEndOfDayReportApi).mockResolvedValue(snapshot); });
 afterEach(() => { vi.resetAllMocks(); vi.unstubAllGlobals(); Platform.OS = 'web'; });
 describe('end-of-day report interface', () => {
+  it.each([
+    ['SALES', 'Không có hóa đơn bán hàng trong phạm vi đã chọn.'],
+    ['CASHFLOW', 'Không có giao dịch thu hoặc chi trong phạm vi đã chọn.'],
+    ['GOODS', 'Không phát sinh hoạt động hàng hóa trong phạm vi đã chọn.'],
+    ['CANCELLED_ITEMS', 'Không có món hoặc đơn bị hủy trong phạm vi đã chọn.'],
+    ['SUMMARY', 'Không có hoạt động trong ngày trong phạm vi đã chọn.'],
+  ] as const)('explains the empty %s concern using the committed snapshot', async (concern, title) => {
+    let screen: any;
+    await act(async () => { screen = create(<EndOfDayReportScreen snapshot={{ ...snapshot, hasData: false, metadata: { ...snapshot.metadata, concern } } as EndOfDayReportResponse} />); });
+    const empty = screen.root.findByProps({ testID: 'report-empty' }).findAllByType('Text').map((node: any) => node.props.children).join(' ');
+    expect(empty).toContain(title);
+    expect(empty).toContain('Thử đổi ngày hoặc điều chỉnh bộ lọc.');
+    await act(async () => screen.unmount());
+  });
   it('renders desktop rail, paired times, locked scope and concern-aware accessible controls', async () => {
     width = 1200; let screen: any;
     await act(async () => { screen = create(<EndOfDayReportScreen snapshot={snapshot} />); });
@@ -69,6 +84,56 @@ describe('end-of-day report interface', () => {
 });
 
 describe('report refresh, export and print', () => {
+  it('repeats all ten headers on every Chromium PDF page and preserves current-page content within A4 landscape', async () => {
+    let screen: any;
+    await act(async () => { screen = create(<EndOfDayReportScreen snapshot={{ ...snapshot, metadata: { ...snapshot.metadata, view: 'HORIZONTAL' } }} />); });
+    const handler = screen.root.findByProps({ testID: 'report-print' }).props.onPress.toString().replace(/__vite_ssr_import_\d+__\.Platform/g, 'Platform');
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      const headers = ['Mối quan tâm', 'Loại bản ghi', 'Thời điểm', 'Chứng từ', 'Nội dung', 'Người nhận', 'Người tạo', 'Số lượng / ĐVT', 'Giá trị', 'Ghi chú / chất lượng'];
+      const cells = (role: string, prefix: string) => Array.from({ length: 10 }, (_, col) => `<div role="${role}" class="print-cell">${role === 'columnheader' ? headers[col] : `${prefix}-${col + 1}`}</div>`).join('');
+      await page.setContent(`<style>.print-table-container{min-width:1600px}.print-row{display:flex}.print-cell{width:160px;flex-shrink:0;padding:8px;box-sizing:border-box}[data-testid="report-detail-scroll"]{overflow-x:auto}</style><div data-testid="report-print-surface"><div data-testid="report-sheet"><h1>BÁO CÁO CUỐI NGÀY</h1><p>2026-10-03 Asia/Ho_Chi_Minh MAIN asOf 12:00 generatedAt 12:00:01</p><p>Lưu ý chất lượng dữ liệu</p><div data-testid="report-detail-scroll"><div class="print-table-container"><div role="table"><div role="row" class="print-row">${cells('columnheader', 'Header')}</div>${Array.from({ length: 50 }, (_, row) => `<div role="row" class="print-row">${cells('cell', `Row-${row + 1}`)}</div>`).join('')}</div></div></div><p>Trang 1/2 · 51 dòng</p><p>Nhà hàng chính</p></div></div>`);
+      await page.evaluate(({ handler, metadata }) => {
+        // Execute the actual UI handler against a real DOM; suppress only the print dialog.
+        const snapshot = { metadata };
+        const setActionError = (message: string | null) => { if (message) throw new Error(message); };
+        const Platform = { OS: 'web' };
+        const originalAppend = document.body.appendChild.bind(document.body);
+        document.body.appendChild = ((node: Node) => {
+          const result = originalAppend(node);
+          if (node instanceof HTMLIFrameElement && node.contentWindow) node.contentWindow.print = () => {};
+          return result;
+        }) as typeof document.body.appendChild;
+        // These lexical bindings match the handler's production closure.
+        eval(`(${handler})()`);
+        void snapshot; void setActionError; void Platform;
+      }, { handler, metadata: { view: 'HORIZONTAL' } });
+      const printed = await page.locator('iframe').evaluate(frame => (frame as HTMLIFrameElement).contentDocument!.documentElement.outerHTML);
+      expect(await page.locator('[data-testid="report-print-surface"] [role="table"]').count()).toBe(1);
+      await page.setContent(printed);
+      await page.emulateMedia({ media: 'print' });
+      const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true, path: process.env.REPORT_PRINT_PDF });
+      // Existing external PDF tooling; configure REPORT_PDF_PYTHON when python is not on PATH.
+      const parsed = spawnSync(process.env.REPORT_PDF_PYTHON ?? 'python', ['-c', 'import sys,io,json,pdfplumber\nwith pdfplumber.open(io.BytesIO(sys.stdin.buffer.read())) as pdf:\n print(json.dumps([dict(width=p.width,height=p.height,text=p.extract_text(),words=p.extract_words()) for p in pdf.pages]))'], { input: pdf, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
+      expect(parsed.status, parsed.stderr).toBe(0);
+      const pages = JSON.parse(parsed.stdout) as { width: number; height: number; text: string; words: { x0: number; x1: number; text: string }[] }[];
+      expect(pages.length).toBeGreaterThan(1);
+      for (const printedPage of pages) {
+        expect(printedPage.width).toBeCloseTo(841.92, 0);
+        expect(printedPage.height).toBeCloseTo(594.96, 0);
+        for (const header of headers) expect(printedPage.text.replace(/\s+/g, ' ')).toContain(header);
+        for (const word of printedPage.words) {
+          expect(word.x0).toBeGreaterThanOrEqual(33);
+          expect(word.x1).toBeLessThanOrEqual(printedPage.width - 33);
+        }
+      }
+      const allText = pages.map(p => p.text).join('\n');
+      for (let row = 1; row <= 50; row++) for (let col = 1; col <= 10; col++) expect(allText).toContain(`Row-${row}-${col}`);
+      for (const value of ['BÁO CÁO CUỐI NGÀY', '2026-10-03', 'Asia/Ho_Chi_Minh', 'MAIN', '12:00:01', 'Lưu ý chất lượng dữ liệu', 'Trang 1/2', '51 dòng', 'Nhà hàng chính']) expect(allText).toContain(value);
+      expect(allText).not.toContain('Row-51-');
+    } finally { await browser.close(); await act(async () => screen.unmount()); }
+  }, 20000);
   it('fits all ten printed detail columns on paper while retaining every current-page row', async () => {
     const printedStyles: string[] = [];
     const head = { appendChild: (style: { textContent: string }) => printedStyles.push(style.textContent) };
@@ -77,7 +142,7 @@ describe('report refresh, export and print', () => {
     const frame = { style: {}, contentDocument: frameDocument, contentWindow: { focus: vi.fn(), print: vi.fn() }, remove: vi.fn(), setAttribute: vi.fn() };
     const cells = (role: string, prefix: string) => Array.from({ length: 10 }, (_, column) => `<div role="${role}" class="print-cell">${prefix} ${column + 1}</div>`).join('');
     const table = `<div data-testid="report-sheet"><div data-testid="report-detail-scroll"><div class="print-table-container"><div role="table"><div role="row" class="print-row">${cells('columnheader', 'Column')}</div>${Array.from({ length: 50 }, (_, row) => `<div role="row" class="print-row">${cells('cell', `Row ${row + 1}`)}</div>`).join('')}</div></div></div></div>`;
-    vi.stubGlobal('document', { styleSheets: [{ cssRules: [{ cssText: '.print-table-container{min-width:1600px}.print-row{display:flex}.print-cell{width:160px;flex-shrink:0;padding:8px;box-sizing:border-box}[data-testid="report-detail-scroll"]{overflow-x:auto}' }] }], querySelector: () => ({ cloneNode: () => ({}) }), createElement: (tag: string) => tag === 'iframe' ? frame : { textContent: '' }, body: { appendChild: vi.fn() } });
+    vi.stubGlobal('document', { styleSheets: [{ cssRules: [{ cssText: '.print-table-container{min-width:1600px}.print-row{display:flex}.print-cell{width:160px;flex-shrink:0;padding:8px;box-sizing:border-box}[data-testid="report-detail-scroll"]{overflow-x:auto}' }] }], querySelector: () => ({ cloneNode: () => ({ querySelectorAll: () => [] }) }), createElement: (tag: string) => tag === 'iframe' ? frame : { textContent: '' }, body: { appendChild: vi.fn() } });
     vi.stubGlobal('window', {});
     let screen: any;
     await act(async () => { screen = create(<EndOfDayReportScreen snapshot={{ ...snapshot, metadata: { ...snapshot.metadata, view: 'HORIZONTAL' } }} />); });
@@ -145,7 +210,7 @@ describe('report refresh, export and print', () => {
     const head = { appendChild: vi.fn() }; const body = { appendChild: vi.fn() };
     const frameDocument = { head: head as typeof head | null, body: body as typeof body | null, createElement: () => ({ textContent: '' }), open: () => { frameDocument.head = null; frameDocument.body = null; }, write: () => { frameDocument.head = head; frameDocument.body = body; }, close: vi.fn() };
     const print = vi.fn(); const frame = { style: {}, contentDocument: frameDocument, contentWindow: { focus: vi.fn(), print }, remove: vi.fn(), setAttribute: vi.fn(), onload: null as (() => void) | null };
-    const sheet = { cloneNode: vi.fn(() => ({ textContent: 'BÁO CÁO CUỐI NGÀY metadata' })) };
+    const sheet = { cloneNode: vi.fn(() => ({ textContent: 'BÁO CÁO CUỐI NGÀY metadata', querySelectorAll: () => [] })) };
     const selector = vi.fn(() => sheet);
     vi.stubGlobal('document', { styleSheets: [{ cssRules: [{ cssText: '.report-test { color: #24211F; }' }] }], querySelector: selector, createElement: (tag: string) => tag === 'iframe' ? frame : { textContent: '' }, body: { appendChild: vi.fn() } }); vi.stubGlobal('window', {});
     let screen: any;

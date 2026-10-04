@@ -71,10 +71,34 @@ export const EndOfDayReportScreen = ({ snapshot: suppliedSnapshot, initialFilter
         [data-testid="report-sheet"]{width:100%!important;max-width:none!important;padding:0!important}
         [data-testid="report-detail-scroll"],[data-testid="report-detail-scroll"]>div{display:block!important;width:100%!important;min-width:0!important}
         [role="table"]{display:table!important;width:100%!important;table-layout:fixed;border-collapse:collapse}
+        thead{display:table-header-group!important}
+        tbody{display:table-row-group!important}
         [role="row"]{display:table-row!important;break-inside:avoid;page-break-inside:avoid}
         [role="columnheader"],[role="cell"]{display:table-cell!important;width:10%!important;min-width:0!important;padding:4px!important;font-size:8pt!important;line-height:1.35!important;overflow-wrap:anywhere;vertical-align:top}
       }`;
-    printDocument.head.appendChild(style); printDocument.body.appendChild(surface.cloneNode(true));
+    const printedSurface = surface.cloneNode(true) as Element;
+    // Native header groups repeat across printed pages; the scrolling screen table stays intact.
+    for (const sourceTable of Array.from(printedSurface.querySelectorAll('[role="table"]'))) {
+      const table = printDocument.createElement('table');
+      for (const attribute of Array.from(sourceTable.attributes)) table.setAttribute(attribute.name, attribute.value);
+      const header = printDocument.createElement('thead');
+      const body = printDocument.createElement('tbody');
+      for (const sourceRow of Array.from(sourceTable.querySelectorAll('[role="row"]'))) {
+        const row = printDocument.createElement('tr');
+        const isHeader = sourceRow.querySelector('[role="columnheader"]') !== null;
+        for (const attribute of Array.from(sourceRow.attributes)) row.setAttribute(attribute.name, attribute.value);
+        for (const sourceCell of Array.from(sourceRow.children)) {
+          const cell = printDocument.createElement(isHeader ? 'th' : 'td');
+          for (const attribute of Array.from(sourceCell.attributes)) cell.setAttribute(attribute.name, attribute.value);
+          if (isHeader) cell.setAttribute('scope', 'col');
+          cell.append(...Array.from(sourceCell.childNodes));
+          row.appendChild(cell);
+        }
+        (isHeader ? header : body).appendChild(row);
+      }
+      table.append(header, body); sourceTable.replaceWith(table);
+    }
+    printDocument.head.appendChild(style); printDocument.body.appendChild(printedSurface);
     printWindow.onafterprint = () => frame.remove();
     frame.onload = () => { printWindow.focus(); printWindow.print(); };
     printDocument.close();

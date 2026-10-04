@@ -586,3 +586,52 @@ Run `git diff --check`, inspect `git status`, confirm no credentials/temp datadi
 ## Execution Safety Note
 
 The DB commands in this plan are not authorization to use the configured shared DEV/TEST schemas. Before every DB-backed command, verify `backend/scripts/test-database-guard.ts`, the effective `TEST_DATABASE_URL` target and the isolated server identity. Never run `prisma migrate reset`, `db:reset`, the seed script, or a destructive cleanup against `DATABASE_URL` or the known schema-drifted shared databases.
+
+### Task 14: Repeat report table headers in print and specialize empty states
+
+**Files:**
+- Modify: `frontend/src/features/reports/EndOfDayReportScreen.tsx`
+- Modify: `frontend/src/features/reports/EndOfDayReportView.tsx`
+- Modify: `frontend/src/features/reports/EndOfDayReportScreen.test.tsx`
+- Update acceptance evidence: `.superpowers/sdd/2026-10-03-end-of-day-report/task-13-report.md`
+- Update SDD ledger: `.superpowers/sdd/2026-10-03-end-of-day-report/progress.md`
+
+**Interfaces:**
+- The on-screen React Native Web table remains unchanged; only its print-document clone becomes a semantic HTML `table` with `thead`/`tbody` so the browser repeats the complete header on each printed page.
+- Empty-state titles are concern-specific for SALES, CASHFLOW, GOODS, CANCELLED_ITEMS and SUMMARY, with shared date/filter guidance.
+
+- [ ] **Step 1: Write failing empty-state and print regression tests**
+
+Assert each concern renders its own empty-state title and the common guidance. Use Chromium print/PDF layout to assert every page repeats the full ten-column header, preserves report metadata and detail content, and the horizontal layout keeps every column within the printable page.
+
+- [ ] **Step 2: Run RED**
+
+Run: `npm run test --workspace=frontend -- src/features/reports/EndOfDayReportScreen.test.tsx`
+
+Expected: fail because the empty copy is generic and the print clone does not have a semantic repeating table header.
+
+- [ ] **Step 3: Implement the print-only table conversion and concern copy**
+
+Convert the cloned ARIA rows/cells to native `table`/`thead`/`tbody`/`tr`/`th`/`td`; use `display: table-header-group` for `thead` in print. Preserve cell text, horizontal A4 landscape, all ten columns, current-page rows, metadata, and the existing on-screen scrolling table. Do not lower the 50,000-row export cap or add export-concurrency behavior.
+
+Concern copy:
+- SALES: `Không có hóa đơn bán hàng trong phạm vi đã chọn.`
+- CASHFLOW: `Không có giao dịch thu hoặc chi trong phạm vi đã chọn.`
+- GOODS: `Không phát sinh hoạt động hàng hóa trong phạm vi đã chọn.`
+- CANCELLED_ITEMS: `Không có món hoặc đơn bị hủy trong phạm vi đã chọn.`
+- SUMMARY: `Không có hoạt động trong ngày trong phạm vi đã chọn.`
+- Shared guidance: `Thử đổi ngày hoặc điều chỉnh bộ lọc.`
+
+- [ ] **Step 4: Verify and update acceptance evidence**
+
+Re-run the focused report tests, full frontend suite, frontend typecheck, focused ESLint for changed report sources and Expo Web export. Update Task 13 acceptance evidence with the repeating-header/PDF outcome; retain the measured sequential 50,000-row figures and explicitly state that production memory/replica limits are unknown and concurrent-export testing/resource controls remain uncommitted pending infrastructure details.
+
+- [ ] **Step 5: Commit and request independent task review**
+
+Run `git diff --check` and commit the UI/tests/evidence as `fix(reports): repeat end-of-day print headers`.
+
+## Export capacity status (2026-10-04)
+
+Keep the accepted export cap at 50,000 rows. The production XLSX serializer was measured sequentially on 50,000 Sales rows: serialized input 31,217,233 bytes (~29.8 MiB), XLSX output 15,425,272 bytes (~14.7 MiB), 10.5–15.0 seconds per export, and cumulative process peak RSS 876,424 KiB (~856.9 MiB). A prior single-run measurement was 8.45 seconds / 842,324 KiB (~822.6 MiB). The 32 MiB source-data bound is not a process-RSS limit.
+
+The repository has no production backend memory limit, maximum instance/replica count, autoscaling policy, or export queue configuration. Concurrent-export performance and peak memory have not been measured by request, and no concurrency limit, worker, or streaming change is selected until deployment capacity is supplied. Before production rollout, confirm per-instance RAM, maximum backend instances, shared-database topology, request timeout and any existing queue/worker; then set a resource policy and run a capacity-appropriate concurrency benchmark. No production deployment is authorized by this note.

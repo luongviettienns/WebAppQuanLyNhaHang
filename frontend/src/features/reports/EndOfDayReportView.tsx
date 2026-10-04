@@ -7,6 +7,13 @@ import { InlineAlert } from '../../ui/Feedback';
 import { CONCERN_OPTIONS, DETAIL_HEADERS, detailCells, formatNumber, formatTimestamp, qualityFlags, summarySections } from './endOfDayReportViewModel';
 
 export interface EndOfDayReportViewProps { snapshot: EndOfDayReportResponse; compact: boolean; onPageChange?: (page: number) => void }
+const EMPTY_TITLES = {
+  SALES: 'Không có hóa đơn bán hàng trong phạm vi đã chọn.',
+  CASHFLOW: 'Không có giao dịch thu hoặc chi trong phạm vi đã chọn.',
+  GOODS: 'Không phát sinh hoạt động hàng hóa trong phạm vi đã chọn.',
+  CANCELLED_ITEMS: 'Không có món hoặc đơn bị hủy trong phạm vi đã chọn.',
+  SUMMARY: 'Không có hoạt động trong ngày trong phạm vi đã chọn.',
+};
 export const EndOfDayReportView = ({ snapshot, compact, onPageChange }: EndOfDayReportViewProps) => {
   const { metadata, summary, rows, pagination } = snapshot;
   const flags = qualityFlags(summary.invariantCounters);
@@ -20,7 +27,7 @@ export const EndOfDayReportView = ({ snapshot, compact, onPageChange }: EndOfDay
       <Text style={styles.copy}>Tạo báo cáo: {formatTimestamp(metadata.generatedAt)}</Text>
     </View>
     {flags.length ? <InlineAlert tone="warning" title="Lưu ý chất lượng dữ liệu" message={flags.join(' · ')} /> : null}
-    {!snapshot.hasData ? <View testID="report-empty" style={styles.empty}><Text style={styles.sectionTitle}>Không có bản ghi trong phạm vi đã chọn</Text><Text style={styles.copy}>Thay đổi ngày hoặc bộ lọc để xem hoạt động khác.</Text></View> : metadata.view === 'VERTICAL' ? <View testID="report-kpis" style={styles.sections}>
+    {!snapshot.hasData ? <View testID="report-empty" style={styles.empty}><Text style={styles.sectionTitle}>{EMPTY_TITLES[metadata.concern]}</Text><Text style={styles.copy}>Thử đổi ngày hoặc điều chỉnh bộ lọc.</Text></View> : metadata.view === 'VERTICAL' ? <View testID="report-kpis" style={styles.sections}>
       {summarySections(summary).map(section => <View key={section.title} style={styles.sections}>
         <Text accessibilityRole="header" style={styles.sectionTitle}>{section.title}</Text>
         <View style={styles.metrics}>{section.metrics.map(metric => <View key={metric.label} style={[styles.metric, { width: compact ? '48%' : '23%' }]}><Text style={styles.copy}>{metric.label}</Text><Text style={styles.number}>{formatNumber(metric.value)}</Text></View>)}</View>
