@@ -72,6 +72,7 @@ import {
 } from '../../api/employeeManagement';
 import { EmployeeManagementScreen } from './EmployeeManagementScreen';
 import { getTabsForRole } from '../../navigation/RoleTabs';
+import { ReportsWorkspaceScreen } from '../reports/ReportsWorkspaceScreen';
 
 (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -286,5 +287,11 @@ describe('employee management screen', () => {
     expect(adminKeys).toContain('employees');
     expect(getTabsForRole('CASHIER').map(tab => tab.key)).not.toContain('employees');
     expect(getTabsForRole('KITCHEN').map(tab => tab.key)).not.toContain('employees');
+  });
+
+  it('mounts Reports workspace for ADMIN and keeps other role tabs unchanged', () => {
+    expect(getTabsForRole('ADMIN').find(tab => tab.key === 'reports')?.component).toBe(ReportsWorkspaceScreen);
+    expect(getTabsForRole('CASHIER').map(tab => tab.key)).toEqual(['pos', 'tables', 'reservations', 'orders', 'cashbook']);
+    expect(getTabsForRole('KITCHEN').map(tab => tab.key)).toEqual(['kds']);
   });
 });

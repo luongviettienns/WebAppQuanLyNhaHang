@@ -5,7 +5,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon } from '../../ui';
 import { MenuManagementScreen } from './MenuManagementScreen';
-import { DashboardScreen } from '../reports/DashboardScreen';
+import { ReportsWorkspaceScreen } from '../reports/ReportsWorkspaceScreen';
 
 type AdminTab = 'menu' | 'reports';
 
@@ -49,7 +49,7 @@ export const AdminScreen: React.FC = () => {
       </View>
 
       <View style={styles.content}>
-        {activeTab === 'menu' ? <MenuManagementScreen /> : <DashboardScreen />}
+        {activeTab === 'menu' ? <MenuManagementScreen /> : <ReportsWorkspaceScreen />}
       </View>
     </SafeAreaView>
   );
