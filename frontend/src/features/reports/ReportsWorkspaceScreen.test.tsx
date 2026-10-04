@@ -4,9 +4,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-native', () => ({
   Pressable: 'Pressable', View: 'View', Text: 'Text', ScrollView: 'ScrollView', TextInput: 'TextInput', ActivityIndicator: 'ActivityIndicator',
-  useWindowDimensions: () => ({ width: 1200, height: 800 }),
+  Platform: { OS: 'web' }, useWindowDimensions: () => ({ width: 1200, height: 800 }),
   StyleSheet: { create: (styles: unknown) => styles }
 }));
+vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ token: 'admin' }) }));
+vi.mock('../../api/endOfDayReports', () => ({ buildEndOfDayReportQuery: () => '', fetchEndOfDayReportApi: vi.fn().mockRejectedValue(new Error('Offline')), downloadEndOfDayReportApi: vi.fn() }));
 vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ theme: { surfaceCanvas: '#fff', surfaceBase: '#fff', borderSubtle: '#ccc', textPrimary: '#111', textSecondary: '#555', primary: '#078', interactiveSecondary: '#eef' } }) }));
 // The legacy Dashboard fetches daily data and subscribes to sockets; keep those outside shell tests.
 vi.mock('./DashboardScreen', () => ({ DashboardScreen: () => React.createElement('Text', null, 'Legacy sales dashboard') }));
