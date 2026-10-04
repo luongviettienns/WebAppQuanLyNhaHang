@@ -1,4 +1,5 @@
 export type ErrorCode =
+  | 'REPORT_EXPORT_TOO_LARGE'
   | 'VALIDATION_ERROR'
   | 'UNAUTHENTICATED'
   | 'FORBIDDEN'
