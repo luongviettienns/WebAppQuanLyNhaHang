@@ -8,6 +8,7 @@ vi.mock('../../contexts/AuthContext', () => ({ useAuth: () => ({ token: 'admin' 
 vi.mock('../../api/endOfDayReports', async importOriginal => ({ ...await importOriginal<object>(), fetchEndOfDayReportApi: vi.fn(), downloadEndOfDayReportApi: vi.fn() }));
 import { downloadEndOfDayReportApi, EndOfDayReportApiError, fetchEndOfDayReportApi } from '../../api/endOfDayReports';
 import { Platform } from 'react-native';
+import { chromium } from '@playwright/test';
 let width = 1200;
 let palette = lightTheme;
 vi.mock('react-native', () => ({ Pressable: 'Pressable', View: 'View', Text: 'Text', TextInput: 'TextInput', ScrollView: 'ScrollView', ActivityIndicator: 'ActivityIndicator', Platform: { OS: 'web' }, useWindowDimensions: () => ({ width, height: 800 }), StyleSheet: { create: (s: unknown) => s } }));
@@ -68,6 +69,39 @@ describe('end-of-day report interface', () => {
 });
 
 describe('report refresh, export and print', () => {
+  it('fits all ten printed detail columns on paper while retaining every current-page row', async () => {
+    const printedStyles: string[] = [];
+    const head = { appendChild: (style: { textContent: string }) => printedStyles.push(style.textContent) };
+    const body = { appendChild: vi.fn() };
+    const frameDocument = { head, body, createElement: () => ({ textContent: '' }), open: vi.fn(), write: vi.fn(), close: vi.fn() };
+    const frame = { style: {}, contentDocument: frameDocument, contentWindow: { focus: vi.fn(), print: vi.fn() }, remove: vi.fn(), setAttribute: vi.fn() };
+    const cells = (role: string, prefix: string) => Array.from({ length: 10 }, (_, column) => `<div role="${role}" class="print-cell">${prefix} ${column + 1}</div>`).join('');
+    const table = `<div data-testid="report-sheet"><div data-testid="report-detail-scroll"><div class="print-table-container"><div role="table"><div role="row" class="print-row">${cells('columnheader', 'Column')}</div>${Array.from({ length: 50 }, (_, row) => `<div role="row" class="print-row">${cells('cell', `Row ${row + 1}`)}</div>`).join('')}</div></div></div></div>`;
+    vi.stubGlobal('document', { styleSheets: [{ cssRules: [{ cssText: '.print-table-container{min-width:1600px}.print-row{display:flex}.print-cell{width:160px;flex-shrink:0;padding:8px;box-sizing:border-box}[data-testid="report-detail-scroll"]{overflow-x:auto}' }] }], querySelector: () => ({ cloneNode: () => ({}) }), createElement: (tag: string) => tag === 'iframe' ? frame : { textContent: '' }, body: { appendChild: vi.fn() } });
+    vi.stubGlobal('window', {});
+    let screen: any;
+    await act(async () => { screen = create(<EndOfDayReportScreen snapshot={{ ...snapshot, metadata: { ...snapshot.metadata, view: 'HORIZONTAL' } }} />); });
+    await act(async () => { screen.root.findByProps({ testID: 'report-print' }).props.onPress(); });
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage({ viewport: { width: 1030, height: 700 } });
+      await page.setContent(`<style>${printedStyles.join('\n')}</style>${table}`);
+      await page.emulateMedia({ media: 'print' });
+      const layout = await page.evaluate(() => ({
+        bodyRight: document.body.getBoundingClientRect().right,
+        rightEdges: Array.from(document.querySelectorAll('[role="columnheader"]')).map(cell => cell.getBoundingClientRect().right),
+        bodyRightEdges: Array.from(document.querySelectorAll('[role="cell"]')).map(cell => cell.getBoundingClientRect().right),
+        rowCount: document.querySelectorAll('[role="row"]').length,
+        finalCell: document.querySelector('[role="table"]')?.lastElementChild?.lastElementChild?.textContent
+      }));
+      expect(layout.rightEdges).toHaveLength(10);
+      expect(Math.max(...layout.rightEdges)).toBeLessThanOrEqual(layout.bodyRight);
+      expect(layout.bodyRightEdges).toHaveLength(500);
+      expect(Math.max(...layout.bodyRightEdges)).toBeLessThanOrEqual(layout.bodyRight);
+      expect(layout.rowCount).toBe(51);
+      expect(layout.finalCell).toBe('Row 50 10');
+    } finally { await browser.close(); await act(async () => screen.unmount()); }
+  }, 15000);
   it('disables export and print only without a usable snapshot and retries initial errors', async () => {
     vi.mocked(fetchEndOfDayReportApi).mockRejectedValueOnce(new Error('Offline')); let screen: any;
     await act(async () => { screen = create(<EndOfDayReportScreen initialFilter={{ date: '2026-10-03' }} />); });

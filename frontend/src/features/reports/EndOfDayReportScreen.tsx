@@ -65,7 +65,15 @@ export const EndOfDayReportScreen = ({ snapshot: suppliedSnapshot, initialFilter
       catch { if (sheet.ownerNode) printDocument.head.appendChild(sheet.ownerNode.cloneNode(true)); }
     }
     const style = printDocument.createElement('style');
-    style.textContent = 'body{margin:16px;color:#24211F;background:#fff;font-family:Arial,sans-serif} *{overflow:visible!important;max-height:none!important} [role="button"]{display:none!important} @page{margin:12mm}';
+    style.textContent = `body{margin:16px;color:#24211F;background:#fff;font-family:Arial,sans-serif} *{overflow:visible!important;max-height:none!important} [role="button"]{display:none!important} @page{size:A4 ${snapshot.metadata.view === 'HORIZONTAL' ? 'landscape' : 'portrait'};margin:12mm}
+      @media print{
+        body{margin:0}
+        [data-testid="report-sheet"]{width:100%!important;max-width:none!important;padding:0!important}
+        [data-testid="report-detail-scroll"],[data-testid="report-detail-scroll"]>div{display:block!important;width:100%!important;min-width:0!important}
+        [role="table"]{display:table!important;width:100%!important;table-layout:fixed;border-collapse:collapse}
+        [role="row"]{display:table-row!important;break-inside:avoid;page-break-inside:avoid}
+        [role="columnheader"],[role="cell"]{display:table-cell!important;width:10%!important;min-width:0!important;padding:4px!important;font-size:8pt!important;line-height:1.35!important;overflow-wrap:anywhere;vertical-align:top}
+      }`;
     printDocument.head.appendChild(style); printDocument.body.appendChild(surface.cloneNode(true));
     printWindow.onafterprint = () => frame.remove();
     frame.onload = () => { printWindow.focus(); printWindow.print(); };
