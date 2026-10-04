@@ -19,6 +19,13 @@ function Harness() { state = useEndOfDayReport('admin'); return null; }
 async function mount() { await act(async () => { renderer = create(<Harness />) as typeof renderer; }); }
 afterEach(async () => { if (renderer) await act(async () => renderer.unmount()); vi.resetAllMocks(); });
 const query = { date: '2026-10-03', concern: 'SALES' as const };
+const cancelledItemsReport: EndOfDayReportResponse = {
+  ...report,
+  metadata: { ...report.metadata, concern: 'CANCELLED_ITEMS' },
+  rows: [],
+  pagination: { page: 1, pageSize: 50, totalRows: 0, totalPages: 0 },
+  summary: { cancelledOrderCount: 0, cancelledItemCount: 0, cancelledQuantity: 0, cancelledLineAmount: 0, unrecognizedLineAmount: 0, historicalFallbackRows: 0, byReason: [], byCancelledByUser: [], byPreparationState: [], byInventoryEffect: [], invariantCounters: { totalRows: 0 } }
+};
 describe('atomic end-of-day requests', () => {
   it('keeps the last snapshot and generatedAt when same-query refresh fails', async () => {
     vi.mocked(fetchEndOfDayReportApi).mockResolvedValueOnce(report).mockRejectedValueOnce(new Error('Offline'));
@@ -39,6 +46,19 @@ describe('atomic end-of-day requests', () => {
     expect(state.snapshot).toBe(report); expect(state.snapshot?.metadata.generatedAt).toBe('2026-10-03T12:00:01Z');
     expect(state.stale).toBe(true); expect(state.error).toContain('Offline'); expect(state.refreshAttemptedAt).toBeTruthy();
     expect(state.committedFilter).not.toHaveProperty('search');
+  });
+  it.each(['  ', ''])('treats blank cancellation reason %j as an absent filter on failure', async cancelReason => {
+    const cancelledItemsQuery = { ...query, concern: 'CANCELLED_ITEMS' as const };
+    vi.mocked(fetchEndOfDayReportApi).mockResolvedValueOnce(cancelledItemsReport).mockRejectedValueOnce(new Error('Offline'));
+    await mount(); await act(async () => { await state.load(cancelledItemsQuery); });
+    const unfilteredCommittedFilter = state.committedFilter;
+    await act(async () => { await state.load({ ...cancelledItemsQuery, cancelReason }); });
+    expect(state.snapshot).toBe(cancelledItemsReport);
+    expect(state.snapshot?.metadata.generatedAt).toBe('2026-10-03T12:00:01Z');
+    expect(state.stale).toBe(true); expect(state.error).toContain('Offline'); expect(state.refreshAttemptedAt).toBeTruthy();
+    expect(state.committedFilter).toEqual(unfilteredCommittedFilter);
+    expect(state.committedFilter).not.toHaveProperty('cancelReason');
+    expect(vi.mocked(fetchEndOfDayReportApi).mock.calls[1]?.[1]).not.toHaveProperty('cancelReason');
   });
   it.each([0, null, { ...report, rows: undefined }, { ...report, rows: [{}] }, { ...report, summary: {} }, { ...report, summary: { ...report.summary, netInvoiceValue: null } }])('does not replace a valid snapshot with malformed response %j', async bad => {
     vi.mocked(fetchEndOfDayReportApi).mockResolvedValueOnce(report).mockResolvedValueOnce(bad as EndOfDayReportResponse);
