@@ -630,6 +630,12 @@ Re-run the focused report tests, full frontend suite, frontend typecheck, focuse
 
 Run `git diff --check` and commit the UI/tests/evidence as `fix(reports): repeat end-of-day print headers`.
 
+### Task 14 PDF regression acceptance
+
+The Chromium regression uses `pdfjs-dist` 6.4.299 as an exact frontend development dependency recorded in `package-lock.json`. Its Node PDF reader consumes the actual print PDF bytes, verifies all ten repeated Vietnamese headings on every A4 landscape page, all 500 current-page cell values, report metadata/footer and horizontal text bounds within printable margins. It is loaded only by the test and adds no application UI/font dependency.
+
+With the repository's declared Node/npm versions, install dependencies using `npm ci` and provide the existing Playwright Chromium browser (`npx playwright install chromium` when it is not already installed). Then ordinary `npm run test --workspace=frontend` runs the PDF regression without a Python installation, external PDF parser, machine-specific path or parser environment variable. The print-dialog fixture remains deterministic; Task 13's actual exported-app acceptance is retained separately.
+
 ## Export capacity status (2026-10-04)
 
 Keep the accepted export cap at 50,000 rows. The production XLSX serializer was measured sequentially on 50,000 Sales rows: serialized input 31,217,233 bytes (~29.8 MiB), XLSX output 15,425,272 bytes (~14.7 MiB), 10.5–15.0 seconds per export, and cumulative process peak RSS 876,424 KiB (~856.9 MiB). A prior single-run measurement was 8.45 seconds / 842,324 KiB (~822.6 MiB). The 32 MiB source-data bound is not a process-RSS limit.

@@ -9,7 +9,6 @@ vi.mock('../../api/endOfDayReports', async importOriginal => ({ ...await importO
 import { downloadEndOfDayReportApi, EndOfDayReportApiError, fetchEndOfDayReportApi } from '../../api/endOfDayReports';
 import { Platform } from 'react-native';
 import { chromium } from '@playwright/test';
-import { spawnSync } from 'node:child_process';
 let width = 1200;
 let palette = lightTheme;
 vi.mock('react-native', () => ({ Pressable: 'Pressable', View: 'View', Text: 'Text', TextInput: 'TextInput', ScrollView: 'ScrollView', ActivityIndicator: 'ActivityIndicator', Platform: { OS: 'web' }, useWindowDimensions: () => ({ width, height: 800 }), StyleSheet: { create: (s: unknown) => s } }));
@@ -114,18 +113,29 @@ describe('report refresh, export and print', () => {
       await page.setContent(printed);
       await page.emulateMedia({ media: 'print' });
       const pdf = await page.pdf({ preferCSSPageSize: true, printBackground: true, path: process.env.REPORT_PRINT_PDF });
-      // Existing external PDF tooling; configure REPORT_PDF_PYTHON when python is not on PATH.
-      const parsed = spawnSync(process.env.REPORT_PDF_PYTHON ?? 'python', ['-c', 'import sys,io,json,pdfplumber\nwith pdfplumber.open(io.BytesIO(sys.stdin.buffer.read())) as pdf:\n print(json.dumps([dict(width=p.width,height=p.height,text=p.extract_text(),words=p.extract_words()) for p in pdf.pages]))'], { input: pdf, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 });
-      expect(parsed.status, parsed.stderr).toBe(0);
-      const pages = JSON.parse(parsed.stdout) as { width: number; height: number; text: string; words: { x0: number; x1: number; text: string }[] }[];
+      // Parse the real PDF using the lockfile-declared, test-only Node dependency.
+      const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+      const loading = getDocument({ data: new Uint8Array(pdf), disableFontFace: true, useSystemFonts: true });
+      const pages: { width: number; height: number; text: string; bounds: { x0: number; x1: number }[] }[] = [];
+      try {
+        const document = await loading.promise;
+        for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber++) {
+          const printedPage = await document.getPage(pageNumber);
+          const viewport = printedPage.getViewport({ scale: 1 });
+          const content = await printedPage.getTextContent();
+          const items = content.items.filter(item => 'str' in item);
+          pages.push({ width: viewport.width, height: viewport.height, text: items.map(item => item.str).join(' '), bounds: items.map(item => ({ x0: item.transform[4], x1: item.transform[4] + item.width })) });
+          printedPage.cleanup();
+        }
+      } finally { await loading.destroy(); }
       expect(pages.length).toBeGreaterThan(1);
       for (const printedPage of pages) {
         expect(printedPage.width).toBeCloseTo(841.92, 0);
         expect(printedPage.height).toBeCloseTo(594.96, 0);
         for (const header of headers) expect(printedPage.text.replace(/\s+/g, ' ')).toContain(header);
-        for (const word of printedPage.words) {
-          expect(word.x0).toBeGreaterThanOrEqual(33);
-          expect(word.x1).toBeLessThanOrEqual(printedPage.width - 33);
+        for (const bounds of printedPage.bounds) {
+          expect(bounds.x0).toBeGreaterThanOrEqual(33);
+          expect(bounds.x1).toBeLessThanOrEqual(printedPage.width - 33);
         }
       }
       const allText = pages.map(p => p.text).join('\n');
