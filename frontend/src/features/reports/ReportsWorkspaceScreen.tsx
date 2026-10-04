@@ -3,6 +3,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
 import { DashboardScreen } from './DashboardScreen';
+import { EndOfDayReportScreen } from './EndOfDayReportScreen';
 
 export type ReportsWorkspaceSection = 'end-of-day' | 'sales' | 'goods' | 'customers' | 'suppliers' | 'employees' | 'channels' | 'finance';
 const sections: { key: ReportsWorkspaceSection; label: string; disabled: boolean }[] = [
@@ -38,10 +39,7 @@ export const ReportsWorkspaceScreen: React.FC = () => {
       </View>
     </ScrollView>
     <View style={styles.content}>
-      {section === 'sales' ? <DashboardScreen /> : <View testID="reports-end-of-day-shell" style={styles.placeholder}>
-        <Text accessibilityRole="header" style={[styles.title, { color: theme.textPrimary }]}>Báo cáo cuối ngày</Text>
-        <Text style={[styles.description, { color: theme.textSecondary }]}>Tổng hợp hoạt động trong ngày tại Nhà hàng chính.</Text>
-      </View>}
+      {section === 'sales' ? <DashboardScreen /> : <EndOfDayReportScreen />}
     </View>
   </View>;
 };
@@ -55,7 +53,4 @@ const styles = StyleSheet.create({
   disabled: { opacity: 0.5 },
   tabText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
   content: { flex: 1, minHeight: 0 },
-  placeholder: { padding: spacing.lg, gap: spacing.sm },
-  title: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl },
-  description: { fontFamily: typography.families.body, fontSize: typography.sizes.sm }
 });

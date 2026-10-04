@@ -3,7 +3,8 @@ import { act, create } from 'react-test-renderer';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('react-native', () => ({
-  Pressable: 'Pressable', View: 'View', Text: 'Text', ScrollView: 'ScrollView',
+  Pressable: 'Pressable', View: 'View', Text: 'Text', ScrollView: 'ScrollView', TextInput: 'TextInput', ActivityIndicator: 'ActivityIndicator',
+  useWindowDimensions: () => ({ width: 1200, height: 800 }),
   StyleSheet: { create: (styles: unknown) => styles }
 }));
 vi.mock('../../contexts/ThemeContext', () => ({ useTheme: () => ({ theme: { surfaceCanvas: '#fff', surfaceBase: '#fff', borderSubtle: '#ccc', textPrimary: '#111', textSecondary: '#555', primary: '#078', interactiveSecondary: '#eef' } }) }));
