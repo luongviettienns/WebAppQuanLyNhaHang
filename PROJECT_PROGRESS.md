@@ -2,8 +2,8 @@
 
 > **Hệ Thống Đa Nền Tảng Đặt Món & Quản Lý Nhà Hàng Fast Food "CRISPY BITE"**  
 > **Kiến trúc**: Full-Stack Monorepo (React Native / Expo SDK 54 + Node.js / Express / Prisma / MySQL + Real-time Socket.io)  
-> **Trạng thái**: Đã hợp nhất thành công toàn bộ đợt 4 từ nhánh `pKhanh` vào `main` (Merge PR #2 `0a4dba6`). Tích hợp hoàn hảo Hệ thống Sổ Quỹ & Dòng Tiền (Cashbook Ledger) và Động Cơ Tính Hoa Hồng Nhân Viên (Employee Commission Engine); Full Quality Gate PASS 100% (1,111/1,111 tests).  
-> **Cập nhật lần cuối**: 2026-10-03 20:30:00
+> **Trạng thái**: Đã hợp nhất thành công toàn bộ đợt 4 từ nhánh `pKhanh` vào `main` (Merge PR #2 `0a4dba6`). Tích hợp hoàn hảo Hệ thống Sổ Quỹ & Dòng Tiền (Cashbook Ledger) và Động Cơ Tính Hoa Hồng Nhân Viên (Employee Commission Engine); Siết chặt FSM Undo Timeout, Vòng đời Dọn bàn `NEED_CLEANING` và Bảo toàn Voucher; Full Quality Gate PASS 100% (1,113/1,113 tests).  
+> **Cập nhật lần cuối**: 2026-10-07 18:45:00
 
 ---
 
@@ -14,9 +14,9 @@
 ```
 
 ### 🧪 Bằng chứng kiểm chứng chất lượng (Verification Metrics)
-- **Backend Test Suite (Vitest)**: 123/123 test files passed (822/822 tests pass 100% — bao gồm Toàn bộ cụm Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, Nhân sự Employees, Lịch ca kíp Schedules, Chấm công Kiosk/Admin, Tính lương Payroll, Cài đặt chính sách Employee Settings, Đặt bàn Reservations, Khách hàng Customers, Đối tác giao hàng Delivery Partners, Kho NVL, BOM & COGS, Price List, Menu Bulk/Import/Export, Voucher Engine, Table Transfer, KDS Kitchen Waste, Order Idempotency, FSM, Auth RBAC, Reports & Real-time Socket).
-- **Frontend Test Suite (Vitest)**: 86/86 test files passed (289/289 tests pass 100% — bao gồm Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, ViewModels & Screens cho Nhân sự, Lịch làm việc tuần, Chấm công Kiosk/Admin, Bảng lương, Cài đặt chính sách, Đặt bàn, Khách hàng, NCC, Phiếu nhập, Phiếu hủy, Phiếu kiểm kho, Bảng giá, Menu bulk, Notification helper, UI Tokens & Guards).
-- **Tổng Unit / Integration Tests**: **1,111/1,111 tests passed 100%** (822 backend + 289 frontend).
+- **Backend Test Suite (Vitest)**: 123/123 test files passed (824/824 tests pass 100% — bao gồm Toàn bộ cụm Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, Nhân sự Employees, Lịch ca kíp Schedules, Chấm công Kiosk/Admin, Tính lương Payroll, Cài đặt chính sách Employee Settings, Đặt bàn Reservations, Khách hàng Customers, Đối tác giao hàng Delivery Partners, Kho NVL, BOM & COGS, Price List, Menu Bulk/Import/Export, Voucher Engine, Table Transfer, KDS Kitchen Waste, Order Idempotency, FSM, Auth RBAC, Reports & Real-time Socket, FSM Undo 60s & Clean Table Transition).
+- **Frontend Test Suite (Vitest)**: 86/86 test files passed (289/289 tests pass 100% — bao gồm Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, ViewModels & Screens cho Nhân sự, Lịch làm việc tuần, Chấm công Kiosk/Admin, Bảng lương, Cài đặt chính sách, Đặt bàn, Khách hàng, NCC, Phiếu nhập, Phiếu hủy, Phiếu kiểm kho, Bảng giá, Menu bulk, Notification helper, UI Tokens & Guards, KDSScreen Undo 10s & TableScreen NEED_CLEANING).
+- **Tổng Unit / Integration Tests**: **1,113/1,113 tests passed 100%** (824 backend + 289 frontend).
 - **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ workspaces (`backend` + `frontend`).
 - **Monorepo Lint (ESLint)**: `npm run lint` $\rightarrow$ 0 lỗi trên toàn bộ workspaces.
 - **Expo Doctor Check**: `npm run doctor` $\rightarrow$ 18/18 checks đạt tiêu chuẩn Expo SDK 54.
@@ -363,6 +363,29 @@
       - Tổng cộng hệ thống: **1,113/1,113 tests PASS 100%**.
       - `npm run typecheck`: 0 lỗi biên dịch trên toàn bộ Monorepo.
       - `npm run doctor`: 18/18 checks đạt chuẩn Expo SDK 54.
+
+42. **Nâng Cấp & Chuẩn Hóa Toàn Diện Đặc Tả Kiến Trúc SRS & SDD Lên Phiên Bản 5.6 (`CHUC_NANG_VA_THAO_TAC_NGUOI_DUNG.md`)**:
+    - *Bối cảnh*: Tiếp thu đầy đủ các phản biện chuyên sâu về tính minh bạch giữa hiện trạng code và roadmap, bản chất vật lý của tem QR dán bàn, pháp lý thuế VAT Việt Nam, và ma trận kho 2 chiều khi Void đơn hàng.
+    - *Các cải tiến cốt lõi trong Phiên bản 5.6*:
+      1. **Bảng Đối Soát Minh Bạch: Hiện Trạng Code vs Đặc Tả Mở Rộng (Mục 1.0)**:
+         - Phân định rạch ròi giữa các tính năng đã cài đặt 100% trong mã nguồn (33 migrations, 1,113 tests) với các thực thể miền kiến trúc mở rộng (`TableSession`, `OrderInvoice`, `CashierShift`, `TaxRateConfig`).
+         - Không đánh đồng hoặc ngộ nhận các tính năng kiến trúc tương lai là đã có code thực tế.
+      2. **Chuẩn Hóa Tem QR Dán Bàn Vật Lý & Cơ Chế Session Token (Mục 2.1 & Sơ đồ 8.1)**:
+         - Khẳng định tem dán bàn mica/kim loại là vật lý cố định mang URL `/t/4` (hoặc `/table/4`), tuyệt đối không in lại tem mỗi lượt khách.
+         - URL tem không chứa bí mật dài hạn. Khách quét QR xong phải kích hoạt phiên bằng cách: Thu ngân bấm "Mở bàn" trên POS hoặc khách nhập mã PIN 4 số trên thẻ số bàn.
+         - Session token được hủy vĩnh viễn khi bàn chuyển sang trạng thái `NEED_CLEANING`.
+      3. **Chuẩn Hóa Thuế VAT Việt Nam & Giá Niêm Yết Menu (Mục 2.3 & 6.6)**:
+         - Tuân thủ Luật Giá và Nghị định 123/2020/NĐ-CP: Giá niêm yết trên menu B2C bắt buộc là **GIÁ ĐÃ BAO GỒM VAT (Gross Price)**.
+         - Công thức bóc tách ngược thuế VAT khi in bill: $\text{Giá trước thuế} = \frac{\text{Giá niêm yết}}{1 + \text{Thuế suất VAT}}$.
+         - Phân định thuế suất: 8% đối với món ăn chế biến sẵn; 10% đối với đồ uống có cồn (bia, rượu chịu thuế TTĐB).
+      4. **Ma Trận Kho 2 Chiều Khi Hủy Đơn Kiểm Toán (Admin Void Order - Mục 6.1 & Sơ đồ 8.8)**:
+         - Do kho trừ lúc thanh toán `PAID`: Xây dựng ma trận 2 chiều $\text{(PAID / UNPAID)} \times \text{(Chưa nấu / Đã nấu)}$.
+         - Đơn trả trước (`PAID`) hủy lúc chưa nấu (`PENDING`) $\rightarrow$ Bắt buộc **HOÀN KHO NGUYÊN LIỆU** (`RESTORE_INVENTORY`) theo BOM, sinh Phiếu Chi hoàn tiền, hủy hoa hồng.
+         - Đơn đã/đang nấu (`PREPARING/READY`) $\rightarrow$ Không hoàn kho món ăn nóng, hạch toán chi phí `SPOILAGE_WASTE`.
+         - Đơn chưa thanh toán (`UNPAID`) lúc `PENDING` $\rightarrow$ Không tác động kho; nếu đã nấu dở $\rightarrow$ trừ kho hao hụt bếp.
+      5. **Đồng Bộ Hóa Số Liệu Kiểm Thử Toàn Hệ Thống**:
+         - Cập nhật chỉ số **1,113 / 1,113 automated tests PASS 100%** (824 backend + 289 frontend).
+         - Cập nhật Definition of Done (DoD) với các mốc kiểm chứng tự động đã hoàn thành xuất sắc.
 
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
