@@ -189,8 +189,8 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     // Kiem tra gia tinh toan
     const expectedUnitPrice = item!.basePrice + expectedModDelta;
     const expectedTotal = expectedUnitPrice * 2;
-    const expectedVat = Math.round(expectedTotal * 0.08); // 8% VAT
-    const expectedFinal = expectedTotal + expectedVat;
+    const expectedVat = Math.round((expectedTotal * 8) / 108); // 8% Gross VAT boc tach
+    const expectedFinal = expectedTotal; // Gia niem yet da bao gom VAT
 
     expect(createdOrder.totalAmount).toBe(expectedTotal);
     expect(createdOrder.vatAmount).toBe(expectedVat);

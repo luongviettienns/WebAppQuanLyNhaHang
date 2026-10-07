@@ -415,6 +415,27 @@
       - Toàn bộ 86 test files (289 tests) của phân hệ `frontend` vượt qua 100%.
       - `npm run typecheck` đạt **0 lỗi biên dịch** trên cả 2 workspace.
 
+44. **Triển Khai Gói 2: Chuẩn Hóa Mô Hình Gross VAT (Giá Niêm Yết Đã Gồm 8% VAT - TDD)**:
+    - *Bối cảnh*: Đồng bộ mô hình tính giá theo đặc tả QSR Việt Nam: Giá niêm yết trên thực đơn đã bao gồm thuế VAT 8%. Khách hàng thanh toán đúng giá niêm yết (sau giảm giá/khuyến mãi và cộng phí vận chuyển nếu có), không cộng dồn thêm 8% VAT làm đội giá bill so với menu. Thuế VAT 8% được bóc tách ngược để kê khai và hạch toán: `vatAmount = Math.round((taxableAmount * 8) / 108)`, doanh thu thuần trước thuế = `taxableAmount - vatAmount`.
+    - *Các hạng mục đã triển khai theo TDD*:
+      1. **Bóc Tách Ngược Gross VAT Trong Voucher Engine (`vouchers.service.ts`)**:
+         - Khi kiểm tra voucher (`validateVoucher`), tính `taxableAmount = subtotal - discountAmount`.
+         - Bóc tách ngược VAT: `vatAmount = Math.round((taxableAmount * 8) / 108)`.
+         - Tổng tiền khách trả: `finalAmount = taxableAmount` (khớp chính xác giá niêm yết đã trừ khuyến mãi).
+      2. **Đồng Bộ Tính Toán Gross VAT Đơn Hàng (`orders.service.ts`)**:
+         - Khi tạo đơn hàng ban đầu: `vatAmount = Math.round((taxableAmount * 8) / 108)`, `totalAmount = taxableAmount + deliveryFee`.
+         - Khi tính toán lại theo bảng giá / khách hàng thành viên: Duy trì công thức Gross VAT tương thích.
+      3. **Đồng Bộ Mô Hình Dữ Liệu Frontend (`RestaurantContext.tsx` & `deliveryPartnerViewModel.ts`)**:
+         - Giỏ hàng: `cartVat = Math.round((cartSubtotal * 8) / 108)` và `cartTotal = cartSubtotal`.
+         - Đối tác giao hàng: Tách VAT từ tiền món ăn, cộng phí vận chuyển riêng biệt (không tính VAT trên phí ship).
+      4. **Nghiệm Thu Toàn Diện Test Suites & Quality Gates**:
+         - Cập nhật kỳ vọng test trong `vouchers.spec.ts` (14/14 tests pass).
+         - Cập nhật `orders.spec.ts` (14/14 tests pass), `order-modifiers.spec.ts` (8/8 tests pass), `delivery-partners.api.spec.ts` (5/5 tests pass).
+         - Cập nhật `deliveryPartnerViewModel.test.ts` (pass).
+         - Toàn bộ 15 test files (112 tests) `test/orders` PASS 100%.
+         - Toàn bộ 86 test files (289 tests) Frontend PASS 100%.
+         - `npm run typecheck` đạt **0 lỗi biên dịch** trên cả 2 workspace.
+
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
 

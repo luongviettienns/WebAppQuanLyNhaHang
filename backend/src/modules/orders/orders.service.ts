@@ -344,10 +344,10 @@ export class OrdersService {
       appliedVoucherCode = voucherCalc.code;
     }
 
-    // Tinh toan thue VAT 8% tren so tien sau khi tru khuyen mai (800 BPS)
+    // Tinh toan thue VAT 8% tren so tien sau khi tru khuyen mai (Gross VAT - gia niem yet da gom VAT 8%)
     const taxableAmount = Math.max(0, totalAmount - voucherDiscount);
-    let vatAmount = Math.round(taxableAmount * 0.08);
-    let finalAmount = taxableAmount + vatAmount + deliveryFee;
+    let vatAmount = Math.round((taxableAmount * 8) / 108);
+    let finalAmount = taxableAmount + deliveryFee;
 
     // 6. Tao ma don hang duy nhat CRISPY-YYYYMMDD-XXXX
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -427,8 +427,8 @@ export class OrdersService {
         if (usedGroupPrice && customerGroupPriceList) resolvedPriceListId = customerGroupPriceList.id;
         totalAmount = orderItemsData.reduce((sum, item) => sum + item.subtotal, 0);
         const effectiveTaxable = Math.max(0, totalAmount - voucherDiscount);
-        vatAmount = Math.round(effectiveTaxable * 0.08);
-        finalAmount = effectiveTaxable + vatAmount + deliveryFee;
+        vatAmount = Math.round((effectiveTaxable * 8) / 108);
+        finalAmount = effectiveTaxable + deliveryFee;
 
         if (isDelivery) {
           await tx.$queryRaw`SELECT id FROM DeliveryPartner WHERE id = ${input.deliveryPartnerId!} FOR UPDATE`;

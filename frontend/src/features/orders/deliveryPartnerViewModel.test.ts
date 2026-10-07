@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { deliveryOrderTotal, validateDeliveryDraft } from './deliveryPartnerViewModel';
 
 describe('delivery partner view model', () => {
-  it('adds delivery fee after food VAT without applying VAT to the fee', () => {
-    expect(deliveryOrderTotal(100000, 15000)).toEqual({ vatAmount: 8000, finalAmount: 123000 });
+  it('adds delivery fee after extracting Gross food VAT without applying VAT to the fee', () => {
+    expect(deliveryOrderTotal(100000, 15000)).toEqual({ vatAmount: 7407, finalAmount: 115000 });
   });
 
   it('requires an active partner and a delivery address for a delivery draft', () => {

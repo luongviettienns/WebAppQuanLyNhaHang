@@ -57,7 +57,7 @@ describe('delivery partners API', () => {
       items: [{ menuItemId: menuItem.id, quantity: 2 }]
     });
     expect(created.status).toBe(201);
-    expect(created.body.data.order).toMatchObject({ orderType: 'DELIVERY', deliveryPartnerId: partner.body.data.id, deliveryFee: 15000, totalAmount: 100000, vatAmount: 8000, finalAmount: 123000 });
+    expect(created.body.data.order).toMatchObject({ orderType: 'DELIVERY', deliveryPartnerId: partner.body.data.id, deliveryFee: 15000, totalAmount: 100000, vatAmount: 7407, finalAmount: 115000 });
 
     const noAddress = await request(app).post('/api/orders').set(auth()).send({ orderType: 'DELIVERY', deliveryPartnerId: partner.body.data.id, items: [{ menuItemId: menuItem.id, quantity: 1 }] });
     expect(noAddress.status).toBe(400);

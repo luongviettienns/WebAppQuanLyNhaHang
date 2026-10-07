@@ -850,10 +850,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     setCart([]);
   };
 
-  // Cart financial calculations (8% VAT standard)
+  // Cart financial calculations (Gross VAT standard: gia niem yet da bao gom 8% VAT)
   const cartSubtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
-  const cartVat = Math.round(cartSubtotal * 0.08); // 8% VAT
-  const cartTotal = cartSubtotal + cartVat;
+  const cartVat = Math.round((cartSubtotal * 8) / 108); // Boc tach 8% VAT tu gia niem yet
+  const cartTotal = cartSubtotal; // Tong thanh toan bang dung tong tien hang
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   // 7. Table & Dine-in Order Handlers

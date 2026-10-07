@@ -1,6 +1,6 @@
 export function deliveryOrderTotal(foodTotal: number, deliveryFee: number) {
-  const vatAmount = Math.round(foodTotal * 0.08);
-  return { vatAmount, finalAmount: foodTotal + vatAmount + deliveryFee };
+  const vatAmount = Math.round((foodTotal * 8) / 108);
+  return { vatAmount, finalAmount: foodTotal + deliveryFee };
 }
 
 export function validateDeliveryDraft(input: { partnerId: number | null; address: string; fee: number }) {

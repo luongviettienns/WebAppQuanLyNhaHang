@@ -146,11 +146,11 @@ describe('Voucher & Coupon Engine (Phase 10 - Slice 10.2)', () => {
   });
 
   it('validates a PERCENTAGE voucher and returns exact discount and 8% VAT calculations', async () => {
-    // Order amount = 200,000 VND
+    // Order amount = 200,000 VND (Gia niem yet da bao gom 8% VAT)
     // Discount 10% = 20,000 VND (<= maxDiscount 50,000 VND)
     // Taxable amount = 200,000 - 20,000 = 180,000 VND
-    // VAT 8% = 180,000 * 0.08 = 14,400 VND
-    // Final amount = 180,000 + 14,400 = 194,400 VND
+    // VAT 8% boc tach = Math.round(180,000 * 8 / 108) = 13,333 VND
+    // Final amount = 180,000 VND (Khach tra dung 180,000 VND, khong bi cong them thue)
     const res = await request(app)
       .post('/api/vouchers/validate')
       .send({
@@ -162,16 +162,16 @@ describe('Voucher & Coupon Engine (Phase 10 - Slice 10.2)', () => {
     expect(res.body.data.code).toBe('CRISPY10');
     expect(res.body.data.discountAmount).toBe(20000);
     expect(res.body.data.taxableAmount).toBe(180000);
-    expect(res.body.data.vatAmount).toBe(14400);
-    expect(res.body.data.finalAmount).toBe(194400);
+    expect(res.body.data.vatAmount).toBe(13333);
+    expect(res.body.data.finalAmount).toBe(180000);
   });
 
   it('caps PERCENTAGE discount to maxDiscount when order amount is very high', async () => {
-    // Order amount = 1,000,000 VND
+    // Order amount = 1,000,000 VND (Gia niem yet da bao gom 8% VAT)
     // 10% = 100,000 VND > maxDiscount (50,000 VND) -> discountAmount = 50,000 VND
     // Taxable = 950,000 VND
-    // VAT 8% = 950,000 * 0.08 = 76,000 VND
-    // Final = 950,000 + 76,000 = 1,026,000 VND
+    // VAT 8% boc tach = Math.round(950,000 * 8 / 108) = 70,370 VND
+    // Final = 950,000 VND
     const res = await request(app)
       .post('/api/vouchers/validate')
       .send({
@@ -182,8 +182,8 @@ describe('Voucher & Coupon Engine (Phase 10 - Slice 10.2)', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.discountAmount).toBe(50000);
     expect(res.body.data.taxableAmount).toBe(950000);
-    expect(res.body.data.vatAmount).toBe(76000);
-    expect(res.body.data.finalAmount).toBe(1026000);
+    expect(res.body.data.vatAmount).toBe(70370);
+    expect(res.body.data.finalAmount).toBe(950000);
   });
 
   it('rejects validation when order amount does not meet minOrderValue', async () => {
@@ -297,8 +297,8 @@ describe('Voucher & Coupon Engine (Phase 10 - Slice 10.2)', () => {
     expect(createdOrder.totalAmount).toBe(subtotal);
 
     const expectedTaxable = subtotal - 20000;
-    const expectedVat = Math.round(expectedTaxable * 0.08);
-    const expectedFinal = expectedTaxable + expectedVat;
+    const expectedVat = Math.round((expectedTaxable * 8) / 108);
+    const expectedFinal = expectedTaxable;
 
     expect(createdOrder.vatAmount).toBe(expectedVat);
     expect(createdOrder.finalAmount).toBe(expectedFinal);

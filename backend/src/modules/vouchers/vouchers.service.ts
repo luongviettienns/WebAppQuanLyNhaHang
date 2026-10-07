@@ -188,8 +188,9 @@ export class VouchersService {
 
     const discountAmount = Math.min(rawDiscount, orderAmount);
     const taxableAmount = Math.max(0, orderAmount - discountAmount);
-    const vatAmount = Math.round(taxableAmount * 0.08);
-    const finalAmount = taxableAmount + vatAmount;
+    // Gross VAT: Gia niem yet da bao gom 8% VAT -> Boc tach nguoc VAT
+    const vatAmount = Math.round((taxableAmount * 8) / 108);
+    const finalAmount = taxableAmount;
 
     return {
       voucherId: voucher.id,

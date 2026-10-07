@@ -88,7 +88,7 @@ describe('OrdersService modifier validation', () => {
   it('uses modifier price and names from DB instead of forged client values', async () => {
     const result = await OrdersService.createOrder(orderInput([modifier(10, 100)]));
 
-    expect(result.order).toMatchObject({ totalAmount: 110_000, vatAmount: 8_800, finalAmount: 118_800 });
+    expect(result.order).toMatchObject({ totalAmount: 110_000, vatAmount: 8_148, finalAmount: 110_000 });
     expect((result.order as any).items.create[0]).toMatchObject({
       unitPrice: 55_000,
       subtotal: 110_000,
