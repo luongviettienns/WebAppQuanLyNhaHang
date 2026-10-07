@@ -42,7 +42,12 @@ export const payOrderSchema = z.object({
 });
 
 export const reservationOrderPaymentDeclarationSchema = z.object({
-  reservationAccessToken: z.string().trim().min(32).max(96)
+  reservationAccessToken: z.string().trim().min(32).max(96).optional(),
+  qrCodeToken: z.string().trim().min(1).optional()
+}).superRefine((value, context) => {
+  if (Boolean(value.reservationAccessToken) === Boolean(value.qrCodeToken)) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Cần đúng một mã đặt bàn hoặc mã QR bàn' });
+  }
 });
 
 export const confirmOrderPaymentSchema = z.object({

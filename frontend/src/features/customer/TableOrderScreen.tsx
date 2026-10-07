@@ -26,7 +26,7 @@ import { MenuItemCard } from '../pos/MenuItemCard';
 import { ModifierModal } from '../pos/ModifierModal';
 import { CustomerCartModal } from './CustomerCartModal';
 import { notificationHelper } from '../../lib/notificationHelper';
-import { declareReservationOrderPaymentApi, ReservationOrderPaymentDeclaration } from '../../api/reservations';
+import { declareQrOrderPaymentApi, QrOrderPaymentDeclaration } from '../../api/reservations';
 
 interface Props {
   tableNumber?: number;
@@ -39,14 +39,15 @@ const formatVND = (amount: number) =>
 
 const formatTableNumber = (value: number) => value.toString().padStart(2, '0');
 
-const orderStatusConfig = (status: OrderStatus): { label: string; tone: StatusTone } => {
-  if (status === 'PREPARING') return { label: 'Đang chuẩn bị', tone: 'info' };
-  if (status === 'READY') return { label: 'Sẵn sàng phục vụ', tone: 'success' };
-  if (status === 'COMPLETED') return { label: 'Đã phục vụ', tone: 'neutral' };
-  if (status === 'CANCELLED') return { label: 'Đã hủy', tone: 'danger' };
+const orderStatusConfig = (order: Pick<OrderDto, 'status' | 'paymentStatus' | 'payLaterAuthorized'>): { label: string; tone: StatusTone } => {
+  if (order.status === 'PENDING' && order.paymentStatus !== 'PAID' && !order.payLaterAuthorized) return { label: 'Chờ xác nhận tiền', tone: 'warning' };
+  if (order.status === 'PENDING' && order.paymentStatus === 'PAID') return { label: 'Đã xác nhận thanh toán', tone: 'info' };
+  if (order.status === 'PREPARING') return { label: 'Đang chuẩn bị', tone: 'info' };
+  if (order.status === 'READY') return { label: 'Sẵn sàng phục vụ', tone: 'success' };
+  if (order.status === 'COMPLETED') return { label: 'Đã phục vụ', tone: 'neutral' };
+  if (order.status === 'CANCELLED') return { label: 'Đã hủy', tone: 'danger' };
   return { label: 'Đã nhận đơn', tone: 'warning' };
 };
-
 const orderSteps = [
   { title: 'Đã nhận đơn', description: 'Nhà hàng đã nhận được yêu cầu của bạn.', icon: Check },
   { title: 'Đang chuẩn bị', description: 'Bếp đang chuẩn bị các món trong đơn.', icon: ChefHat },
@@ -81,11 +82,12 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     fetchTables,
     activeTableOrder,
     latestOrderStatusChanged,
+    latestOrderPaymentChanged,
     orderPaymentsRevision
   } = useRestaurant();
 
   const [currentOrder, setCurrentOrder] = useState<OrderDto | null>(null);
-  const [paymentDeclaration, setPaymentDeclaration] = useState<ReservationOrderPaymentDeclaration | null>(null);
+  const [paymentDeclaration, setPaymentDeclaration] = useState<QrOrderPaymentDeclaration | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [isVietQRModalOpen, setIsVietQRModalOpen] = useState(false);
@@ -263,6 +265,15 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     setPaymentDeclaration(null);
   }, [currentOrder?.payLaterAuthorized, currentOrder?.paymentStatus]);
 
+  useEffect(() => {
+    if (!latestOrderPaymentChanged || latestOrderPaymentChanged.orderId !== liveOrder?.id) return;
+    setCurrentOrder((previous) => previous?.id === latestOrderPaymentChanged.orderId ? {
+      ...previous,
+      paymentStatus: latestOrderPaymentChanged.paymentStatus,
+      payLaterAuthorized: latestOrderPaymentChanged.payLaterAuthorized ?? previous.payLaterAuthorized
+    } : previous);
+  }, [latestOrderPaymentChanged, liveOrder?.id]);
+
   // Lang nghe socket cap nhat tien do don hang theo thoi gian thuc cho khach
   useEffect(() => {
     if (!latestOrderStatusChanged) return;
@@ -341,10 +352,10 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
 
     if (result.success && result.order) {
       let order = result.order;
-      if (reservationAccessToken) {
-        let declaration: ReservationOrderPaymentDeclaration;
+      if (tokenToSend) {
+        let declaration: QrOrderPaymentDeclaration;
         try {
-          declaration = await declareReservationOrderPaymentApi(order.id, reservationAccessToken);
+          declaration = await declareQrOrderPaymentApi(order.id, reservationAccessToken ? { reservationAccessToken } : { qrCodeToken: tokenToSend });
           setPaymentDeclaration(declaration);
           order = declaration.order;
         } catch (failure: any) {
@@ -410,7 +421,8 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     }
   };
 
-  const currentStep = getStepProgress(liveOrder?.status);
+  const isAwaitingPayment = !!liveOrder && liveOrder.status === 'PENDING' && liveOrder.paymentStatus !== 'PAID' && !liveOrder.payLaterAuthorized;
+  const currentStep = isAwaitingPayment ? 0 : getStepProgress(liveOrder?.status);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.surfaceCanvas }]}>
@@ -497,8 +509,9 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                   : `Mã đơn ${liveOrder.code}`}
               </Text>
             </View>
-            <StatusBadge {...orderStatusConfig(liveOrder.status)} />
+            <StatusBadge {...orderStatusConfig(liveOrder)} />
           </View>
+          {isAwaitingPayment && <InlineAlert title="Đang chờ thu ngân xác nhận thanh toán" message="Bếp chưa nhận món. Đơn sẽ được gửi xuống bếp sau khi thu ngân đối chiếu tiền đã vào tài khoản." />}
 
           {/* Thanh chon dot don hang khi co nhieu dot goi mon */}
           {allTableOrders.length > 1 && (
@@ -570,7 +583,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                   {allTableOrders.map((order, idx) => {
                     const isSelected = order.id === liveOrder?.id;
                     const batchNumber = allTableOrders.length - idx;
-                    const statusCfg = orderStatusConfig(order.status);
+                    const statusCfg = orderStatusConfig(order);
                     return (
                       <Pressable
                         key={order.id}
@@ -747,7 +760,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                             <Text style={[styles.batchOrderTitle, { color: isCurrentBatch ? theme.primary : theme.textPrimary }]}>
                               Đợt {batchNumber} · Mã #{batchOrder.code} {isCurrentBatch ? '(Đang xem)' : ''}
                             </Text>
-                            <StatusBadge {...orderStatusConfig(batchOrder.status)} />
+                            <StatusBadge {...orderStatusConfig(batchOrder)} />
                           </View>
                           <Text style={[styles.batchOrderTime, { color: theme.textSecondary }]}>
                             Đặt lúc {new Date(batchOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
@@ -825,7 +838,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
                       Đặt lúc {new Date(liveOrder.createdAt).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
                     </Text>
                   </View>
-                  <StatusBadge {...orderStatusConfig(liveOrder.status)} />
+                  <StatusBadge {...orderStatusConfig(liveOrder)} />
                 </View>
 
                 <View style={styles.singleOrderDivider} />
@@ -1100,7 +1113,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
           setAppliedVoucher(null);
         }}
         onSubmitOrder={() => void handleSendToKitchen()}
-        submitLabel={`Tạo order & thanh toán trước (${formatVND(cartTotal)})`}
+        submitLabel={reservationAccessToken ? `Tạo order & thanh toán trước (${formatVND(cartTotal)})` : `Gửi đơn chờ xác nhận tiền (${formatVND(cartTotal)})`}
         isSubmitting={isSubmitting}
         onClose={() => setIsCartModalOpen(false)}
       />

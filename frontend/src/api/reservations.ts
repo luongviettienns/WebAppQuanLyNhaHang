@@ -18,13 +18,14 @@ export type PublicReservationResult = {
   scheduledAt: string; partySize: number; transferContent: string; paymentInstructions: VietQrInstructions;
   tableOrder: { tableNumber: number; qrCodeToken: string } | null;
 };
-export type ReservationOrderPaymentDeclaration = { paymentStatus: string; amountDue: number; transferContent: string; paymentInstructions: VietQrInstructions; order: OrderDto };
+export type QrOrderPaymentDeclaration = { paymentStatus: string; amountDue: number; transferContent: string; paymentInstructions: VietQrInstructions; order: OrderDto };
+export type ReservationOrderPaymentDeclaration = QrOrderPaymentDeclaration;
 export type PaymentConfirmationDto = {
-  id: number; code: string; status: string; paymentStatus: string; reservationId: number; tableId: number;
+  id: number; code: string; status: string; paymentStatus: string; reservationId: number | null; tableId: number | null;
   tableNumber: number | null; finalAmount: number; totalAmount: number; vatAmount: number; createdAt: string;
   reservation: { id: number; code: string; contactName: string; contactPhone: string } | null;
   customer: { id: number; name: string; phone: string | null } | null;
-  paymentDeclaration: { id: number; amount: number; paymentMethod: string | null; createdAt: string } | null;
+  paymentDeclaration: { id: number; amount: number; paymentMethod: string | null; createdAt: string } | null; transferContent: string;
 };
 
 const headers = (token?: string | null, json = false): Record<string, string> => ({ ...(json ? { 'Content-Type': 'application/json' } : {}), ...(token ? { Authorization: `Bearer ${token}` } : {}) });
@@ -53,7 +54,8 @@ export const fetchReservationDetailApi = (token: string | null, id: number) => r
 export const createPublicReservationApi = (input: { name: string; phone: string; scheduledAt: string; partySize: number; note?: string }) => request<PublicReservationResult>('reservations', { method: 'POST', body: input });
 export const fetchPublicReservationApi = (accessToken: string) => request<PublicReservationResult>(`reservations/public/${encodeURIComponent(accessToken)}`);
 export const declarePublicReservationPaymentApi = (accessToken: string) => request<PublicReservationResult>(`reservations/public/${encodeURIComponent(accessToken)}/payment-declaration`, { method: 'POST', body: {} });
-export const declareReservationOrderPaymentApi = (orderId: number, accessToken: string) => request<ReservationOrderPaymentDeclaration>(`orders/${orderId}/payment-declaration`, { method: 'POST', body: { reservationAccessToken: accessToken } });
+export const declareQrOrderPaymentApi = (orderId: number, access: { reservationAccessToken: string } | { qrCodeToken: string }) => request<QrOrderPaymentDeclaration>(`orders/${orderId}/payment-declaration`, { method: 'POST', body: access });
+export const declareReservationOrderPaymentApi = (orderId: number, accessToken: string) => declareQrOrderPaymentApi(orderId, { reservationAccessToken: accessToken });
 export const requestReservationCancellationApi = (accessToken: string, reason: string) => request<PublicReservationResult>(`reservations/public/${encodeURIComponent(accessToken)}/cancellation-request`, { method: 'POST', body: { reason } });
 export const confirmReservationDepositApi = (token: string | null, id: number, amount: number, externalReference: string, financialAccountId?: number | null) => request<ReservationDto>(`reservations/${id}/deposit/confirm`, { token, method: 'POST', body: { amount, paymentMethod: 'BANK_TRANSFER', externalReference, financialAccountId } });
 export const rejectReservationDepositApi = (token: string | null, id: number, reason: string) => request<ReservationDto>(`reservations/${id}/deposit/reject`, { token, method: 'POST', body: { reason } });

@@ -37,6 +37,9 @@ export class OrdersController {
     try {
       const input = createOrderSchema.parse(req.body);
       const createdByUserId = req.user?.id;
+      if (req.user && !['CASHIER', 'ADMIN'].includes(req.user.role)) {
+        throw ApiError.forbidden('Chỉ thu ngân hoặc quản trị viên được tạo order từ POS');
+      }
       if (input.payLaterOverride && (!req.user || !['CASHIER', 'ADMIN'].includes(req.user.role))) {
         throw ApiError.forbidden('Chỉ thu ngân hoặc quản trị viên được cho phép order trả sau');
       }

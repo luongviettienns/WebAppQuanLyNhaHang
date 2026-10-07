@@ -14,6 +14,7 @@ import {
   SocketMenuStockChangedPayload,
   SocketTableStatusChangedPayload,
   SocketOrderStatusChangedPayload,
+  SocketOrderPaymentChangedPayload,
   SocketOrderNewPayload,
   ApiResponse,
   MenuItemUpsertDto,
@@ -125,6 +126,7 @@ interface RestaurantContextType {
 
   // Real-time Updates
   latestOrderStatusChanged?: SocketOrderStatusChangedPayload | null;
+  latestOrderPaymentChanged?: SocketOrderPaymentChangedPayload | null;
   inventoryRevision: number;
   tablesRevision: number;
   customersRevision: number;
@@ -196,6 +198,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Real-time Order Updates
   const [latestOrderStatusChanged, setLatestOrderStatusChanged] = useState<SocketOrderStatusChangedPayload | null>(null);
+  const [latestOrderPaymentChanged, setLatestOrderPaymentChanged] = useState<SocketOrderPaymentChangedPayload | null>(null);
 
   // KDS State (Bếp thời gian thực)
   const [kdsOrders, setKdsOrders] = useState<OrderDto[]>([]);
@@ -644,7 +647,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     socket.on('customers:changed', () => setCustomersRevision(revision => revision + 1));
     socket.on('employees:changed', () => setEmployeesRevision(revision => revision + 1));
     socket.on('reservations:changed', () => setReservationsRevision(revision => revision + 1));
-    socket.on('order:paymentChanged', () => setOrderPaymentsRevision(revision => revision + 1));
+    socket.on('order:paymentChanged', (payload: SocketOrderPaymentChangedPayload) => {
+      setOrderPaymentsRevision(revision => revision + 1);
+      setLatestOrderPaymentChanged(payload);
+    });
     socket.on('cashbook:changed', () => setCashbookRevision(revision => revision + 1));
 
     // Table Status Changed
@@ -1336,6 +1342,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
         transferTable,
         voidOrder,
         latestOrderStatusChanged,
+        latestOrderPaymentChanged,
         inventoryRevision,
         tablesRevision,
         customersRevision,

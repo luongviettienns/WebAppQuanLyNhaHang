@@ -653,6 +653,12 @@ export interface SocketOrderNewPayload {
   order: OrderDto;
 }
 
+export interface SocketOrderPaymentChangedPayload {
+  orderId: number;
+  paymentStatus: PaymentStatus;
+  payLaterAuthorized?: boolean;
+}
+
 export interface SocketOrderStatusChangedPayload {
   orderId: number;
   code: string;
