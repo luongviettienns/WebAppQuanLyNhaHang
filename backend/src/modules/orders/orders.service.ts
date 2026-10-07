@@ -996,17 +996,17 @@ export class OrdersService {
       throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
     }
 
-    // FSM State transitions: PENDING -> PREPARING -> READY -> COMPLETED
+    // FSM State transitions: PENDING -> PREPARING -> READY -> COMPLETED (ho tro Undo READY -> PREPARING)
     const validTransitions: Record<string, string[]> = {
       PENDING: ['PREPARING'],
       PREPARING: ['READY'],
-      READY: ['COMPLETED']
+      READY: ['COMPLETED', 'PREPARING']
     };
 
     const allowed = validTransitions[order.status];
     if (!allowed || !allowed.includes(nextStatus)) {
       throw ApiError.orderStateInvalid(
-        `Không thể chuyển trạng thái từ ${order.status} sang ${nextStatus}. Luồng trạng thái hợp lệ: PENDING -> PREPARING -> READY -> COMPLETED`
+        `Không thể chuyển trạng thái từ ${order.status} sang ${nextStatus}. Luồng trạng thái hợp lệ: PENDING -> PREPARING -> READY -> COMPLETED (hỗ trợ Undo READY -> PREPARING)`
       );
     }
 
@@ -1016,6 +1016,9 @@ export class OrdersService {
     if (nextStatus === 'PREPARING') {
       if (!order.preparingAt) {
         data.preparingAt = now;
+      }
+      if (order.status === 'READY') {
+        data.readyAt = null;
       }
     } else if (nextStatus === 'READY') {
       if (!order.readyAt) {
@@ -1303,6 +1306,14 @@ export class OrdersService {
                 currentOrderId
               };
             }
+          }
+
+          if (lockedOrder.voucherId) {
+            await tx.$executeRaw`
+              UPDATE Voucher 
+              SET usedCount = CASE WHEN usedCount > 0 THEN usedCount - 1 ELSE 0 END 
+              WHERE id = ${lockedOrder.voucherId}
+            `;
           }
 
           return { order: updatedOrder, tableState: nextTableState, stockChanges: restoredStock };

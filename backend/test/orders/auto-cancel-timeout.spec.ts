@@ -176,4 +176,53 @@ describe('Auto-Cancel Timeout Orders (Tier 2 Logic)', () => {
     expect(res.body.success).toBe(true);
     expect(typeof res.body.data.cancelledCount).toBe('number');
   });
+
+  it('restores voucher usedCount when an order with voucher is auto-cancelled due to timeout', async () => {
+    const table = await prismaTest.diningTable.findFirstOrThrow({ where: { tableNumber: 5 } });
+    const burger = await prismaTest.menuItem.findFirstOrThrow({ where: { name: { contains: 'Burger' } } });
+
+    const voucher = await prismaTest.voucher.create({
+      data: {
+        code: 'VOUCHER_AUTOCANCEL_TEST',
+        title: 'Voucher test auto cancel',
+        discountType: 'FIXED_AMOUNT',
+        discountValue: 10000,
+        minOrderValue: 20000,
+        usageLimit: 5,
+        usedCount: 0,
+        startDate: new Date(Date.now() - 3600000),
+        endDate: new Date(Date.now() + 86400000)
+      }
+    });
+
+    const created = await OrdersService.createOrder({
+      orderType: 'DINE_IN',
+      tableId: table.id,
+      qrCodeToken: table.qrCodeToken,
+      voucherCode: voucher.code,
+      items: [{ menuItemId: burger.id, quantity: 2, selectedModifiers: [] }]
+    }, 1);
+
+    expect(created.order.voucherId).toBe(voucher.id);
+
+    // Verify voucher usedCount was incremented to 1
+    const voucherAfterOrder = await prismaTest.voucher.findUniqueOrThrow({ where: { id: voucher.id } });
+    expect(voucherAfterOrder.usedCount).toBe(1);
+
+    // Simulate created 70 minutes ago
+    const pastDate = new Date(Date.now() - 70 * 60 * 1000);
+    await prismaTest.order.update({
+      where: { id: created.order.id },
+      data: { createdAt: pastDate, updatedAt: pastDate }
+    });
+
+    // Run auto-cancel service
+    const result = await OrdersService.autoCancelExpiredOrders(60);
+    expect(result.cancelledOrderIds).toContain(created.order.id);
+
+    // Verify voucher usedCount was restored back to 0
+    const voucherAfterCancel = await prismaTest.voucher.findUniqueOrThrow({ where: { id: voucher.id } });
+    expect(voucherAfterCancel.usedCount).toBe(0);
+  });
 });
+

@@ -71,10 +71,16 @@ describe('Order Lifecycle FSM Transitions & Prep Time (Task 10 DB Integration)',
     expect(updated.prepTimeSec).toBeGreaterThanOrEqual(0);
   });
 
-  it('rejects invalid reverse: READY -> PREPARING', async () => {
-    await expect(
-      OrdersService.updateOrderStatus(createdOrderId, 'PREPARING')
-    ).rejects.toThrowError(/Không thể chuyển trạng thái/);
+  it('allows valid reverse transition (Undo): READY -> PREPARING and resets readyAt to null', async () => {
+    const updated = await OrdersService.updateOrderStatus(createdOrderId, 'PREPARING');
+    expect(updated.status).toBe('PREPARING');
+    expect(updated.readyAt).toBeNull();
+  });
+
+  it('allows transitioning from PREPARING back to READY after Undo', async () => {
+    const updated = await OrdersService.updateOrderStatus(createdOrderId, 'READY');
+    expect(updated.status).toBe('READY');
+    expect(updated.readyAt).toBeTruthy();
   });
 
   it('allows valid transition: READY -> COMPLETED and records completedAt', async () => {

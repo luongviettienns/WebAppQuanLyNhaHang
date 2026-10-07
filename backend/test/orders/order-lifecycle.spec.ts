@@ -157,5 +157,25 @@ describe('Order Lifecycle & KDS API (Task 10)', () => {
       expect(res.body.data.status).toBe('READY');
       expect(res.body.data.prepTimeSec).toBe(240);
     });
+
+    it('allows CASHIER to transition order to COMPLETED when serving dishes to customer', async () => {
+      const completedAt = new Date().toISOString();
+      vi.mocked(OrdersService.updateOrderStatus).mockResolvedValue({
+        id: 101,
+        code: 'CRISPY-20260909-0101',
+        status: 'COMPLETED',
+        completedAt
+      } as any);
+
+      const res = await request(app)
+        .patch('/api/orders/101/status')
+        .set('Authorization', `Bearer ${createToken('CASHIER')}`)
+        .send({ status: 'COMPLETED' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.status).toBe('COMPLETED');
+      expect(OrdersService.updateOrderStatus).toHaveBeenCalledWith(101, 'COMPLETED', 1);
+    });
   });
 });
+

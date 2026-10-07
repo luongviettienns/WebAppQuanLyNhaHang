@@ -61,6 +61,11 @@ export class OrdersController {
       const orderId = parseInt(req.params.id, 10);
       const input = updateOrderStatusSchema.parse(req.body);
       const userId = req.user?.id;
+      const userRole = req.user?.role;
+
+      if (userRole === 'CASHIER' && input.status !== 'COMPLETED') {
+        throw ApiError.forbidden('Thu ngân chỉ có quyền xác nhận giao món hoàn tất (COMPLETED)');
+      }
 
       const order = await OrdersService.updateOrderStatus(orderId, input.status, userId);
       res.status(200).json({ data: order });

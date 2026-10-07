@@ -47,8 +47,8 @@ ordersRouter.post('/:id/payment/reject', authenticate, authorize('CASHIER', 'ADM
 ordersRouter.post('/:id/pay-later', authenticate, authorize('CASHIER', 'ADMIN'), OrdersController.authorizeReservationOrderPayLater);
 ordersRouter.post('/', optionalAuthenticate, OrdersController.createOrder);
 
-// PATCH /api/orders/:id/status (Chuyen trang thai bep FSM: Chi KITCHEN va ADMIN)
-ordersRouter.patch('/:id/status', authenticate, authorize('KITCHEN', 'ADMIN'), OrdersController.updateOrderStatus);
+// PATCH /api/orders/:id/status (Chuyen trang thai bep FSM: KITCHEN, ADMIN, va CASHIER giao mon)
+ordersRouter.patch('/:id/status', authenticate, authorize('KITCHEN', 'ADMIN', 'CASHIER'), OrdersController.updateOrderStatus);
 
 // POST /api/orders/:id/pay (Thanh toan don hang: Chi CASHIER va ADMIN duoc thu tien)
 ordersRouter.post('/:id/pay', authenticate, authorize('CASHIER', 'ADMIN'), OrdersController.payOrder);

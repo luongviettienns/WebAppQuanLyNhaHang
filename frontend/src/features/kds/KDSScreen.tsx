@@ -97,9 +97,11 @@ interface TicketProps {
   now: number;
   updating: boolean;
   onTransition: (order: OrderDto) => void;
+  undoRemainingSec?: number;
+  onUndo?: (order: OrderDto) => void;
 }
 
-const OrderTicket: React.FC<TicketProps> = ({ order, now, updating, onTransition }) => {
+const OrderTicket: React.FC<TicketProps> = ({ order, now, updating, onTransition, undoRemainingSec, onUndo }) => {
   const { theme } = useTheme();
   const status = order.status as KdsStatus;
   const config = statusConfig[status];
@@ -166,14 +168,39 @@ const OrderTicket: React.FC<TicketProps> = ({ order, now, updating, onTransition
         </View>
 
         <View style={[styles.ticketFooter, { borderTopColor: theme.borderSubtle }]}>
-          <Button
-            testID={`kds-action-btn-${order.code}`}
-            variant="primary"
-            label={config.actionLabel}
-            icon={config.icon}
-            loading={updating}
-            onPress={() => onTransition(order)}
-          />
+          {undoRemainingSec !== undefined && undoRemainingSec > 0 && onUndo ? (
+            <View style={styles.undoFooterRow}>
+              <View style={{ flex: 1 }}>
+                <Button
+                  testID={`kds-undo-btn-${order.code}`}
+                  variant="secondary"
+                  label={`Hoàn tác (${undoRemainingSec}s)`}
+                  icon={RefreshCw}
+                  loading={updating}
+                  onPress={() => onUndo(order)}
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Button
+                  testID={`kds-action-btn-${order.code}`}
+                  variant="primary"
+                  label={config.actionLabel}
+                  icon={config.icon}
+                  loading={updating}
+                  onPress={() => onTransition(order)}
+                />
+              </View>
+            </View>
+          ) : (
+            <Button
+              testID={`kds-action-btn-${order.code}`}
+              variant="primary"
+              label={config.actionLabel}
+              icon={config.icon}
+              loading={updating}
+              onPress={() => onTransition(order)}
+            />
+          )}
         </View>
       </Surface>
     </View>
@@ -187,9 +214,20 @@ interface LaneProps {
   updatingOrderId: number | null;
   desktop: boolean;
   onTransition: (order: OrderDto) => void;
+  readyOrderTimestamps: Record<number, number>;
+  onUndo: (order: OrderDto) => void;
 }
 
-const StatusLane: React.FC<LaneProps> = ({ status, orders, now, updatingOrderId, desktop, onTransition }) => {
+const StatusLane: React.FC<LaneProps> = ({
+  status,
+  orders,
+  now,
+  updatingOrderId,
+  desktop,
+  onTransition,
+  readyOrderTimestamps,
+  onUndo
+}) => {
   const { theme } = useTheme();
   const config = statusConfig[status];
 
@@ -209,9 +247,29 @@ const StatusLane: React.FC<LaneProps> = ({ status, orders, now, updatingOrderId,
         {orders.length === 0 ? (
           <EmptyState title="Chưa có ticket" description={config.emptyDescription} />
         ) : (
-          orders.map((order) => (
-            <OrderTicket key={order.id} order={order} now={now} updating={updatingOrderId === order.id} onTransition={onTransition} />
-          ))
+          orders.map((order) => {
+            let undoRemainingSec = 0;
+            if (order.status === 'READY') {
+              const readyMs = readyOrderTimestamps[order.id] || (order.readyAt ? new Date(order.readyAt).getTime() : 0);
+              if (readyMs > 0) {
+                const elapsedSec = Math.floor((now - readyMs) / 1000);
+                if (elapsedSec < 10) {
+                  undoRemainingSec = 10 - elapsedSec;
+                }
+              }
+            }
+            return (
+              <OrderTicket
+                key={order.id}
+                order={order}
+                now={now}
+                updating={updatingOrderId === order.id}
+                onTransition={onTransition}
+                undoRemainingSec={undoRemainingSec}
+                onUndo={onUndo}
+              />
+            );
+          })
         )}
       </ScrollView>
     </Surface>
@@ -312,6 +370,8 @@ export const KDSScreen: React.FC = () => {
     { PENDING: [], PREPARING: [], READY: [] }
   );
 
+  const [readyOrderTimestamps, setReadyOrderTimestamps] = useState<Record<number, number>>({});
+
   const handleTransition = async (order: OrderDto) => {
     const nextStatus = ({
       PENDING: 'PREPARING',
@@ -330,6 +390,9 @@ export const KDSScreen: React.FC = () => {
         message: result.error || 'Không thể cập nhật trạng thái đơn'
       });
     } else {
+      if (nextStatus === 'READY') {
+        setReadyOrderTimestamps((prev) => ({ ...prev, [order.id]: Date.now() }));
+      }
       const destination = order.orderType === 'DINE_IN'
         ? `Bàn ${order.tableNumber ?? order.tableId ?? ''}`
         : `Mang đi (Số ${order.buzzerNumber ?? ''})`;
@@ -343,7 +406,7 @@ export const KDSScreen: React.FC = () => {
         showToast({
           type: 'success',
           title: 'Món đã nấu xong! 🎉',
-          message: `Đơn ${order.code} (${destination}) đã sẵn sàng giao cho khách.`
+          message: `Đơn ${order.code} (${destination}) đã sẵn sàng giao cho khách (Có thể hoàn tác trong 10s).`
         });
       } else if (nextStatus === 'COMPLETED') {
         showToast({
@@ -352,6 +415,30 @@ export const KDSScreen: React.FC = () => {
           message: `Đã giao thành công đơn ${order.code} (${destination}).`
         });
       }
+    }
+  };
+
+  const handleUndoReady = async (order: OrderDto) => {
+    setUpdatingOrderId(order.id);
+    const result = await updateOrderStatus(order.id, 'PREPARING');
+    setUpdatingOrderId(null);
+    if (!result.success) {
+      showToast({
+        type: 'error',
+        title: 'Lỗi hoàn tác',
+        message: result.error || 'Không thể hoàn tác trạng thái đơn'
+      });
+    } else {
+      setReadyOrderTimestamps((prev) => {
+        const next = { ...prev };
+        delete next[order.id];
+        return next;
+      });
+      showToast({
+        type: 'info',
+        title: 'Đã hoàn tác ↩️',
+        message: `Đơn ${order.code} đã quay lại Đang chế biến.`
+      });
     }
   };
 
@@ -513,9 +600,29 @@ export const KDSScreen: React.FC = () => {
             {ordersByStatus[activeMobileStatus].length === 0 ? (
               <EmptyState title="Chưa có ticket" description={statusConfig[activeMobileStatus].emptyDescription} />
             ) : (
-              ordersByStatus[activeMobileStatus].map((order) => (
-                <OrderTicket key={order.id} order={order} now={now} updating={updatingOrderId === order.id} onTransition={handleTransition} />
-              ))
+              ordersByStatus[activeMobileStatus].map((order) => {
+                let undoRemainingSec = 0;
+                if (order.status === 'READY') {
+                  const readyMs = readyOrderTimestamps[order.id] || (order.readyAt ? new Date(order.readyAt).getTime() : 0);
+                  if (readyMs > 0) {
+                    const elapsedSec = Math.floor((now - readyMs) / 1000);
+                    if (elapsedSec < 10) {
+                      undoRemainingSec = 10 - elapsedSec;
+                    }
+                  }
+                }
+                return (
+                  <OrderTicket
+                    key={order.id}
+                    order={order}
+                    now={now}
+                    updating={updatingOrderId === order.id}
+                    onTransition={handleTransition}
+                    undoRemainingSec={undoRemainingSec}
+                    onUndo={handleUndoReady}
+                  />
+                );
+              })
             )}
           </ScrollView>
         </View>
@@ -530,6 +637,8 @@ export const KDSScreen: React.FC = () => {
               updatingOrderId={updatingOrderId}
               desktop
               onTransition={handleTransition}
+              readyOrderTimestamps={readyOrderTimestamps}
+              onUndo={handleUndoReady}
             />
           ))}
         </View>
@@ -544,6 +653,8 @@ export const KDSScreen: React.FC = () => {
               updatingOrderId={updatingOrderId}
               desktop={false}
               onTransition={handleTransition}
+              readyOrderTimestamps={readyOrderTimestamps}
+              onUndo={handleUndoReady}
             />
           ))}
         </ScrollView>
@@ -856,6 +967,7 @@ const styles = StyleSheet.create({
   orderNoteLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
   orderNoteText: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
   ticketFooter: { borderTopWidth: 1, padding: spacing.sm },
+  undoFooterRow: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
   mobileBoard: { flex: 1 },
   mobileSegments: { flexDirection: 'row', gap: spacing.xs, padding: spacing.sm },
   segment: { alignItems: 'center', borderRadius: radii.sm, flex: 1, justifyContent: 'center', minHeight: 52, paddingHorizontal: spacing.xs, paddingVertical: spacing.sm },

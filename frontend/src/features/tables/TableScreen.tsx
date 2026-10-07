@@ -61,7 +61,8 @@ const formatElapsed = (createdAt?: string) => {
 const tableStatusConfig = (status: TableStatus): { label: string; tone: StatusTone } => {
   if (status === 'AVAILABLE') return { label: 'Sẵn sàng', tone: 'success' };
   if (status === 'OCCUPIED') return { label: 'Đang phục vụ', tone: 'danger' };
-  return { label: 'Chờ dọn', tone: 'warning' };
+  if (status === 'NEED_CLEANING') return { label: 'Chờ dọn dẹp', tone: 'warning' };
+  return { label: 'Chờ dọn dẹp', tone: 'warning' };
 };
 
 const orderStatusLabels: Record<OrderStatus, string> = {
@@ -771,7 +772,7 @@ export const TableScreen: React.FC = () => {
                 <Button
                   testID="btn-confirm-clean-table"
                   variant="primary"
-                  label="Đánh dấu đã dọn"
+                  label="Xác nhận đã dọn bàn"
                   icon={CircleCheck}
                   loading={isProcessingClean}
                   onPress={() => void handleCleanTable(selectedTable.id)}
@@ -779,7 +780,7 @@ export const TableScreen: React.FC = () => {
               ) : selectedTable ? (
                 <Button
                   variant="secondary"
-                  label="Chuyển sang chờ dọn"
+                  label="Chuyển sang chờ dọn dẹp"
                   icon={CircleAlert}
                   loading={isProcessingClean}
                   onPress={() => void handleMarkTableDirty(selectedTable.id)}

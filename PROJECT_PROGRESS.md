@@ -318,6 +318,35 @@
       - `npm run doctor`: 18/18 checks đạt tiêu chuẩn Expo SDK 54.
       - 33 migrations Prisma đã deploy và đồng bộ vào `_prisma_migrations` trên cả `crispy_bite_dev` và `crispy_bite_test`.
 
+39. **Nâng Cấp Toàn Diện Tài Liệu Phân Tích Thiết Kế SRS & SDD (`CHUC_NANG_VA_THAO_TAC_NGUOI_DUNG.md`) Lên Phiên Bản 5.5 (Enterprise Spec)**:
+    - *Bối cảnh & Tiếp thu Phản biện Nghiêm ngặt*: Tiếp thu trọn vẹn bộ phản biện chuyên sâu gồm 6 nhóm vấn đề (Mâu thuẫn logic bàn-đơn-thanh toán, Kho và Void, Báo cáo doanh thu và COGS, Tính sát thực tế vận hành của Dynamic QR / Buzzer iOS / Webhook VietQR / Prep timer / Chấm công, Các luồng ca thu ngân / Gộp bàn / Đặt cọc, Pháp lý thuế VAT & HĐĐT, và Tinh chỉnh Class Diagram chuẩn DDD).
+    - *Các cải tiến cốt lõi trong Phiên bản 5.5*:
+      1. **Mô hình hóa Phiên bàn (`TableSession`) & Vòng đời Dọn bàn**: Bàn gắn liền với Phiên phục vụ (`TableSession`), chứa nhiều `Order`. Thanh toán toàn bộ đơn và giao đủ món thì bàn chuyển sang `NEED_CLEANING` 🟡; nhân viên bấm "Đã dọn" mới về `AVAILABLE` 🟢.
+      2. **Chuẩn hóa Thời điểm Trừ kho, Void & Sales Return**: Void đơn `PENDING` không hoàn kho (vì chưa trừ); đơn `PREPARING/READY` hạch toán `SPOILAGE_WASTE`. Void đơn `PAID` hạch toán đảo ngược Phiếu Thu thành Phiếu Chi và hủy hoa hồng. Phân biệt rõ Void khẩn cấp vs Đổi trả hàng bán Sales Return (hàng lon hoàn kho, đồ nấu nóng xuất hủy).
+      3. **Báo cáo Tài chính & COGS Tổng hợp**: Doanh thu thuần = Doanh thu bán hàng - Chiết khấu - Hàng bán trả lại. Tổng COGS = Giá vốn BOM - Giá vốn hàng trả lại + Hao hụt bếp + Xuất hủy kho hết hạn + Spoilage đơn Void + Hao hụt kiểm kê.
+      4. **Sát thực tế Vận hành**: QR token xoay vòng theo phiên (`sessionToken`), duy trì ngữ cảnh khi chuyển bàn; Webhook ngân hàng tự động kèm mã bill đối soát (`CB T4 B1024`); Định vị thực tế của Virtual Buzzer (chuông rung Web/Android, kết hợp Runner bưng món tận bàn); Prep timer cấu hình thời gian định mức theo món; Tách cờ `isSoldOutToday` (86'd) với `isActive` (ngừng bán).
+      5. **Chấm công 2 Lớp & Xử lý Ngoại lệ**: Chấm công bằng Mã NV + PIN cá nhân, rate-limit theo mã nhân viên; tự động nhận diện Vào/Ra, xử lý quên checkout, ca đêm, ca ngoài lịch.
+      6. **Quản lý Ca Thu ngân & Đặt cọc**: Mở ca (tiền đầu ca / float), kiểm két chốt ca, bàn giao ca; Gộp bàn, Tách bill, Thanh toán hỗn hợp; Hạch toán tiền cọc tạm ứng cấn trừ hóa đơn, tránh trùng lặp ghi nhận doanh thu.
+      7. **Thuế VAT & Hóa đơn**: Thuế suất linh hoạt (8%, 10%, 5%, 0%) theo ngày hiệu lực, tính VAT trên doanh thu sau chiết khấu; phân định Phiếu in nhiệt tạm tính với Hóa đơn điện tử hợp pháp kết nối TCT.
+      8. **Mô hình Lớp Chuẩn & Sequence Diagrams Thời gian thực**: Bổ sung `Branch`, `TableSession`, `CashierShift`, `SalesReturnLine`, `ModifierOptionIngredient`, v.v.; sử dụng kiểu dữ liệu `Decimal` chuẩn tài chính; phân tách phòng Socket bảo mật theo phân vùng nghiệp vụ.
+
+40. **Triển Khai Gói 1: Tinh Chỉnh Logic Vận Hành & Khắc Phục Lỗi Thực Tế (TDD Red-Green-Refactor)**:
+    - *Bối cảnh*: Sau khi hoàn tất đặc tả Enterprise Spec 5.5, tiến hành tinh chỉnh mã nguồn Backend và Frontend cho các điểm nghẽn nghiệp vụ thực tế mà không làm phá vỡ schema CSDL hiện có.
+    - *Các hạng mục đã triển khai*:
+      1. **Khắc phục Lỗ hổng Thất thoát Voucher trong `autoCancelExpiredOrders` (Backend)**: Bổ sung câu lệnh cập nhật nguyên tử giảm `usedCount` của voucher khi đơn `PENDING` bị tự động hủy do quá hạn 60 phút, đảm bảo trả lại lượt dùng cho khách hàng.
+      2. **Phân quyền Chuẩn Hóa Giao Món cho Cashier/Runner (Backend)**: Mở rộng route `PATCH /api/orders/:id/status` cho phép vai trò `CASHIER` cập nhật trạng thái đơn sang `COMPLETED` khi giao món ra bàn; đồng thời áp dụng guard chặt chẽ trả về `403 FORBIDDEN` nếu Cashier cố ý can thiệp vào các trạng thái chế biến của bếp (`PREPARING`, `READY`).
+      3. **Mở Rộng FSM & Tính Năng Hoàn Tác KDS Undo 10s (Backend & Frontend)**:
+         - Backend: Cho phép transition đảo ngược `READY -> PREPARING` trong FSM; tự động reset `readyAt = null` khi đơn quay về chế biến.
+         - Frontend (`KDSScreen.tsx`): Bổ sung bộ đếm ngược 10 giây và nút "Hoàn tác (Xs)" trên cả giao diện Desktop và Mobile khi vé bếp vừa chuyển sang `READY`, hỗ trợ bếp sửa sai tức thì khi bấm nhầm.
+      4. **Chuẩn Hóa Vòng Đời Dọn Bàn `NEED_CLEANING` (`TableScreen.tsx`)**:
+         - Hiển thị badge màu vàng hổ phách "Chờ dọn dẹp" cho trạng thái `NEED_CLEANING`.
+         - Khi xem chi tiết bàn, nút hành động chính chuyển thành "Xác nhận đã dọn bàn" gọi API đưa bàn về `AVAILABLE` 🟢.
+    - *Kết quả nghiệm thu & Kiểm chứng*:
+      - Đã viết bổ sung 3 test cases TDD cho Backend (`auto-cancel-timeout.spec.ts`, `order-lifecycle.spec.ts`, `order-fsm.spec.ts`), tuân thủ chuẩn Red $\rightarrow$ Green.
+      - Toàn bộ test suites Backend & Frontend pass 100% không lỗi hồi quy.
+      - `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ Monorepo.
+      - `npm run doctor` $\rightarrow$ 18/18 checks tương thích Expo SDK 54.
+
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
 
