@@ -2,22 +2,22 @@
 
 > **Hệ Thống Đa Nền Tảng Đặt Món & Quản Lý Nhà Hàng Fast Food "CRISPY BITE"**  
 > **Kiến trúc**: Full-Stack Monorepo (React Native / Expo SDK 54 + Node.js / Express / Prisma / MySQL + Real-time Socket.io)  
-> **Trạng thái**: Đã tích hợp thành công toàn diện Module Báo Cáo Cuối Ngày (End-of-day Report 4 Adapters) và Nhận Diện Thương Hiệu Logo Crispy Bite (`BrandMark`) từ nhánh `pKhanh` vào `main`. Khắc phục triệt để lỗi xung đột mã nguồn do merge script cũ, bảo toàn toàn vẹn hồ sơ đồ án tốt nghiệp `DoAn3.docx` của Khánh; Full Quality Gate PASS 100% (1,307/1,307 tests, 0 lỗi typecheck).  
-> **Cập nhật lần cuối**: 2026-10-07 23:10:00
+> **Trạng thái**: Đã hoàn thành bổ sung 2 phân hệ báo cáo giá trị cốt lõi: Báo cáo Tài chính & Kết quả Kinh doanh Lãi Lỗ (P&L Statement) và Báo cáo Xuất - Nhập - Tồn Kho Nguyên Liệu (Inventory In-Out-Stock Balance). Tích hợp toàn diện trên Reports Workspace với kiểm thử TDD nghiêm ngặt; Full Quality Gate PASS 100% (1,322/1,322 tests, 0 lỗi typecheck).  
+> **Cập nhật lần cuối**: 2026-10-08 00:15:00
 
 ---
 
 ## 📈 1. TỔNG QUAN TIẾN ĐỘ (OVERALL PROGRESS)
 
 ```
-[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 14; Hệ sinh thái Vận hành, Quản trị QSR, HRM, Sổ Quỹ, Hoa Hồng, Báo Cáo Cuối Ngày & Thương Hiệu Toàn Diện)
+[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 15; Hệ sinh thái Vận hành, Quản trị QSR, HRM, Sổ Quỹ, Hoa Hồng, Báo Cáo Cuối Ngày, Tài Chính P&L, X-N-T Kho & Thương Hiệu Toàn Diện)
 ```
 
 ### 🧪 Bằng chứng kiểm chứng chất lượng (Verification Metrics)
-- **Backend Test Suite (Vitest)**: 133/133 test files passed (975/975 tests pass 100% — bao gồm Toàn bộ Báo cáo cuối ngày 4 Adapters Sales/Cashflow/Goods/CancelledItems, Consistent Repeatable-Read Snapshots, Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, Nhân sự Employees, Lịch ca kíp Schedules, Chấm công Kiosk/Admin Debounce 60s, Tính lương Payroll, Cài đặt chính sách Employee Settings, Đặt bàn Reservations, Khách hàng Customers, Đối tác giao hàng Delivery Partners, Kho NVL, BOM & COGS, Price List, Menu Bulk/Import/Export, Voucher Engine, Table Transfer, KDS Kitchen Waste, Order Idempotency, FSM, Auth RBAC, Reports & Real-time Socket, FSM Undo 60s, Vòng đời dọn bàn `PAID_AWAITING_SERVE` & Gross VAT 8%).
-- **Frontend Test Suite (Vitest)**: 90/90 test files passed (332/332 tests pass 100% — bao gồm EndOfDayReportScreen, ReportsWorkspaceScreen, useEndOfDayReport, BrandMark logo sync, Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, ViewModels & Screens cho Nhân sự, Lịch làm việc tuần, Chấm công Kiosk/Admin, Bảng lương, Cài đặt chính sách, Đặt bàn, Khách hàng, NCC, Phiếu nhập, Phiếu hủy, Phiếu kiểm kho, Bảng giá, Menu bulk, Notification helper, UI Tokens & Guards, KDSScreen Undo 10s & TableScreen NEED_CLEANING).
-- **Tổng Unit / Integration Tests**: **1,307/1,307 tests passed 100%** (975 backend + 332 frontend).
-- **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ workspaces (`backend` + `frontend`).
+- **Backend Test Suite (Vitest)**: 135/135 test files passed (**986/986 tests pass 100%** — bao gồm Báo cáo P&L lãi lỗ, Báo cáo X-N-T kho nguyên liệu, Báo cáo cuối ngày 4 Adapters Sales/Cashflow/Goods/CancelledItems, Consistent Repeatable-Read Snapshots, Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, Nhân sự Employees, Lịch ca kíp Schedules, Chấm công Kiosk/Admin Debounce 60s, Tính lương Payroll, Cài đặt chính sách Employee Settings, Đặt bàn Reservations, Khách hàng Customers, Đối tác giao hàng Delivery Partners, Kho NVL, BOM & COGS, Price List, Menu Bulk/Import/Export, Voucher Engine, Table Transfer, KDS Kitchen Waste, Order Idempotency, FSM, Auth RBAC, Reports & Real-time Socket, FSM Undo 60s, Vòng đời dọn bàn `PAID_AWAITING_SERVE` & Gross VAT 8%).
+- **Frontend Test Suite (Vitest)**: 92/92 test files passed (**336/336 tests pass 100%** — bao gồm ProfitAndLossReportScreen, InventoryBalanceReportScreen, ReportsWorkspaceScreen 4 enabled sections, EndOfDayReportScreen, useEndOfDayReport, BrandMark logo sync, Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, ViewModels & Screens cho Nhân sự, Lịch làm việc tuần, Chấm công Kiosk/Admin, Bảng lương, Cài đặt chính sách, Đặt bàn, Khách hàng, NCC, Phiếu nhập, Phiếu hủy, Phiếu kiểm kho, Bảng giá, Menu bulk, Notification helper, UI Tokens & Guards, KDSScreen Undo 10s & TableScreen NEED_CLEANING).
+- **Tổng Unit / Integration Tests**: **1,322/1,322 tests passed 100%** (986 backend + 336 frontend).
+- **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ **0 lỗi biên dịch** trên toàn bộ workspaces (`backend` + `frontend`).
 - **Monorepo Lint (ESLint)**: `npm run lint` $\rightarrow$ 0 lỗi trên toàn bộ workspaces.
 - **Expo Doctor Check**: `npm run doctor` $\rightarrow$ 18/18 checks đạt tiêu chuẩn Expo SDK 54.
 - **Database Migrations**: Đồng bộ nhất quán **34 migrations** trên cả `crispy_bite_dev` và `crispy_bite_test` (`20261008120000_end_of_day_report_foundation`) kèm bảng kiểm toán `_prisma_migrations`.
@@ -40,6 +40,7 @@
 | **Phase 12: Quản Trị Nhân Sự (HRM)** | Hồ sơ NV, Lịch ca kíp, Chấm công Kiosk/Admin, Tính lương, Cài đặt chính sách, Đặt bàn | **HOÀN TẤT** (100%) |
 | **Phase 13: Sổ Quỹ & Hoa Hồng (Cashbook & Commissions)** | Sổ quỹ tiền mặt/ngân hàng, phiếu thu chi, hạch toán liên thông, động cơ hoa hồng NV & bảng lương | **HOÀN TẤT** (100%) |
 | **Phase 14: Báo Cáo Cuối Ngày & Thương Hiệu (End-of-day Report & Brand Mark)** | Báo cáo cuối ngày 4 Adapters, Consistent Snapshots, In PDF A4 ngang, Đồng bộ Logo Crispy Bite | **HOÀN TẤT** (100%) |
+| **Phase 15: Báo Cáo Mở Rộng P&L & X-N-T Kho (Profit & Loss & Inventory Balance)** | Báo cáo Tài chính Lãi Lỗ P&L, Báo cáo Xuất-Nhập-Tồn kho NVL, Tích hợp Workspace | **HOÀN TẤT** (100%) |
 
 ---
 
@@ -486,9 +487,33 @@
       - Fast-forward merge vào `main`, push thành công lên `origin/main` (`0ce0510`).
       - Đồng bộ và làm sạch hoàn toàn nhánh `origin/pKhanh` trên GitHub.
     - *Quy Tắc Phòng Ngừa Lỗi (Prevention Rule)*:
-      - **Tuyệt đối cấm** sử dụng các script resolve conflict kiểu `keep_both` mù quáng đối với các tệp schema (Prisma, GraphQL) và mã nguồn TypeScript. Mọi xung đột schema và class phải được đối soát thủ công spec-by-spec.
+47. **Bổ Sung 2 Phân Hệ Báo Cáo Mở Rộng: Tài Chính Lãi Lỗ (P&L) & Xuất - Nhập - Tồn Kho Nguyên Liệu (TDD)**:
+    - *Bối cảnh & Giá trị Nghiệp vụ*:
+      - Sau khi hoàn thành Báo cáo Cuối ngày (`EndOfDayReport`) và Báo cáo Bán hàng (`sales`), hệ thống CRISPY BITE có 2 lỗ hổng thông tin lớn cần bổ sung phục vụ ban quản trị:
+        1. **Báo cáo Tài chính & Kết quả Kinh doanh Lãi Lỗ (P&L)**: Tính toán chính xác doanh thu thuần, giá vốn hàng bán (COGS theo định mức xuất kho BOM), lợi nhuận gộp, chi phí hao hụt phế phẩm bếp (`KITCHEN_WASTE`), chi phí hoạt động từ sổ quỹ (`CashVoucher` có `affectsBusinessResult = true`), chi trả lương nhân viên và lợi nhuận hoạt động thuần ước tính (Operating Profit) kèm tỷ suất biên LN.
+        2. **Báo cáo Xuất - Nhập - Tồn Kho Nguyên Liệu (Inventory In-Out-Stock Balance)**: Tính toán chính xác dòng luân chuyển nguyên liệu theo chu trình kế toán kho (Tồn đầu kỳ + Nhập trong kỳ - Xuất bán theo định mức BOM - Hao hụt hủy bếp ± Điều chỉnh kiểm kê = Tồn cuối kỳ), định giá tồn kho theo đơn giá vốn bình quân và cảnh báo thiếu hàng khi chạm ngưỡng định mức an toàn (`minThreshold`).
+    - *Quy trình TDD Nghiêm Ngặt (Superpowers Methodology)*:
+      1. **RED Phase**:
+         - Viết 2 test suites kiểm thử tích hợp: `backend/test/reports/profit-and-loss.spec.ts` (6 tests) và `backend/test/reports/inventory-balance.spec.ts` (5 tests).
+         - Xác nhận test FAIL chính xác (HTTP 404 Not Found) trước khi viết code nghiệp vụ.
+      2. **GREEN Phase (Minimal Clean Implementation)**:
+         - Bổ sung Zod schemas: `getProfitAndLossReportSchema`, `getInventoryBalanceReportSchema` trong `reports.schemas.ts`.
+         - Triển khai động cơ hạch toán trong `ReportsService.getProfitAndLoss` và `ReportsService.getInventoryBalance` trong `reports.service.ts`.
+         - Đăng ký endpoints bảo vệ RBAC (`ADMIN` only) trong `reports.controller.ts` và `reports.routes.ts`.
+         - Xác nhận toàn bộ 11 tests backend chuyển màu XANH (PASS 100%).
+      3. **Frontend Implementation & Shell Integration**:
+         - Bổ sung API client trong `frontend/src/api/reports.ts`.
+         - Xây dựng màn hình trực quan, thẩm mỹ chuẩn Design Tokens: `ProfitAndLossReportScreen.tsx` (KPI thẻ, cơ cấu dòng tiền, cơ cấu chi phí) và `InventoryBalanceReportScreen.tsx` (bảng chi tiết X-N-T, badge cảnh báo định mức tồn).
+         - Mở khóa tab `goods` và `finance` trong `ReportsWorkspaceScreen.tsx`.
+         - Viết unit tests: `ProfitAndLossReportScreen.test.tsx` (2 tests), `InventoryBalanceReportScreen.test.tsx` (2 tests), cập nhật `ReportsWorkspaceScreen.test.tsx` (2 tests).
+      4. **Full Verification**:
+         - Toàn bộ 135 test files backend (986 tests) pass 100%.
+         - Toàn bộ 92 test files frontend (336 tests) pass 100%.
+         - Tổng cộng: **1,322/1,322 tests pass 100%**.
+         - `npm run typecheck` đạt **0 lỗi biên dịch** trên toàn bộ monorepo.
 
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
+
 
 

@@ -9,3 +9,5 @@ export const reportsRouter = Router();
 reportsRouter.get('/daily', authenticate, authorize('ADMIN'), ReportsController.getDailyReport);
 reportsRouter.get('/end-of-day', authenticate, authorize('ADMIN'), ReportsController.getEndOfDayReport);
 reportsRouter.get('/end-of-day/export', authenticate, authorize('ADMIN'), ReportsController.exportEndOfDayReport);
+reportsRouter.get('/profit-and-loss', authenticate, authorize('ADMIN'), ReportsController.getProfitAndLossReport);
+reportsRouter.get('/inventory-balance', authenticate, authorize('ADMIN'), ReportsController.getInventoryBalanceReport);

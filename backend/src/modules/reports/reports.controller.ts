@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { ReportsService } from './reports.service';
-import { getDailyReportSchema } from './reports.schemas';
+import { getDailyReportSchema, getProfitAndLossReportSchema, getInventoryBalanceReportSchema } from './reports.schemas';
 import { ApiError } from '../../lib/api-error';
 import { parseEndOfDayQuery } from './end-of-day/end-of-day.schemas';
 import { EndOfDayReportService, EndOfDayReportRowLimitError } from './end-of-day/end-of-day.service';
@@ -43,4 +43,25 @@ export class ReportsController {
       next(error);
     }
   }
+
+  static async getProfitAndLossReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const query = getProfitAndLossReportSchema.parse(req.query);
+      const data = await ReportsService.getProfitAndLoss(query);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getInventoryBalanceReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const query = getInventoryBalanceReportSchema.parse(req.query);
+      const data = await ReportsService.getInventoryBalance(query);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
+

@@ -4,17 +4,19 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
 import { DashboardScreen } from './DashboardScreen';
 import { EndOfDayReportScreen } from './EndOfDayReportScreen';
+import { InventoryBalanceReportScreen } from './InventoryBalanceReportScreen';
+import { ProfitAndLossReportScreen } from './ProfitAndLossReportScreen';
 
 export type ReportsWorkspaceSection = 'end-of-day' | 'sales' | 'goods' | 'customers' | 'suppliers' | 'employees' | 'channels' | 'finance';
 const sections: { key: ReportsWorkspaceSection; label: string; disabled: boolean }[] = [
   { key: 'end-of-day', label: 'Cuối ngày', disabled: false },
   { key: 'sales', label: 'Bán hàng', disabled: false },
-  { key: 'goods', label: 'Hàng hóa', disabled: true },
+  { key: 'goods', label: 'Hàng hóa', disabled: false },
   { key: 'customers', label: 'Khách hàng', disabled: true },
   { key: 'suppliers', label: 'Nhà cung cấp', disabled: true },
   { key: 'employees', label: 'Nhân viên', disabled: true },
   { key: 'channels', label: 'Kênh bán hàng', disabled: true },
-  { key: 'finance', label: 'Tài chính', disabled: true }
+  { key: 'finance', label: 'Tài chính', disabled: false }
 ];
 
 export const ReportsWorkspaceScreen: React.FC = () => {
@@ -39,7 +41,15 @@ export const ReportsWorkspaceScreen: React.FC = () => {
       </View>
     </ScrollView>
     <View style={styles.content}>
-      {section === 'sales' ? <DashboardScreen /> : <EndOfDayReportScreen />}
+      {section === 'sales' ? (
+        <DashboardScreen />
+      ) : section === 'goods' ? (
+        <InventoryBalanceReportScreen />
+      ) : section === 'finance' ? (
+        <ProfitAndLossReportScreen />
+      ) : (
+        <EndOfDayReportScreen />
+      )}
     </View>
   </View>;
 };
