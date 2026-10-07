@@ -848,15 +848,21 @@ export class OrdersService {
         }, { id: actorId ?? 0, name: actorName ?? null, role: actorRole });
       }
 
+      const isDineIn = lockedOrder.orderType === 'DINE_IN' || Boolean(lockedOrder.tableId);
+      const shouldCompleteOrder = isDineIn ? (lockedOrder.status === 'COMPLETED') : true;
+      const orderUpdateData: any = {
+        paymentStatus: 'PAID',
+        paymentMethod: input.paymentMethod as PaymentMethod,
+        paidAt: now
+      };
+      if (shouldCompleteOrder && !lockedOrder.completedAt) {
+        orderUpdateData.status = 'COMPLETED';
+        orderUpdateData.completedAt = new Date();
+      }
+
       const order = await tx.order.update({
         where: { id: orderId },
-        data: {
-          paymentStatus: 'PAID',
-          paymentMethod: input.paymentMethod as PaymentMethod,
-          paidAt: now,
-          status: 'COMPLETED',
-          completedAt: new Date()
-        },
+        data: orderUpdateData,
         include: { items: true }
       });
 
@@ -865,17 +871,24 @@ export class OrdersService {
 
       let nextTableState: { tableId: number; tableNumber: number; status: 'AVAILABLE' | 'OCCUPIED' | 'NEED_CLEANING'; currentOrderId: number | null } | null = null;
       if (order.tableId) {
-        const remainingOrder = await tx.order.findFirst({
+        const remainingUnfinishedOrder = await tx.order.findFirst({
           where: {
             tableId: order.tableId,
-            paymentStatus: 'UNPAID',
-            status: { not: 'CANCELLED' }
+            OR: [
+              { paymentStatus: 'UNPAID', status: { not: 'CANCELLED' } },
+              { status: { in: ['PENDING', 'PREPARING', 'READY'] } }
+            ],
+            id: { not: order.id }
           },
           orderBy: { createdAt: 'desc' },
           select: { id: true }
         });
-        const status = remainingOrder ? 'OCCUPIED' as const : 'NEED_CLEANING' as const;
-        const currentOrderId = remainingOrder?.id ?? null;
+
+        const isCurrentOrderFinished = order.status === 'COMPLETED' || order.status === 'CANCELLED';
+        const isTableOccupied = Boolean(remainingUnfinishedOrder) || !isCurrentOrderFinished;
+
+        const status = isTableOccupied ? ('OCCUPIED' as const) : ('NEED_CLEANING' as const);
+        const currentOrderId = remainingUnfinishedOrder?.id ?? (isCurrentOrderFinished ? null : order.id);
         await tx.diningTable.update({
           where: { id: order.tableId },
           data: {
@@ -1062,6 +1075,36 @@ export class OrdersService {
 
     emitToRoom('restaurant:kds', 'order:statusChanged', socketPayload);
     emitToAll('order:statusChanged', socketPayload);
+
+    if (nextStatus === 'COMPLETED' && updatedOrder.tableId) {
+      const remainingUnfinished = await prisma.order.findFirst({
+        where: {
+          tableId: updatedOrder.tableId,
+          OR: [
+            { paymentStatus: 'UNPAID', status: { not: 'CANCELLED' } },
+            { status: { in: ['PENDING', 'PREPARING', 'READY'] } }
+          ],
+          id: { not: updatedOrder.id }
+        },
+        select: { id: true }
+      });
+
+      if (!remainingUnfinished && updatedOrder.paymentStatus === 'PAID') {
+        await prisma.diningTable.update({
+          where: { id: updatedOrder.tableId },
+          data: {
+            status: 'NEED_CLEANING',
+            currentOrderId: null
+          }
+        });
+        emitToAll('table:statusChanged', {
+          tableId: updatedOrder.tableId,
+          tableNumber: updatedOrder.table?.tableNumber,
+          status: 'NEED_CLEANING',
+          currentOrderId: null
+        });
+      }
+    }
 
     return orderDto;
   }

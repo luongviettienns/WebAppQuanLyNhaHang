@@ -182,23 +182,34 @@ export const TableScreen: React.FC = () => {
 
     const remainingOrders = selectedTable.orders.filter((order) => order.id !== activeOrder.id);
     const nextOrder = remainingOrders[0];
+    const isPaidOrderFinished = activeOrder.status === 'COMPLETED' || activeOrder.status === 'CANCELLED';
+    const hasUnfinishedOrders = Boolean(nextOrder) || !isPaidOrderFinished;
+    const nextStatus = hasUnfinishedOrders ? 'OCCUPIED' : 'NEED_CLEANING';
+
     setSelectedTable({
       ...selectedTable,
       orders: remainingOrders,
-      status: nextOrder ? 'OCCUPIED' : 'NEED_CLEANING',
-      currentOrderId: nextOrder?.id ?? null
+      status: nextStatus,
+      currentOrderId: nextOrder?.id ?? (isPaidOrderFinished ? null : activeOrder.id)
     });
-    setSelectedOrderId(nextOrder?.id ?? null);
-    const successText = nextOrder
-      ? 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' còn ' + remainingOrders.length + ' đơn chưa thanh toán.'
-      : 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' đã chuyển sang Chờ dọn dẹp.';
+    setSelectedOrderId(nextOrder?.id ?? (isPaidOrderFinished ? null : activeOrder.id));
+
+    let successText: string;
+    if (nextOrder) {
+      successText = 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' còn ' + remainingOrders.length + ' đơn chưa thanh toán.';
+    } else if (!isPaidOrderFinished) {
+      successText = 'Đã thanh toán đơn ' + activeOrder.code + '. Món ăn đang được chế biến, bàn ' + formatTableNumber(selectedTable.tableNumber) + ' tiếp tục phục vụ.';
+    } else {
+      successText = 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' đã chuyển sang Chờ dọn dẹp.';
+    }
+
     setPaySuccessMsg(successText);
     showToast({
       type: 'success',
       title: 'Thanh toán thành công! 💳',
       message: successText
     });
-    if (!nextOrder) {
+    if (!hasUnfinishedOrders) {
       setTimeout(() => {
         setIsDetailModalOpen(false);
         setSelectedTable(null);

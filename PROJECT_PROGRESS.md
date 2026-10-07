@@ -395,6 +395,26 @@
          - Ghi rõ tên file test cụ thể cho 100% tiêu chí tự động (1,113 tests PASS).
          - Phân định rõ ràng Roadmap Backlog cho các bài toán nâng cao (OT/BHXH/TNCN, chi lương lẻ từng người, điều chỉnh công sau khi khóa kỳ, luồng hủy từng món chi tiết, hóa đơn điều chỉnh e-invoice).
 
+43. **Triển Khai Gói 1: Khắc Phục Lỗi Reset Bàn Sớm Khi Khách Trả Tiền Trước (`PAID_AWAITING_SERVE` - TDD)**:
+    - *Bối cảnh*: Người dùng và phản biện chuyên sâu chỉ ra lỗ hổng: Khách tại bàn trả tiền sớm khi món ăn đang chế biến làm bàn bị reset sang `NEED_CLEANING`, khiến khách mất Live Tracker và vô hiệu hóa Virtual Buzzer.
+    - *Các hạng mục đã triển khai theo TDD*:
+      1. **Bảo Toàn Trạng Thái Chế Biến Đơn Hàng Tại Bàn (`OrdersService.payOrder`)**:
+         - Khi thanh toán đơn ăn tại bàn (`DINE_IN` hoặc có `tableId`), hệ thống chỉ cập nhật `paymentStatus: 'PAID'` và `paidAt: now`.
+         - **Không tự ý chuyển `status` sang `COMPLETED`** nếu món ăn còn đang ở `PENDING`, `PREPARING` hoặc `READY`. Bếp tiếp tục nấu và Runner tiếp tục phục vụ bình thường.
+      2. **Bảo Vệ Trạng Thái Bàn Ăn `OCCUPIED` (Trạng thái logic `PAID_AWAITING_SERVE`)**:
+         - Trong `payOrder`: Quét toàn bộ đơn hàng trên bàn, nếu còn bất kỳ đơn hàng nào chưa phục vụ xong (`status !== 'COMPLETED'`), bàn tiếp tục duy trì `status: 'OCCUPIED'` và giữ `currentOrderId`, bảo toàn Live Tracker cho khách.
+         - Bàn chỉ chuyển sang `NEED_CLEANING` khi và chỉ khi toàn bộ đơn đã thanh toán (`PAID`) VÀ toàn bộ món đã phục vụ (`COMPLETED`).
+      3. **Tự Động Kích Hoạt `NEED_CLEANING` Khi Runner Hoàn Tất Món Cuối Cùng (`updateOrderStatus`)**:
+         - Trong `OrdersService.updateOrderStatus`, khi đơn hàng cuối cùng chuyển sang `COMPLETED`, hệ thống kiểm tra nếu đơn đó đã thanh toán trước đó (`PAID`), lập tức chuyển bàn sang `NEED_CLEANING`, giải phóng `currentOrderId` và phát sự kiện Socket `table:statusChanged`.
+      4. **Đồng Bộ Giao Diện POS Thu Ngân (`TableScreen.tsx`)**:
+         - Cập nhật hàm `handlePay` trên POS: Nhận diện chính xác nếu đơn vừa trả tiền chưa hoàn tất món ăn, hiển thị thông báo thân thiện: *"Món ăn đang được chế biến, bàn tiếp tục phục vụ"* thay vì đóng modal và báo chuyển sang dọn bàn sớm.
+    - *Kết quả nghiệm thu & Quality Gates*:
+      - Bổ sung 2 test cases TDD kiểm chứng hành vi Red $\rightarrow$ Green trong `table-order-consistency.spec.ts`.
+      - Cập nhật và đồng bộ test suite `orders.spec.ts`.
+      - Toàn bộ 15 test files (112 tests) của phân hệ `orders` vượt qua 100% không lỗi hồi quy.
+      - Toàn bộ 86 test files (289 tests) của phân hệ `frontend` vượt qua 100%.
+      - `npm run typecheck` đạt **0 lỗi biên dịch** trên cả 2 workspace.
+
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
 

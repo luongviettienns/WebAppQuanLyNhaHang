@@ -298,12 +298,18 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     expect(res2.body.data.order.id).toBe(orderId1);
   });
 
-  it('POST /api/orders/:id/pay xu ly thanh toan don hang va tu dong chuyen ban sang NEED_CLEANING', async () => {
+  it('POST /api/orders/:id/pay xu ly thanh toan don hang da phuc vu va tu dong chuyen ban sang NEED_CLEANING', async () => {
     const table = await prismaTest.diningTable.findFirst({ where: { tableNumber: 4 } });
     const activeOrder = await prismaTest.order.findFirst({
       where: { tableId: table!.id, paymentStatus: 'UNPAID' }
     });
     expect(activeOrder).not.toBeNull();
+
+    // Gia dinh mon an da duoc phuc vu hoan tat (COMPLETED) truoc khi khach thanh toan ra ve
+    await prismaTest.order.update({
+      where: { id: activeOrder!.id },
+      data: { status: 'COMPLETED', completedAt: new Date() }
+    });
 
     const res = await request(app)
       .post(`/api/orders/${activeOrder!.id}/pay`)
