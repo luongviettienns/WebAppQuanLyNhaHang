@@ -108,6 +108,12 @@ describe('Table Operations & Audited Void (Task 11 - Module M6)', () => {
       expect(res.body.data.order.voidReason).toBe('Khách đổi ý đi về');
       expect(res.body.data.order.voidedByUserId).toBe(1);
 
+      const snapshots = await prismaTest.orderItemCancellation.findMany({ where: { orderId: orderToVoidId } });
+      expect(snapshots).toEqual([expect.objectContaining({
+        reason: 'Khách đổi ý đi về', cancelledByUserId: 1, source: 'ORDER_VOID', preparationStateSnapshot: 'NOT_STARTED'
+      })]);
+      expect(await prismaTest.auditLog.count({ where: { action: 'ORDER_VOIDED', targetId: orderToVoidId } })).toBe(1);
+
       // Verify table state is now AVAILABLE
       const tableRes = await request(app)
         .get(`/api/tables/${tableId}`)

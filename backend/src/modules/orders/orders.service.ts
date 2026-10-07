@@ -24,6 +24,8 @@ import { cashbookChangedEvent } from '../cashbook/cashbook.events';
 import { amountReceivedAfterCredit } from '../cashbook/cashbook.domain';
 import { EmployeeCommissionRecognitionService } from '../employee-commissions/employee-commission.recognition.service';
 import { assertCommissionEmployeeEligible } from '../employee-commissions/employee-commission.eligibility';
+import { claimInitialOrderReceiver, resolveEmployeeForUser } from './order-receiver.service';
+import { recordOrderVoidCancellations } from './order-cancellation.service';
 
 function canonicalize(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonicalize);
@@ -442,6 +444,7 @@ export class OrdersService {
         );
         const stockChanges = requiresReservationPrepayment ? [] : await reserveMenuStockForOrder(tx, input.items, trackedMenuItemIds);
 
+        const receivedByEmployeeId = await resolveEmployeeForUser(tx, createdByUserId);
         const order = await tx.order.create({
           data: {
             code,
@@ -469,6 +472,7 @@ export class OrdersService {
             idempotencyScope,
             requestHash,
             createdByUserId,
+            receivedByEmployeeId,
             items: {
               create: orderItemsData
             }
@@ -996,66 +1000,70 @@ export class OrdersService {
    * Chuyen trang thai don hang theo Finite State Machine (FSM):
    * PENDING -> PREPARING -> READY -> COMPLETED
    */
-  static async updateOrderStatus(orderId: number, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED', _userId?: number) {
-    const order = await prisma.order.findUnique({
-      where: { id: orderId },
-      include: {
-        items: true,
-        table: { select: { id: true, tableNumber: true } }
-      }
-    });
-
-    if (!order) {
-      throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
-    }
-
-    // FSM State transitions: PENDING -> PREPARING -> READY -> COMPLETED (ho tro Undo READY -> PREPARING)
-    const validTransitions: Record<string, string[]> = {
-      PENDING: ['PREPARING'],
-      PREPARING: ['READY'],
-      READY: ['COMPLETED', 'PREPARING']
-    };
-
-    const allowed = validTransitions[order.status];
-    if (!allowed || !allowed.includes(nextStatus)) {
-      throw ApiError.orderStateInvalid(
-        `Không thể chuyển trạng thái từ ${order.status} sang ${nextStatus}. Luồng trạng thái hợp lệ: PENDING -> PREPARING -> READY -> COMPLETED (hỗ trợ Undo READY -> PREPARING)`
-      );
-    }
-
-    const now = new Date();
-    const data: any = { status: nextStatus };
-
-    if (nextStatus === 'PREPARING') {
-      if (order.status === 'READY') {
-        if (order.readyAt) {
-          const elapsedMs = now.getTime() - new Date(order.readyAt).getTime();
-          if (elapsedMs > 60000) {
-            throw ApiError.orderStateInvalid('Đã quá thời gian cho phép hoàn tác (tối đa 60 giây kể từ khi sẵn sàng)');
-          }
+  static async updateOrderStatus(orderId: number, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED', userId?: number) {
+    const updatedOrder = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
+      const order = await tx.order.findUnique({
+        where: { id: orderId },
+        include: {
+          items: true,
+          table: { select: { id: true, tableNumber: true } }
         }
-        data.readyAt = null;
-      }
-      if (!order.preparingAt) {
-        data.preparingAt = now;
-      }
-    } else if (nextStatus === 'READY') {
-      if (!order.readyAt) {
-        data.readyAt = now;
-      }
-    } else if (nextStatus === 'COMPLETED') {
-      if (!order.completedAt) {
-        data.completedAt = now;
-      }
-    }
+      });
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: orderId },
-      data,
-      include: {
-        items: true,
-        table: { select: { id: true, tableNumber: true } }
+      if (!order) {
+        throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
       }
+
+      // FSM State transitions: PENDING -> PREPARING -> READY -> COMPLETED (ho tro Undo READY -> PREPARING)
+      const validTransitions: Record<string, string[]> = {
+        PENDING: ['PREPARING'],
+        PREPARING: ['READY'],
+        READY: ['COMPLETED', 'PREPARING']
+      };
+
+      const allowed = validTransitions[order.status];
+      if (!allowed || !allowed.includes(nextStatus)) {
+        throw ApiError.orderStateInvalid(
+          `Không thể chuyển trạng thái từ ${order.status} sang ${nextStatus}. Luồng trạng thái hợp lệ: PENDING -> PREPARING -> READY -> COMPLETED (hỗ trợ Undo READY -> PREPARING)`
+        );
+      }
+
+      const now = new Date();
+      const data: any = { status: nextStatus };
+
+      if (nextStatus === 'PREPARING') {
+        if (order.status === 'READY') {
+          if (order.readyAt) {
+            const elapsedMs = now.getTime() - new Date(order.readyAt).getTime();
+            if (elapsedMs > 60000) {
+              throw ApiError.orderStateInvalid('Đã quá thời gian cho phép hoàn tác (tối đa 60 giây kể từ khi sẵn sàng)');
+            }
+          }
+          data.readyAt = null;
+        }
+        if (!order.preparingAt) {
+          data.preparingAt = now;
+        }
+      } else if (nextStatus === 'READY') {
+        if (!order.readyAt) {
+          data.readyAt = now;
+        }
+      } else if (nextStatus === 'COMPLETED') {
+        if (!order.completedAt) {
+          data.completedAt = now;
+        }
+      }
+
+      await claimInitialOrderReceiver(tx, orderId, userId);
+      return tx.order.update({
+        where: { id: orderId },
+        data,
+        include: {
+          items: true,
+          table: { select: { id: true, tableNumber: true } }
+        }
+      });
     });
 
     const orderDto = formatOrderDto(updatedOrder);
@@ -1142,7 +1150,7 @@ export class OrdersService {
       await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
       const lockedOrder = await tx.order.findUnique({
         where: { id: orderId },
-        include: { items: true, table: true }
+        include: { items: { include: { menuItem: { select: { sku: true, name: true } } } }, table: true }
       });
 
       if (!lockedOrder) {
@@ -1217,6 +1225,29 @@ export class OrdersService {
         `;
       }
 
+      await recordOrderVoidCancellations(tx, lockedOrder, {
+        reason: input.reason,
+        cancelledAt: now,
+        cancelledByUserId: voidedByUserId ?? null,
+        restoredMenuItemIds: restoredStock.map(change => change.menuItemId)
+      });
+      await AuditService.logInTransaction(tx, {
+        action: 'ORDER_VOIDED',
+        targetType: 'Order',
+        targetId: updatedOrder.id,
+        actorId: voidedByUserId,
+        actorName,
+        metadata: {
+          code: updatedOrder.code,
+          reason: input.reason,
+          totalAmount: updatedOrder.totalAmount,
+          tableNumber: updatedOrder.table?.tableNumber,
+          source: 'ORDER_VOID',
+          trigger: 'MANUAL'
+        }
+      });
+
+      // Only this committed result may be used to publish inventory/KDS/order/table notifications.
       return { order: updatedOrder, tableState: nextTableState, stockChanges: restoredStock };
     });
 
@@ -1244,20 +1275,6 @@ export class OrdersService {
     if (tableState) {
       emitToAll('table:statusChanged', tableState);
     }
-
-    await AuditService.log({
-      action: 'ORDER_VOIDED',
-      targetType: 'Order',
-      targetId: orderDto.id,
-      actorId: voidedByUserId,
-      actorName,
-      metadata: {
-        code: orderDto.code,
-        reason: input.reason,
-        totalAmount: orderDto.totalAmount,
-        tableNumber: orderDto.tableNumber
-      }
-    });
 
     return { order: orderDto };
   }
@@ -1289,7 +1306,9 @@ export class OrdersService {
 
     const cancelledOrderIds: number[] = [];
     const now = new Date();
-    const defaultReason = 'Quá thời gian: Hơn 1 giờ chưa cập nhật trạng thái';
+    const defaultReason = timeoutMinutes === 60
+      ? 'Quá thời gian: Hơn 1 giờ chưa cập nhật trạng thái'
+      : `Quá thời gian: Hơn ${timeoutMinutes} phút chưa cập nhật trạng thái`;
 
     for (const expOrder of expiredOrders) {
       try {
@@ -1301,7 +1320,7 @@ export class OrdersService {
           await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${expOrder.id} FOR UPDATE`;
           const lockedOrder = await tx.order.findUnique({
             where: { id: expOrder.id },
-            include: { items: true, table: true }
+            include: { items: { include: { menuItem: { select: { sku: true, name: true } } } }, table: true }
           });
 
           if (!lockedOrder || lockedOrder.status !== 'PENDING' || lockedOrder.paymentStatus === 'PAID') {
@@ -1314,6 +1333,7 @@ export class OrdersService {
             data: {
               status: 'CANCELLED',
               paymentStatus: 'VOIDED',
+              voidedByUserId: null,
               voidReason: defaultReason,
               voidedAt: now,
               cancelledAt: now
@@ -1364,6 +1384,29 @@ export class OrdersService {
               WHERE id = ${lockedOrder.voucherId}
             `;
           }
+
+          await recordOrderVoidCancellations(tx, lockedOrder, {
+            reason: defaultReason,
+            cancelledAt: now,
+            cancelledByUserId: null,
+            restoredMenuItemIds: restoredStock.map(change => change.menuItemId)
+          });
+          await AuditService.logInTransaction(tx, {
+            action: 'ORDER_VOIDED',
+            targetType: 'Order',
+            targetId: updatedOrder.id,
+            actorId: null,
+            actorName: null,
+            metadata: {
+              code: updatedOrder.code,
+              reason: defaultReason,
+              totalAmount: updatedOrder.totalAmount,
+              tableNumber: updatedOrder.table?.tableNumber,
+              source: 'ORDER_VOID',
+              trigger: 'AUTO_CANCEL_TIMEOUT',
+              timeoutMinutes
+            }
+          });
 
           return { order: updatedOrder, tableState: nextTableState, stockChanges: restoredStock };
         });
@@ -1424,6 +1467,7 @@ function formatOrderDto(order: any) {
     code: order.code,
     orderType: order.orderType,
     status: order.status,
+    receivedByEmployeeId: order.receivedByEmployeeId ?? null,
     tableId: order.tableId,
     tableNumber: order.table?.tableNumber ?? null,
     deliveryPartnerId: order.deliveryPartnerId ?? null,

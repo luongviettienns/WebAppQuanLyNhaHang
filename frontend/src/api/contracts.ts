@@ -403,6 +403,7 @@ export interface OrderItemDto {
 export interface OrderDto {
   id: number;
   code: string;
+  receivedByEmployeeId: number | null;
   priceListId?: number | null;
   orderType: OrderType;
   status: OrderStatus;

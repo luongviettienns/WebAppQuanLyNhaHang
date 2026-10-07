@@ -24,7 +24,7 @@ import { AppIcon, BrandMark, StatusBadge } from '../ui';
 import { POSScreen } from '../features/pos/POSScreen';
 import { TableScreen } from '../features/tables/TableScreen';
 import { KDSScreen } from '../features/kds/KDSScreen';
-import { DashboardScreen } from '../features/reports/DashboardScreen';
+import { ReportsWorkspaceScreen } from '../features/reports/ReportsWorkspaceScreen';
 import { MenuManagementScreen } from '../features/admin/MenuManagementScreen';
 import { AuditLogScreen } from '../features/admin/AuditLogScreen';
 import { InventoryScreen } from '../features/admin/InventoryScreen';
@@ -57,7 +57,7 @@ const tabsByRole = {
     { key: 'kds', label: 'Bếp', icon: ChefHat, component: KDSScreen }
   ],
   ADMIN: [
-    { key: 'reports', label: 'Báo cáo', icon: BarChart3, component: DashboardScreen },
+    { key: 'reports', label: 'Báo cáo', icon: BarChart3, component: ReportsWorkspaceScreen },
     { key: 'menu', label: 'Thực đơn', icon: Utensils, component: MenuManagementScreen },
     { key: 'pricing', label: 'Bảng giá', icon: Tags, component: PriceListScreen },
     { key: 'inventory', label: 'Kho hàng', icon: Warehouse, component: InventoryScreen },
