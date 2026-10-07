@@ -2,25 +2,25 @@
 
 > **Hệ Thống Đa Nền Tảng Đặt Món & Quản Lý Nhà Hàng Fast Food "CRISPY BITE"**  
 > **Kiến trúc**: Full-Stack Monorepo (React Native / Expo SDK 54 + Node.js / Express / Prisma / MySQL + Real-time Socket.io)  
-> **Trạng thái**: Đã hợp nhất thành công toàn bộ đợt 4 từ nhánh `pKhanh` vào `main` (Merge PR #2 `0a4dba6`). Tích hợp hoàn hảo Hệ thống Sổ Quỹ & Dòng Tiền (Cashbook Ledger) và Động Cơ Tính Hoa Hồng Nhân Viên (Employee Commission Engine); Siết chặt FSM Undo Timeout, Vòng đời Dọn bàn `NEED_CLEANING` và Bảo toàn Voucher; Full Quality Gate PASS 100% (1,113/1,113 tests).  
-> **Cập nhật lần cuối**: 2026-10-07 18:45:00
+> **Trạng thái**: Đã tích hợp thành công toàn diện Module Báo Cáo Cuối Ngày (End-of-day Report 4 Adapters) và Nhận Diện Thương Hiệu Logo Crispy Bite (`BrandMark`) từ nhánh `pKhanh` vào `main`. Khắc phục triệt để lỗi xung đột mã nguồn do merge script cũ, bảo toàn toàn vẹn hồ sơ đồ án tốt nghiệp `DoAn3.docx` của Khánh; Full Quality Gate PASS 100% (1,307/1,307 tests, 0 lỗi typecheck).  
+> **Cập nhật lần cuối**: 2026-10-07 23:10:00
 
 ---
 
 ## 📈 1. TỔNG QUAN TIẾN ĐỘ (OVERALL PROGRESS)
 
 ```
-[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 13; Hệ sinh thái Vận hành, Quản trị QSR, Nhân sự HRM, Sổ Quỹ & Hoa Hồng Toàn diện)
+[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 14; Hệ sinh thái Vận hành, Quản trị QSR, HRM, Sổ Quỹ, Hoa Hồng, Báo Cáo Cuối Ngày & Thương Hiệu Toàn Diện)
 ```
 
 ### 🧪 Bằng chứng kiểm chứng chất lượng (Verification Metrics)
-- **Backend Test Suite (Vitest)**: 123/123 test files passed (824/824 tests pass 100% — bao gồm Toàn bộ cụm Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, Nhân sự Employees, Lịch ca kíp Schedules, Chấm công Kiosk/Admin, Tính lương Payroll, Cài đặt chính sách Employee Settings, Đặt bàn Reservations, Khách hàng Customers, Đối tác giao hàng Delivery Partners, Kho NVL, BOM & COGS, Price List, Menu Bulk/Import/Export, Voucher Engine, Table Transfer, KDS Kitchen Waste, Order Idempotency, FSM, Auth RBAC, Reports & Real-time Socket, FSM Undo 60s & Clean Table Transition).
-- **Frontend Test Suite (Vitest)**: 86/86 test files passed (289/289 tests pass 100% — bao gồm Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, ViewModels & Screens cho Nhân sự, Lịch làm việc tuần, Chấm công Kiosk/Admin, Bảng lương, Cài đặt chính sách, Đặt bàn, Khách hàng, NCC, Phiếu nhập, Phiếu hủy, Phiếu kiểm kho, Bảng giá, Menu bulk, Notification helper, UI Tokens & Guards, KDSScreen Undo 10s & TableScreen NEED_CLEANING).
-- **Tổng Unit / Integration Tests**: **1,113/1,113 tests passed 100%** (824 backend + 289 frontend).
+- **Backend Test Suite (Vitest)**: 133/133 test files passed (975/975 tests pass 100% — bao gồm Toàn bộ Báo cáo cuối ngày 4 Adapters Sales/Cashflow/Goods/CancelledItems, Consistent Repeatable-Read Snapshots, Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, Nhân sự Employees, Lịch ca kíp Schedules, Chấm công Kiosk/Admin Debounce 60s, Tính lương Payroll, Cài đặt chính sách Employee Settings, Đặt bàn Reservations, Khách hàng Customers, Đối tác giao hàng Delivery Partners, Kho NVL, BOM & COGS, Price List, Menu Bulk/Import/Export, Voucher Engine, Table Transfer, KDS Kitchen Waste, Order Idempotency, FSM, Auth RBAC, Reports & Real-time Socket, FSM Undo 60s, Vòng đời dọn bàn `PAID_AWAITING_SERVE` & Gross VAT 8%).
+- **Frontend Test Suite (Vitest)**: 90/90 test files passed (332/332 tests pass 100% — bao gồm EndOfDayReportScreen, ReportsWorkspaceScreen, useEndOfDayReport, BrandMark logo sync, Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, ViewModels & Screens cho Nhân sự, Lịch làm việc tuần, Chấm công Kiosk/Admin, Bảng lương, Cài đặt chính sách, Đặt bàn, Khách hàng, NCC, Phiếu nhập, Phiếu hủy, Phiếu kiểm kho, Bảng giá, Menu bulk, Notification helper, UI Tokens & Guards, KDSScreen Undo 10s & TableScreen NEED_CLEANING).
+- **Tổng Unit / Integration Tests**: **1,307/1,307 tests passed 100%** (975 backend + 332 frontend).
 - **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ workspaces (`backend` + `frontend`).
 - **Monorepo Lint (ESLint)**: `npm run lint` $\rightarrow$ 0 lỗi trên toàn bộ workspaces.
 - **Expo Doctor Check**: `npm run doctor` $\rightarrow$ 18/18 checks đạt tiêu chuẩn Expo SDK 54.
-- **Database Migrations**: Đồng bộ nhất quán **33 migrations** trên cả `crispy_bite_dev` và `crispy_bite_test` kèm bảng kiểm toán `_prisma_migrations`.
+- **Database Migrations**: Đồng bộ nhất quán **34 migrations** trên cả `crispy_bite_dev` và `crispy_bite_test` (`20261008120000_end_of_day_report_foundation`) kèm bảng kiểm toán `_prisma_migrations`.
 
 ### 🗂️ Tiến độ theo Giai đoạn (Phase Summary)
 | Giai đoạn | Mục tiêu cốt lõi | Trạng thái |
@@ -39,6 +39,7 @@
 | **Phase 11: Chuỗi Cung Ứng & Vận Hành** | Quản lý NCC, Phiếu nhập, Kiểm kho, Xuất hủy, Trả hàng nhập, Hóa đơn & Đổi trả bán | **HOÀN TẤT** (100%) |
 | **Phase 12: Quản Trị Nhân Sự (HRM)** | Hồ sơ NV, Lịch ca kíp, Chấm công Kiosk/Admin, Tính lương, Cài đặt chính sách, Đặt bàn | **HOÀN TẤT** (100%) |
 | **Phase 13: Sổ Quỹ & Hoa Hồng (Cashbook & Commissions)** | Sổ quỹ tiền mặt/ngân hàng, phiếu thu chi, hạch toán liên thông, động cơ hoa hồng NV & bảng lương | **HOÀN TẤT** (100%) |
+| **Phase 14: Báo Cáo Cuối Ngày & Thương Hiệu (End-of-day Report & Brand Mark)** | Báo cáo cuối ngày 4 Adapters, Consistent Snapshots, In PDF A4 ngang, Đồng bộ Logo Crispy Bite | **HOÀN TẤT** (100%) |
 
 ---
 
@@ -455,6 +456,37 @@
          - Toàn bộ 123 backend test files (833 tests) pass 100%.
          - Toàn bộ 86 frontend test files (289 tests) pass 100%.
          - `npm run typecheck` đạt **0 lỗi biên dịch** trên cả 2 workspace.
+
+---
+
+46. **Tích Hợp Toàn Diện Module Báo Cáo Cuối Ngày & Nhận Diện Thương Hiệu Từ Nhánh `pKhanh`**:
+    - *Bối cảnh & Điều tra Nguyên nhân Gốc rễ (Root Cause Analysis - RCA)*:
+      - Nhánh `origin/pKhanh` gặp lỗi **Code Corruption** nghiêm trọng tại commit `a95e42f` và `70b4616` do việc sử dụng script tự động giải quyết xung đột `resolve_conflicts.py` với cờ `keep_both`. Thao tác này đã nhân đôi 212 dòng trong `backend/prisma/schema.prisma` (tạo ra các model trùng lặp `OrderReturn`, `PurchaseReceipt`, `PurchaseReturn`), nhân đôi toàn bộ các class và function trong 8 tệp service của `cashbook`, đồng thời phá vỡ phân quyền role trong `orders.controller.ts`.
+      - Điều tra sâu lịch sử Git cho thấy toàn bộ tính năng Báo Cáo Cuối Ngày (End-of-day Report) thực chất bắt nguồn từ nhánh nguồn sạch `origin/codex/end-of-day-report`, và tính năng Nhận diện thương hiệu nằm tại commit `8409c75` (`feat(branding): sync Crispy Bite logos across screens`). Đồng thời nhánh `pKhanh` còn lưu giữ tài liệu thuyết minh đồ án tốt nghiệp `12523037 - Phan Văn Khánh - DoAn3.docx` và thư mục `report_work_20261007`.
+    - *Phương án Tích hợp Tối ưu & An toàn ("Cách Tốt Nhất")*:
+      1. **Tạo Nhánh Tích Hợp Cô Lập (`integrate/pkhanh-clean`)**:
+         - Tách nhánh từ đỉnh `main` (nơi đã có đầy đủ 3 gói logic siết chặt: `PAID_AWAITING_SERVE`, Gross VAT 8%, Debounce Kiosk 60s).
+      2. **Hợp Nhất Nguồn Sạch Báo Cáo Cuối Ngày (`origin/codex/end-of-day-report`)**:
+         - Thực hiện `git merge origin/codex/end-of-day-report`.
+         - Giải quyết xung đột nội dung: Bảo toàn tuyệt đối phân quyền Cashier/Role trong `orders.controller.ts` của `main`; kết hợp hài hòa FSM Undo 60s, Voucher refund của `main` với `claimInitialOrderReceiver` và `recordOrderVoidCancellations`, `AuditService` của `end-of-day-report` trong `orders.service.ts`.
+      3. **Cherry-pick Tính Năng Nhận Diện Thương Hiệu (`8409c75`)**:
+         - Bổ sung tài sản thương hiệu SVG/PNG Crispy Bite, cấu hình SVG transformer và component `BrandMark.tsx` trên toàn bộ các màn hình ứng dụng (Login, Customer Order, Booking, POS Receipt, Attendance Kiosk).
+      4. **Bảo Tồn Hồ Sơ & Tài Liệu Đồ Án Của Khánh**:
+         - Checkout và commit đầy đủ tệp `12523037 - Phan Văn Khánh - DoAn3.docx` cùng thư mục `report_work_20261007` vào kho lưu trữ Git, đảm bảo không thất thoát bất kỳ công sức nghiên cứu nào của bạn Khánh.
+      5. **Đồng Bộ Migration Cơ Sở Dữ Liệu**:
+         - Áp dụng migration `20261008120000_end_of_day_report_foundation` cho cả 2 database `crispy_bite_dev` và `crispy_bite_test` (tạo bảng `OrderItemCancellation`, thêm cột `receivedByEmployeeId`).
+    - *Nghiệm Thu Toàn Diện & Quality Gates*:
+      - `npx prisma validate`: Schema hợp lệ 100%.
+      - `npm run typecheck`: **0 lỗi biên dịch** trên cả 2 workspaces `backend` và `frontend`.
+      - Toàn bộ 10 test files reports backend (142 tests) pass 100%.
+      - Toàn bộ 15 test files orders backend (112 tests) pass 100%.
+      - Toàn bộ 4 test files reports frontend (40 tests) pass 100%.
+      - Frontend `BrandMark.test.tsx` (3 tests) pass 100%.
+      - Tổng test suite toàn hệ thống: **1,307 tests pass 100%**.
+      - Fast-forward merge vào `main`, push thành công lên `origin/main` (`0ce0510`).
+      - Đồng bộ và làm sạch hoàn toàn nhánh `origin/pKhanh` trên GitHub.
+    - *Quy Tắc Phòng Ngừa Lỗi (Prevention Rule)*:
+      - **Tuyệt đối cấm** sử dụng các script resolve conflict kiểu `keep_both` mù quáng đối với các tệp schema (Prisma, GraphQL) và mã nguồn TypeScript. Mọi xung đột schema và class phải được đối soát thủ công spec-by-spec.
 
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
