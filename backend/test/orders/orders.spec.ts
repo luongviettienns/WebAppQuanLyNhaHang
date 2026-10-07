@@ -92,7 +92,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     expect(res.body.data.tables[0]).toHaveProperty('qrCodeToken');
   });
 
-  it('POST /api/orders requires a checked-in, prepaid reservation before guest ordering', async () => {
+  it('POST /api/orders tu choi khi khach vang lai goi mon ma khong co ma QR hop le', async () => {
     const table = await prismaTest.diningTable.findFirstOrThrow({ where: { tableNumber: 12 } });
     const item = await prismaTest.menuItem.findFirstOrThrow({
       where: {
@@ -109,11 +109,11 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
         items: [{ menuItemId: item.id, quantity: 1 }]
       });
 
-    expect(res.status).toBe(409);
-    expect(res.body.error.code).toBe('CONFLICT');
+    expect(res.status).toBe(400);
+    expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('POST /api/orders rejects a valid table QR without a checked-in reservation token', async () => {
+  it('POST /api/orders cho phep khach vang lai quet QR hop le tao don tai ban truc tiep', async () => {
     const table = await prismaTest.diningTable.findFirstOrThrow({ where: { tableNumber: 11 } });
     const item = await prismaTest.menuItem.findFirstOrThrow({
       where: {
@@ -130,8 +130,33 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
         items: [{ menuItemId: item.id, quantity: 1 }]
       });
 
-    expect(res.status).toBe(409);
-    expect(res.body.error.code).toBe('CONFLICT');
+    expect(res.status).toBe(201);
+    expect(res.body.data.order.tableId).toBe(table.id);
+    expect(res.body.data.order.status).toBe('PENDING');
+    expect(res.body.data.order.paymentStatus).toBe('UNPAID');
+
+    const updatedTable = await prismaTest.diningTable.findUnique({ where: { id: table.id } });
+    expect(updatedTable?.status).toBe('OCCUPIED');
+  });
+
+  it('POST /api/orders tu choi khi khach vang lai gui ma QR ban khong ton tai hoac het han', async () => {
+    const item = await prismaTest.menuItem.findFirstOrThrow({
+      where: {
+        isAvailable: true,
+        modifierGroups: { none: { isRequired: true } }
+      }
+    });
+
+    const res = await request(app)
+      .post('/api/orders')
+      .send({
+        qrCodeToken: 'non-existent-qr-token',
+        orderType: 'DINE_IN',
+        items: [{ menuItemId: item.id, quantity: 1 }]
+      });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('NOT_FOUND');
   });
 
   it('POST /api/orders tao don hang An tai ban (Dine-in) thanh cong, tinh dung VAT 8% va chuyen ban sang OCCUPIED', async () => {

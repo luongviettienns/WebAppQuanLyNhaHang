@@ -8,11 +8,11 @@ test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
   });
 
   test('should login as cashier, order combo with required modifier, send to kitchen, view receipt, and advance status in KDS', async ({ page }) => {
-    // 1. Login using Cashier Demo Button
+    // 1. Login using Cashier credentials
     await expect(page.getByRole('heading', { name: 'Đăng nhập' })).toBeVisible();
-    const cashierBtn = page.getByTestId('demo-btn-cashier');
-    await expect(cashierBtn).toBeVisible({ timeout: 10000 });
-    await cashierBtn.click();
+    await page.getByTestId('input-username').fill('cashier');
+    await page.getByTestId('input-password').fill('cashier123');
+    await page.getByTestId('btn-login').click();
 
     // Verify logged in and POS Tab is visible
     const posTab = page.getByTestId('tab-pos');
@@ -98,10 +98,9 @@ test.describe('E2E Flow: Cashier to Kitchen Lifecycle', () => {
     await logoutBtn.click();
 
     // 9. Login as Kitchen (KDS)
-    const kitchenBtn = page.getByTestId('demo-btn-kitchen');
-    await expect(kitchenBtn).toBeVisible({ timeout: 10000 });
-    await kitchenBtn.scrollIntoViewIfNeeded();
-    await kitchenBtn.click();
+    await page.getByTestId('input-username').fill('kitchen');
+    await page.getByTestId('input-password').fill('kitchen123');
+    await page.getByTestId('btn-login').click();
 
     // Verify KDS screen
     await expect(page.getByTestId('kds-screen-title')).toBeVisible({ timeout: 15000 });

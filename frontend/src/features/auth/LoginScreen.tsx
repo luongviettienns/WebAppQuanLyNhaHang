@@ -10,9 +10,7 @@ import {
   View,
   useWindowDimensions
 } from 'react-native';
-import { ChefHat, Moon, ShieldCheck, Sun, UserRound, Wifi } from 'lucide-react-native';
-import type { LucideIcon } from 'lucide-react-native';
-import { Role } from '../../api/contracts';
+import { Moon, Sun, Wifi } from 'lucide-react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
@@ -20,14 +18,8 @@ import { AppIcon, BrandMark, Button, Field, InlineAlert, Surface } from '../../u
 import { ServerConfigModal } from '../../components/ServerConfigModal';
 import { getApiBaseUrl } from '../../api/config';
 
-const demoRoles: Array<{ role: Role; label: string; description: string; icon: LucideIcon; testID: string }> = [
-  { role: 'CASHIER', label: 'Thu ngân', description: 'Bán hàng và quản lý bàn', icon: UserRound, testID: 'demo-btn-cashier' },
-  { role: 'KITCHEN', label: 'Bếp', description: 'Tiếp nhận và chế biến món', icon: ChefHat, testID: 'demo-btn-kitchen' },
-  { role: 'ADMIN', label: 'Quản trị', description: 'Thực đơn và báo cáo vận hành', icon: ShieldCheck, testID: 'demo-btn-admin' }
-];
-
 export const LoginScreen: React.FC = () => {
-  const { login, demoLogin, isLoading, sessionExpiredMessage, clearSessionExpiredMessage } = useAuth();
+  const { login, isLoading, sessionExpiredMessage, clearSessionExpiredMessage } = useAuth();
   const { theme, isDark, toggleTheme } = useTheme();
   const { width } = useWindowDimensions();
   const isDesktop = width >= 900;
@@ -49,15 +41,6 @@ export const LoginScreen: React.FC = () => {
     const result = await login(username.trim(), password);
     if (!result.success) {
       setErrorMessage(result.error || 'Đăng nhập không thành công. Vui lòng thử lại.');
-    }
-  };
-
-  const handleDemoLogin = async (role: Role) => {
-    setErrorMessage(null);
-    clearSessionExpiredMessage();
-    const result = await demoLogin(role);
-    if (!result.success) {
-      setErrorMessage(result.error || 'Không thể mở tài khoản dùng thử. Vui lòng thử lại.');
     }
   };
 
@@ -171,41 +154,6 @@ export const LoginScreen: React.FC = () => {
               </View>
 
               <Button testID="btn-login" variant="primary" label="Đăng nhập" loading={isLoading} onPress={() => void handleLogin()} />
-
-              <View style={styles.demoSection}>
-                <View style={styles.dividerRow}>
-                  <View style={[styles.divider, { backgroundColor: theme.borderSubtle }]} />
-                  <Text style={[styles.demoTitle, { color: theme.textSecondary }]}>Tài khoản dùng thử</Text>
-                  <View style={[styles.divider, { backgroundColor: theme.borderSubtle }]} />
-                </View>
-                <View style={[styles.demoList, { borderColor: theme.borderSubtle }]}>
-                  {demoRoles.map((item, index) => (
-                    <Pressable
-                      key={item.role}
-                      testID={item.testID}
-                      accessibilityRole="button"
-                      accessibilityState={{ disabled: isLoading }}
-                      disabled={isLoading}
-                      onPress={() => void handleDemoLogin(item.role)}
-                      style={({ pressed }) => [
-                        styles.demoRow,
-                        index > 0 && { borderTopColor: theme.borderSubtle, borderTopWidth: 1 },
-                        pressed && { backgroundColor: theme.surfaceSunken },
-                        isLoading && styles.disabled
-                      ]}
-                    >
-                      <View style={[styles.demoIcon, { backgroundColor: theme.interactiveQuiet }]}>
-                        <AppIcon icon={item.icon} color={theme.textPrimary} size={19} />
-                      </View>
-                      <View style={styles.demoCopy}>
-                        <Text style={[styles.demoLabel, { color: theme.textPrimary }]}>{item.label}</Text>
-                        <Text style={[styles.demoDescription, { color: theme.textSecondary }]}>{item.description}</Text>
-                      </View>
-                      <Text style={[styles.openLabel, { color: theme.primary }]}>Mở</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
             </Surface>
           </View>
         </ScrollView>
@@ -267,17 +215,5 @@ const styles = StyleSheet.create({
     fontFamily: typography.families.bodyMedium,
     fontWeight: '600'
   },
-  fields: { gap: spacing.md },
-  demoSection: { gap: spacing.md, marginTop: spacing.xs },
-  dividerRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
-  divider: { flex: 1, height: 1 },
-  demoTitle: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs },
-  demoList: { borderRadius: radii.md, borderWidth: 1, overflow: 'hidden' },
-  demoRow: { alignItems: 'center', flexDirection: 'row', gap: spacing.md, minHeight: 58, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  demoIcon: { alignItems: 'center', borderRadius: radii.sm, height: 36, justifyContent: 'center', width: 36 },
-  demoCopy: { flex: 1 },
-  demoLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
-  demoDescription: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, lineHeight: typography.lineHeights.xs },
-  openLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
-  disabled: { opacity: 0.55 }
+  fields: { gap: spacing.md }
 });

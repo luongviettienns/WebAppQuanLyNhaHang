@@ -536,3 +536,34 @@
       - npm run lint: 0 lỗi.
       - npm run doctor: 18/18 checks đạt chuẩn.
       - Tổng test suite toàn hệ thống: 1,347/1,347 tests pass 100%.
+
+49. **Giao Diện Đăng Nhập: Loại Bỏ Hoàn Toàn Mục Tài Khoản Dùng Thử Có Sẵn**:
+    - *Yêu cầu Người dùng*: Trang đăng nhập bỏ sẵn các tài khoản dùng thử để người dùng chỉ đăng nhập bằng thông tin tài khoản được cấp thực tế.
+    - *Thực hiện*:
+      - Loại bỏ mục "Tài khoản dùng thử" (Demo Roles bar: Thu ngân, Bếp, Quản trị) khỏi `frontend/src/features/auth/LoginScreen.tsx`.
+      - Dọn dẹp các icons và logic demo thừa trong `LoginScreen.tsx`.
+      - Cập nhật E2E test flows (`admin-operations-flow.spec.ts`, `cashier-kitchen-flow.spec.ts`, `ui-consistency.spec.ts`) và kịch bản chụp ảnh báo cáo (`capture_report_screenshots.js`) đăng nhập chuẩn xác qua form nhập liệu `input-username` và `input-password`.
+      - Rebuild bản web tĩnh `frontend/dist` (`npm run build:frontend`).
+      - Xác thực chất lượng: `npm run typecheck` 0 lỗi, toàn bộ 349 frontend tests PASS 100%.
+
+50. **Hỗ Trợ Khách Vãng Lai Quét Mã QR Gọi Món Tại Bàn Trực Tiếp Không Bị Chặn Check-in Đặt Bàn (Walk-in QR Dine-in Ordering & Security Guard)**:
+    - *Bối cảnh & Nguyên nhân gốc rễ (RCA)*:
+      - Khi khách vãng lai đến quán, ngồi vào bàn và quét mã QR bàn ăn để gọi món, đơn hàng không gửi được và hiện thông báo lỗi: *"Đặt bàn cần được nhân viên check-in trước khi gọi món. Hãy đưa mã đặt chỗ cho nhân viên."*
+      - *Nguyên nhân Backend*: Trong `orders.service.ts`, `isGuestPrepayment = createdByUserId === undefined` đã mặc định đánh đồng mọi đơn do khách tạo (không có auth token nhân viên) đều là đơn đặt cọc giữ chỗ trước của phân hệ Reservations. Đồng thời, có khối chặn cứng: `if (!input.reservationAccessToken) throw ApiError.conflict('Khách cần đặt bàn, check-in và đặt cọc trước khi gọi món');`.
+      - *Nguyên nhân Frontend*: Trong `TableOrderScreen.tsx`, hàm `handleSendToKitchen` chặn cứng phía client nếu `!reservationAccessToken`.
+    - *Giải pháp Kiến trúc & Kỹ thuật*:
+      - **Backend (`orders.service.ts`)**:
+        - Sửa điều kiện: `isGuestPrepayment = createdByUserId === undefined && Boolean(input.reservationAccessToken);`.
+        - Nếu có `reservationAccessToken`: Vận hành luồng đặt cọc giữ chỗ (xác thực token check-in, chờ duyệt thanh toán/cọc trước khi bếp nhận).
+        - Nếu KHÔNG có `reservationAccessToken` (khách vãng lai): Xác thực mã QR bàn (`qrCodeToken`) và kiểm tra bàn `isActive`. Tạo đơn `status: PENDING`, `paymentStatus: UNPAID`, trừ kho tức thì (`reserveMenuStockForOrder`), cập nhật bàn `status: OCCUPIED`, và phát realtime `order:new` xuống bếp KDS và toàn hệ thống.
+        - **Bảo mật (Security Guard)**: Bắt buộc phải có `qrCodeToken` hợp lệ từ bàn vật lý. Chặn 400 nếu gọi thiếu mã QR và 404 nếu mã QR không hợp lệ, ngăn chặn việc gọi món từ xa ngoài phạm vi nhà hàng.
+      - **Frontend (`TableOrderScreen.tsx`)**:
+        - Gỡ bỏ chặn cứng `!reservationAccessToken`. Khách vãng lai gửi đơn thành công sẽ lập tức nhận thông báo `"Đặt món thành công! Order bàn X đã được gửi xuống bếp."` và hiển thị màn hình Live Tracker thời gian thực.
+    - *Khóa lỗi bằng Regression Tests*:
+      - Cập nhật `backend/test/orders/orders.spec.ts` (15/15 tests PASS): Kiểm chứng từ chối 400 khi thiếu QR token, cho phép tạo đơn 201 khi có QR hợp lệ, từ chối 404 khi QR không tồn tại.
+      - Cập nhật `backend/test/orders/reservation-order-authorization.spec.ts` (8/8 tests PASS): Kiểm chứng khách vãng lai gọi món trực tiếp trừ kho ngay, đồng thời bảo toàn luồng khách đặt cọc trước chỉ vào bếp sau khi cọc/thanh toán đủ.
+      - Cập nhật cẩm nang kiểm thử `KICH_BAN_KIEM_THU_TOAN_DIEN.md` (Phân hệ 2: TC-CUST-04, TC-CUST-05, TC-CUST-06).
+    - *Nghiệm thu Chất lượng Toàn diện*:
+      - `npm run typecheck`: Đạt 0 lỗi biên dịch trên cả hai workspaces backend & frontend.
+      - `npm run test:frontend`: 349/349 tests PASS 100%.
+      - Đã re-build bản phân phối web tĩnh `frontend/dist` (`npm run build:frontend`).

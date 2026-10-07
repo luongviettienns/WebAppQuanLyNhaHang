@@ -80,15 +80,14 @@ npm run db:reset
 
 ## 5. Tai Khoan Dang Nhap Mau (Default Seed Accounts)
 
-Tat ca tai khoan mac dinh co mat khau la: `123456`
+Chi tiet danh sach toan bo 20 tai khoan nhan vien mau xem tai: [`TAI_KHOAN_DANG_NHAP.md`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/TAI_KHOAN_DANG_NHAP.md).
 
 | Vai tro (Role) | Ten dang nhap (Username) | Mat khau (Password) | Pham vi truy cap (Access Scope) |
 | :--- | :--- | :--- | :--- |
-| **Thu ngan (CASHIER)** | `cashier` | `123456` | POS dat mon, So do ban an, Hoa don |
-| **Nha bep (KITCHEN)** | `kitchen` | `123456` | KDS bep Dark Mode, Bao het mon (86'd), Prep Timer |
-| **Quan tri (ADMIN)** | `admin` | `123456` | Toan quyen: Menu, Void huy don, Bao cao KPI & SOS |
-
-*(Tren giao dien Web Login co thanh Demo Bar 1-cham giup chuyen doi tai khoan tuc thi)*
+| **Thu ngan (CASHIER)** | `cashier` | `cashier123` | POS dat mon, So do ban an, Hoa don |
+| **Nha bep (KITCHEN)** | `kitchen` | `kitchen123` | KDS bep Dark Mode, Bao het mon (86'd), Prep Timer |
+| **Quan tri (ADMIN)** | `admin` | `admin123` | Toan quyen: Menu, Void huy don, 8 Phan he bao cao |
+| **Nhan vien ca khac** | `cashier_01` ... / `kitchen_01` ... | `role123` | Nhan vien theo ca va phan cong cu the |
 
 ---
 

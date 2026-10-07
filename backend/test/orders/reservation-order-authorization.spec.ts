@@ -65,7 +65,7 @@ describe('reservation order authorization and prepayment gate', () => {
     );
   }
 
-  it('rejects a guest QR order without a checked-in reservation before creating an order', async () => {
+  it('allows a walk-in guest with valid table QR to create a dine-in order and immediately reserves stock', async () => {
     const table = await prismaTest.diningTable.findFirstOrThrow({ where: { isActive: true } });
     const item = await eligibleItem();
     const stockBefore = item.stockQuantity;
@@ -75,8 +75,23 @@ describe('reservation order authorization and prepayment gate', () => {
       items: [{ menuItemId: item.id, quantity: 1 }]
     });
 
-    expect(response.status).toBe(409);
-    expect(await prismaTest.order.count()).toBe(0);
+    expect(response.status).toBe(201);
+    expect(response.body.data.order.tableId).toBe(table.id);
+    expect(response.body.data.order.status).toBe('PENDING');
+    expect(response.body.data.order.paymentStatus).toBe('UNPAID');
+    expect((await prismaTest.menuItem.findUniqueOrThrow({ where: { id: item.id } })).stockQuantity).toBe(stockBefore - 1);
+  });
+
+  it('rejects a walk-in guest order when table QR code is invalid', async () => {
+    const item = await eligibleItem();
+    const stockBefore = item.stockQuantity;
+
+    const response = await request(app).post('/api/orders').send({
+      orderType: 'DINE_IN', qrCodeToken: 'invalid-table-qr-token',
+      items: [{ menuItemId: item.id, quantity: 1 }]
+    });
+
+    expect(response.status).toBe(404);
     expect((await prismaTest.menuItem.findUniqueOrThrow({ where: { id: item.id } })).stockQuantity).toBe(stockBefore);
   });
 

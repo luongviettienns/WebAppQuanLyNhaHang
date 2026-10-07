@@ -29,6 +29,7 @@ docs/
 !INVENTORY_DISCOVERY.md
 !CHUC_NANG_VA_THAO_TAC_NGUOI_DUNG.md
 !KICH_BAN_KIEM_THU_TOAN_DIEN.md
+!TAI_KHOAN_DANG_NHAP.md
 
 # Build artifacts & outputs
 dist/

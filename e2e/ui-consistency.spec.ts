@@ -2,7 +2,9 @@ import { test, expect, type Page, type Locator } from '@playwright/test';
 
 async function login(page: Page, role: 'cashier' | 'kitchen' | 'admin') {
   await page.goto('/');
-  await page.getByTestId(`demo-btn-${role}`).click();
+  await page.getByTestId('input-username').fill(role);
+  await page.getByTestId('input-password').fill(`${role}123`);
+  await page.getByTestId('btn-login').click();
   await expect(page.getByTestId('btn-logout')).toBeVisible();
 }
 
@@ -31,9 +33,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 
     await expect(page.getByText('Crispy Bite', { exact: true })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Chuyển sang giao diện tối' })).toBeVisible();
     await capture(page, 'login-light', testInfo);
-    if (viewport.width === 390) await expect(page.getByTestId('demo-btn-admin')).toBeInViewport();
-    await page.getByTestId('demo-btn-admin').scrollIntoViewIfNeeded();
-    await expect(page.getByTestId('demo-btn-admin')).toBeInViewport();
+    if (viewport.width === 390) await expect(page.getByTestId('btn-login')).toBeInViewport();
+    await page.getByTestId('btn-login').scrollIntoViewIfNeeded();
+    await expect(page.getByTestId('btn-login')).toBeInViewport();
     await page.getByTestId('input-username').fill('cashier');
     await page.getByTestId('input-password').fill('cashier123');
     await page.getByTestId('btn-login').click();
@@ -72,7 +74,9 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 1024, height: 768 
     const createdOrder = (await (await createdResponse).json()).data.order;
     await page.getByTestId('btn-done-order').click();
     await page.getByTestId('btn-logout').click();
-    await page.getByTestId('demo-btn-kitchen').click();
+    await page.getByTestId('input-username').fill('kitchen');
+    await page.getByTestId('input-password').fill('kitchen123');
+    await page.getByTestId('btn-login').click();
     await expect(page.getByRole('button', { name: 'Chuyển sang giao diện sáng' })).toBeVisible();
     const ticket = page.getByTestId(`kds-card-${createdOrder.code}`);
     await expect(ticket).toContainText(/Combo 1 Người|Món #\d+/);

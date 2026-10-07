@@ -7,11 +7,11 @@ test.describe('E2E Flow: Admin Operations & Reporting', () => {
   });
 
   test('should login as admin, inspect reporting, and open table operations', async ({ page }) => {
-    // 1. Login using Admin Demo Button
+    // 1. Login using Admin credentials
     await expect(page.getByRole('heading', { name: 'Đăng nhập' })).toBeVisible();
-    const adminBtn = page.getByTestId('demo-btn-admin');
-    await expect(adminBtn).toBeVisible({ timeout: 10000 });
-    await adminBtn.click();
+    await page.getByTestId('input-username').fill('admin');
+    await page.getByTestId('input-password').fill('admin123');
+    await page.getByTestId('btn-login').click();
 
     // 2. Reports is the default Admin screen from the workspace sidebar
     const reportsTab = page.getByTestId('tab-reports');

@@ -162,7 +162,7 @@ export class OrdersService {
    * Tao don hang moi (Dat tai ban qua QR hoac POS)
    */
   static async createOrder(input: CreateOrderInput, createdByUserId?: number) {
-    const isGuestPrepayment = createdByUserId === undefined;
+    const isGuestPrepayment = createdByUserId === undefined && Boolean(input.reservationAccessToken);
     const requiresReservationPrepayment = isGuestPrepayment && input.orderType === 'DINE_IN';
     if (input.payLaterOverride && createdByUserId === undefined) throw ApiError.forbidden('Chỉ nhân viên được cho phép trả sau');
     const idempotencyScope = createdByUserId === undefined ? 'guest' : `user:${createdByUserId}`;
@@ -187,9 +187,6 @@ export class OrdersService {
     let resolvedTableId = input.tableId;
     if (input.orderType === 'DINE_IN') {
       if (createdByUserId === undefined) {
-        if (!input.reservationAccessToken) {
-          throw ApiError.conflict('Khách cần đặt bàn, check-in và đặt cọc trước khi gọi món');
-        }
         if (!input.qrCodeToken) {
           throw ApiError.badRequest('Khách gọi món tại bàn cần có mã QR hợp lệ');
         }

@@ -336,39 +336,49 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     notificationHelper.requestPermission().catch(() => {});
 
     const tokenToSend = effectiveQrToken || (table as any)?.qrCodeToken || undefined;
-    if (!reservationAccessToken) {
-      const message = 'Đặt bàn cần được nhân viên check-in trước khi gọi món. Hãy đưa mã đặt chỗ cho nhân viên.';
-      setOrderError(message); setIsSubmitting(false); return;
-    }
     const result = await createDineInOrder(tableId, orderNotes.trim() || undefined, tokenToSend, appliedVoucher?.code, reservationAccessToken);
     setIsSubmitting(false);
 
     if (result.success && result.order) {
       let order = result.order;
-      let declaration: ReservationOrderPaymentDeclaration;
-      try {
-        declaration = await declareReservationOrderPaymentApi(order.id, reservationAccessToken);
-        setPaymentDeclaration(declaration);
-        order = declaration.order;
-      } catch (failure: any) {
+      if (reservationAccessToken) {
+        let declaration: ReservationOrderPaymentDeclaration;
+        try {
+          declaration = await declareReservationOrderPaymentApi(order.id, reservationAccessToken);
+          setPaymentDeclaration(declaration);
+          order = declaration.order;
+        } catch (failure: any) {
+          setCurrentOrder(order);
+          setOrderError(failure.message || 'Order đã tạo nhưng chưa thể khai báo thanh toán. Vui lòng nhờ thu ngân kiểm tra.');
+          setIsBrowsingMenu(false); setIsCartModalOpen(false); setOrderNotes('');
+          return;
+        }
         setCurrentOrder(order);
-        setOrderError(failure.message || 'Order đã tạo nhưng chưa thể khai báo thanh toán. Vui lòng nhờ thu ngân kiểm tra.');
-        setIsBrowsingMenu(false); setIsCartModalOpen(false); setOrderNotes('');
-        return;
+        setSelectedOrderId(result.order.id);
+        setIsBrowsingMenu(false);
+        setIsCartModalOpen(false);
+        setOrderNotes('');
+        setAppliedVoucher(null);
+        showToast(declaration.amountDue > 0 ? {
+          type: 'info', title: 'Order đang chờ thanh toán',
+          message: `Chuyển ${formatVND(declaration.amountDue)} và chờ thu ngân xác nhận. Bếp chưa nhận order.`
+        } : {
+          type: 'success', title: 'Đặt món thành công!',
+          message: `Tiền cọc đã đủ thanh toán; order bàn ${formatTableNumber(displayTableNumber)} đã được gửi xuống bếp.`
+        });
+      } else {
+        setCurrentOrder(order);
+        setSelectedOrderId(result.order.id);
+        setIsBrowsingMenu(false);
+        setIsCartModalOpen(false);
+        setOrderNotes('');
+        setAppliedVoucher(null);
+        showToast({
+          type: 'success',
+          title: 'Đặt món thành công!',
+          message: `Order bàn ${formatTableNumber(displayTableNumber)} đã được gửi xuống bếp.`
+        });
       }
-      setCurrentOrder(order);
-      setSelectedOrderId(result.order.id);
-      setIsBrowsingMenu(false);
-      setIsCartModalOpen(false);
-      setOrderNotes('');
-      setAppliedVoucher(null);
-      showToast(declaration.amountDue > 0 ? {
-        type: 'info', title: 'Order đang chờ thanh toán',
-        message: `Chuyển ${formatVND(declaration.amountDue)} và chờ thu ngân xác nhận. Bếp chưa nhận order.`
-      } : {
-        type: 'success', title: 'Đặt món thành công!',
-        message: `Tiền cọc đã đủ thanh toán; order bàn ${formatTableNumber(displayTableNumber)} đã được gửi xuống bếp.`
-      });
 
       // Sau khi dat mon thanh cong, hoi khach co muon nhan thong bao va rung chuong khong
       if (notificationHelper.getPermissionStatus() === 'default') {

@@ -59,7 +59,7 @@
 - **Tiền điều kiện**: Hệ thống đang chạy tại `http://localhost:8081`, dữ liệu đã seed mặc định (`npm run db:reset`).
 - **Các bước thực hiện**:
   1. Mở trình duyệt, truy cập `http://localhost:8081`.
-  2. Bấm vào nút Demo **"Thu ngân"** (hoặc gõ `cashier` / `cashier123`).
+  2. Nhập tài khoản **"Thu ngân"** (`cashier` / `cashier123` - tra cứu tại [TAI_KHOAN_DANG_NHAP.md](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/TAI_KHOAN_DANG_NHAP.md)).
   3. Bấm nút **"Đăng nhập"**.
   4. Đăng xuất. Lặp lại bước 2–3 lần lượt với **"Bếp"** (`kitchen` / `kitchen123`) và **"Quản trị"** (`admin` / `admin123`).
 - **Kết quả mong đợi**:
@@ -130,16 +130,38 @@
   - Tổng thanh toán: `144.000đ` (Khớp chính xác giá niêm yết sau khi giảm).
   - Thuế VAT 8% bóc tách ngược hiển thị minh bạch: `144.000 * 8 / 108 = 10.667đ`. Không cộng thêm 8% vào tổng thanh toán làm đội giá bill.
 
-### 📌 TC-CUST-04: Gửi đơn hàng & Theo dõi tiến độ Live Tracker thời gian thực
-- **Tiền điều kiện**: Giỏ hàng đã có món.
+### 📌 TC-CUST-04: Khách vãng lai quét QR gửi đơn trực tiếp không cần đặt bàn trước & Live Tracker
+- **Tiền điều kiện**: Khách vãng lai đến quán, ngồi vào bàn và quét mã QR bàn (`http://localhost:8081/?table=1` hoặc kèm mã `?qr=...`). Giỏ hàng đã có món. Không có mã đặt chỗ trước (`reservationAccessToken`).
 - **Các bước thực hiện**:
   1. Bấm nút **"Gửi yêu cầu gọi món"**.
 - **Kết quả mong đợi**:
-  - Hệ thống sinh mã đơn hàng (ví dụ: `CB-ORD-XXXX`).
-  - Màn hình tự động chuyển sang **Live Tracker**:
+  - **Không bị chặn** bởi thông báo *"Đặt bàn cần được nhân viên check-in trước khi gọi món"*.
+  - Hệ thống tự động xác thực mã QR bàn (`qrCodeToken`), tạo đơn hàng thành công với trạng thái `status: PENDING`, `paymentStatus: UNPAID`.
+  - Bàn chuyển sang màu đỏ `OCCUPIED` trên sơ đồ bàn của thu ngân.
+  - Bếp KDS lập tức nhận được thông báo chuông đơn mới qua WebSocket `restaurant:kds`.
+  - Màn hình khách tự động chuyển sang **Live Tracker**:
     - Bước 1: 🕒 *Chờ tiếp nhận (PENDING)*.
     - Khi bếp bấm chế biến $\rightarrow$ Tự động nhảy sang 🍳 *Đang chuẩn bị (PREPARING)* mà không cần F5.
-    - Khi bếp xong $\rightarrow$ Nhảy sang 🔔 *Món đã sẵn sàng (READY)*.
+    - Khi bếp nấu xong $\rightarrow$ Nhảy sang 🔔 *Món đã sẵn sàng (READY)*.
+
+### 📌 TC-CUST-05: Khách có đặt bàn trước (Reservation Prepayment & Deposit)
+- **Tiền điều kiện**: Khách đã đặt bàn trước, đã check-in và có `reservationAccessToken`.
+- **Các bước thực hiện**:
+  1. Khách quét mã bàn vào link kèm mã truy cập đặt chỗ.
+  2. Chọn món và bấm **"Gửi yêu cầu gọi món"**.
+- **Kết quả mong đợi**:
+  - Hệ thống kiểm tra số dư tiền cọc:
+    - Nếu tiền cọc đủ thanh toán: Đơn chuyển sang bếp KDS ngay lập tức.
+    - Nếu chưa đủ cọc: Đơn ở trạng thái chờ thanh toán phần còn thiếu, thu ngân nhận thông báo xác nhận thanh toán trước khi bếp chuẩn bị.
+
+### 📌 TC-CUST-06: Chặn gian lận gọi món khi thiếu hoặc sai mã QR bàn (QR Security Guard)
+- **Tiền điều kiện**: Gọi API `POST /api/orders` với vai trò khách vãng lai.
+- **Các bước thực hiện**:
+  1. Gửi request tạo đơn bàn ăn `DINE_IN` chỉ truyền `tableId` mà không có `qrCodeToken`.
+  2. Gửi request kèm `qrCodeToken: "invalid-qr-fake-999"`.
+- **Kết quả mong đợi**:
+  - Bước 1 bị từ chối với HTTP **400 Validation Error** (*"Khách gọi món tại bàn cần có mã QR hợp lệ"*), ngăn chặn việc khách tự bịa số bàn gọi món từ xa.
+  - Bước 2 bị từ chối với HTTP **404 Not Found** (*"Mã QR bàn không hợp lệ hoặc đã hết hạn"*).
 
 ---
 
