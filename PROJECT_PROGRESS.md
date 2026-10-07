@@ -347,6 +347,23 @@
       - `npm run typecheck` $\rightarrow$ 0 lỗi biên dịch trên toàn bộ Monorepo.
       - `npm run doctor` $\rightarrow$ 18/18 checks tương thích Expo SDK 54.
 
+41. **Siết Chặt 3 Điểm Logic Vận Hành Thực Tế Theo Phản Biện Chuyên Gia (Bounded Task - TDD)**:
+    - *Bối cảnh*: Tiếp thu phản biện chuyên sâu từ Claude về các lỗ hổng tiềm ẩn trong luồng reset bàn, cửa sổ hoàn tác KDS ở backend và việc ngăn chặn nhảy cóc FSM.
+    - *Các hạng mục đã siết chặt*:
+      1. **Khắc phục Lỗ hổng Reset Bàn về `AVAILABLE` khi Thanh toán (`payOrder`)**:
+         - Backend: Tại [`OrdersService.payOrder`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/backend/src/modules/orders/orders.service.ts), khi đơn hàng cuối cùng của bàn được thanh toán (`remainingOrder === null`), hệ thống chuyển trạng thái bàn sang `NEED_CLEANING` (thay vì gán thẳng `AVAILABLE`), kích hoạt quy trình dọn dẹp bàn ăn theo chuẩn F&B.
+         - Frontend: [`TableScreen.tsx`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/frontend/src/features/tables/TableScreen.tsx) cập nhật đồng bộ trạng thái bàn thành `NEED_CLEANING` sau thanh toán, thông báo "Bàn đã chuyển sang Chờ dọn dẹp".
+      2. **Khóa Cửa Sổ Thời Gian Hoàn Tác KDS ở Phía Server ($\le 60$ giây)**:
+         - Backend: Tại [`OrdersService.updateOrderStatus`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/backend/src/modules/orders/orders.service.ts), kiểm tra thời gian trôi qua kể từ `readyAt`. Nếu đã quá 60 giây (`elapsedMs > 60000`), server lập tức chặn yêu cầu với lỗi `409 ORDER_STATE_INVALID` ("Đã quá thời gian cho phép hoàn tác"), bảo vệ số liệu thời gian chế biến (Prep Time/SOS) không bị thao túng hoặc đảo ngược sai quy cách.
+      3. **Khóa Chặt Test Case Cấm Nhảy Cóc FSM (`PENDING -> COMPLETED`)**:
+         - Viết bổ sung test case trong [`order-lifecycle.spec.ts`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/backend/test/orders/order-lifecycle.spec.ts) và [`order-fsm.spec.ts`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/backend/test/orders/order-fsm.spec.ts), khẳng định hệ thống từ chối mọi nỗ lực chuyển trạng thái nhảy cóc từ quầy hoặc bếp.
+    - *Kết quả nghiệm thu & Quality Gates*:
+      - Backend: 15/15 files test orders passed (110/110 tests), toàn bộ test suite backend đạt 824/824 tests pass 100%.
+      - Frontend: 86/86 files test passed (289/289 tests pass 100%).
+      - Tổng cộng hệ thống: **1,113/1,113 tests PASS 100%**.
+      - `npm run typecheck`: 0 lỗi biên dịch trên toàn bộ Monorepo.
+      - `npm run doctor`: 18/18 checks đạt chuẩn Expo SDK 54.
+
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
 

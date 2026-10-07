@@ -863,7 +863,7 @@ export class OrdersService {
       // Tu dong tru kho nguyen lieu theo cong thuc dinh luong BOM (Atomic Transaction)
       const inventoryChange = await InventoryService.deductInventoryForOrder(tx, order.id, order.items);
 
-      let nextTableState: { tableId: number; tableNumber: number; status: 'AVAILABLE' | 'OCCUPIED'; currentOrderId: number | null } | null = null;
+      let nextTableState: { tableId: number; tableNumber: number; status: 'AVAILABLE' | 'OCCUPIED' | 'NEED_CLEANING'; currentOrderId: number | null } | null = null;
       if (order.tableId) {
         const remainingOrder = await tx.order.findFirst({
           where: {
@@ -874,7 +874,7 @@ export class OrdersService {
           orderBy: { createdAt: 'desc' },
           select: { id: true }
         });
-        const status = remainingOrder ? 'OCCUPIED' as const : 'AVAILABLE' as const;
+        const status = remainingOrder ? 'OCCUPIED' as const : 'NEED_CLEANING' as const;
         const currentOrderId = remainingOrder?.id ?? null;
         await tx.diningTable.update({
           where: { id: order.tableId },
@@ -1014,11 +1014,17 @@ export class OrdersService {
     const data: any = { status: nextStatus };
 
     if (nextStatus === 'PREPARING') {
+      if (order.status === 'READY') {
+        if (order.readyAt) {
+          const elapsedMs = now.getTime() - new Date(order.readyAt).getTime();
+          if (elapsedMs > 60000) {
+            throw ApiError.orderStateInvalid('Đã quá thời gian cho phép hoàn tác (tối đa 60 giây kể từ khi sẵn sàng)');
+          }
+        }
+        data.readyAt = null;
+      }
       if (!order.preparingAt) {
         data.preparingAt = now;
-      }
-      if (order.status === 'READY') {
-        data.readyAt = null;
       }
     } else if (nextStatus === 'READY') {
       if (!order.readyAt) {

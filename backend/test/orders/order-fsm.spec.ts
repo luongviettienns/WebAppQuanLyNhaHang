@@ -83,6 +83,28 @@ describe('Order Lifecycle FSM Transitions & Prep Time (Task 10 DB Integration)',
     expect(updated.readyAt).toBeTruthy();
   });
 
+  it('rejects Undo READY -> PREPARING if more than 60 seconds elapsed since readyAt', async () => {
+    const burger = await prismaTest.menuItem.findFirstOrThrow({ where: { name: { contains: 'Burger' } } });
+    const timeoutOrder = await OrdersService.createOrder({
+      orderType: 'TAKE_AWAY',
+      buzzerNumber: 18,
+      items: [{ menuItemId: burger.id, quantity: 1, selectedModifiers: [] }]
+    });
+    await OrdersService.updateOrderStatus(timeoutOrder.order.id, 'PREPARING');
+    await OrdersService.updateOrderStatus(timeoutOrder.order.id, 'READY');
+
+    // Gia lap readyAt cach day 75 giay (> 60s window)
+    const pastReadyAt = new Date(Date.now() - 75 * 1000);
+    await prismaTest.order.update({
+      where: { id: timeoutOrder.order.id },
+      data: { readyAt: pastReadyAt }
+    });
+
+    await expect(
+      OrdersService.updateOrderStatus(timeoutOrder.order.id, 'PREPARING')
+    ).rejects.toThrowError(/Đã quá thời gian cho phép hoàn tác/);
+  });
+
   it('allows valid transition: READY -> COMPLETED and records completedAt', async () => {
     const updated = await OrdersService.updateOrderStatus(createdOrderId, 'COMPLETED');
     expect(updated.status).toBe('COMPLETED');

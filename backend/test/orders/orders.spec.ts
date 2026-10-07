@@ -298,7 +298,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     expect(res2.body.data.order.id).toBe(orderId1);
   });
 
-  it('POST /api/orders/:id/pay xu ly thanh toan don hang va tu dong reset ban ve AVAILABLE', async () => {
+  it('POST /api/orders/:id/pay xu ly thanh toan don hang va tu dong chuyen ban sang NEED_CLEANING', async () => {
     const table = await prismaTest.diningTable.findFirst({ where: { tableNumber: 4 } });
     const activeOrder = await prismaTest.order.findFirst({
       where: { tableId: table!.id, paymentStatus: 'UNPAID' }
@@ -316,9 +316,9 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     expect(res.body.data.order.paymentStatus).toBe('PAID');
     expect(res.body.data.order.paymentMethod).toBe('CASH');
 
-    // Kiem tra Table 4 da duoc reset ve AVAILABLE
+    // Kiem tra Table 4 da duoc chuyen sang NEED_CLEANING de nhan vien don ban
     const tableAfterPay = await prismaTest.diningTable.findUnique({ where: { id: table!.id } });
-    expect(tableAfterPay?.status).toBe('AVAILABLE');
+    expect(tableAfterPay?.status).toBe('NEED_CLEANING');
     expect(tableAfterPay?.currentOrderId).toBeNull();
   });
 

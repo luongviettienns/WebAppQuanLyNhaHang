@@ -6,6 +6,7 @@ import { ordersRouter } from '../../src/modules/orders/orders.routes';
 import { OrdersService } from '../../src/modules/orders/orders.service';
 import { errorHandler } from '../../src/middlewares/error-handler';
 import { env } from '../../src/config/env';
+import { ApiError } from '../../src/lib/api-error';
 
 vi.mock('../../src/config/env', () => ({
   env: {
@@ -176,6 +177,21 @@ describe('Order Lifecycle & KDS API (Task 10)', () => {
       expect(res.body.data.status).toBe('COMPLETED');
       expect(OrdersService.updateOrderStatus).toHaveBeenCalledWith(101, 'COMPLETED', 1);
     });
+
+    it('rejects CASHIER jump transition from PENDING directly to COMPLETED with 409', async () => {
+      vi.mocked(OrdersService.updateOrderStatus).mockRejectedValue(
+        ApiError.orderStateInvalid('Không thể chuyển trạng thái từ PENDING sang COMPLETED. Luồng trạng thái hợp lệ: PENDING -> PREPARING -> READY -> COMPLETED (hỗ trợ Undo READY -> PREPARING)')
+      );
+
+      const res = await request(app)
+        .patch('/api/orders/101/status')
+        .set('Authorization', `Bearer ${createToken('CASHIER')}`)
+        .send({ status: 'COMPLETED' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('ORDER_STATE_INVALID');
+    });
   });
 });
+
 

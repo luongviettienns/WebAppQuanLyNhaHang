@@ -185,13 +185,13 @@ export const TableScreen: React.FC = () => {
     setSelectedTable({
       ...selectedTable,
       orders: remainingOrders,
-      status: nextOrder ? 'OCCUPIED' : 'AVAILABLE',
+      status: nextOrder ? 'OCCUPIED' : 'NEED_CLEANING',
       currentOrderId: nextOrder?.id ?? null
     });
     setSelectedOrderId(nextOrder?.id ?? null);
     const successText = nextOrder
       ? 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' còn ' + remainingOrders.length + ' đơn chưa thanh toán.'
-      : 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' đã hoàn tất.';
+      : 'Đã thanh toán đơn ' + activeOrder.code + '. Bàn ' + formatTableNumber(selectedTable.tableNumber) + ' đã chuyển sang Chờ dọn dẹp.';
     setPaySuccessMsg(successText);
     showToast({
       type: 'success',

@@ -172,7 +172,7 @@ describe('multiple unpaid orders on one table', () => {
     expect(transactionEvents).toEqual(['lock-table', 'create-order', 'update-table']);
   });
 
-  it('releases the table only after its last unpaid order is paid', async () => {
+  it('releases the table to NEED_CLEANING after its last unpaid order is paid', async () => {
     const tableUpdates: Array<Record<string, unknown>> = [];
     vi.mocked(prisma.order.findUnique).mockResolvedValue(unpaidOrder(1) as never);
     (prisma.$transaction as any).mockImplementation(async (callback: (client: any) => Promise<unknown>) => {
@@ -196,7 +196,7 @@ describe('multiple unpaid orders on one table', () => {
 
     await OrdersService.payOrder(1, { paymentMethod: 'CASH' });
 
-    expect(tableUpdates.at(-1)).toEqual({ status: 'AVAILABLE', currentOrderId: null });
+    expect(tableUpdates.at(-1)).toEqual({ status: 'NEED_CLEANING', currentOrderId: null });
   });
 
   it('rejects double-pay with 409 CONFLICT without rewriting payment timestamps', async () => {
