@@ -364,28 +364,36 @@
       - `npm run typecheck`: 0 lỗi biên dịch trên toàn bộ Monorepo.
       - `npm run doctor`: 18/18 checks đạt chuẩn Expo SDK 54.
 
-42. **Nâng Cấp & Chuẩn Hóa Toàn Diện Đặc Tả Kiến Trúc SRS & SDD Lên Phiên Bản 5.6 (`CHUC_NANG_VA_THAO_TAC_NGUOI_DUNG.md`)**:
-    - *Bối cảnh*: Tiếp thu đầy đủ các phản biện chuyên sâu về tính minh bạch giữa hiện trạng code và roadmap, bản chất vật lý của tem QR dán bàn, pháp lý thuế VAT Việt Nam, và ma trận kho 2 chiều khi Void đơn hàng.
-    - *Các cải tiến cốt lõi trong Phiên bản 5.6*:
-      1. **Bảng Đối Soát Minh Bạch: Hiện Trạng Code vs Đặc Tả Mở Rộng (Mục 1.0)**:
-         - Phân định rạch ròi giữa các tính năng đã cài đặt 100% trong mã nguồn (33 migrations, 1,113 tests) với các thực thể miền kiến trúc mở rộng (`TableSession`, `OrderInvoice`, `CashierShift`, `TaxRateConfig`).
-         - Không đánh đồng hoặc ngộ nhận các tính năng kiến trúc tương lai là đã có code thực tế.
-      2. **Chuẩn Hóa Tem QR Dán Bàn Vật Lý & Cơ Chế Session Token (Mục 2.1 & Sơ đồ 8.1)**:
-         - Khẳng định tem dán bàn mica/kim loại là vật lý cố định mang URL `/t/4` (hoặc `/table/4`), tuyệt đối không in lại tem mỗi lượt khách.
-         - URL tem không chứa bí mật dài hạn. Khách quét QR xong phải kích hoạt phiên bằng cách: Thu ngân bấm "Mở bàn" trên POS hoặc khách nhập mã PIN 4 số trên thẻ số bàn.
-         - Session token được hủy vĩnh viễn khi bàn chuyển sang trạng thái `NEED_CLEANING`.
-      3. **Chuẩn Hóa Thuế VAT Việt Nam & Giá Niêm Yết Menu (Mục 2.3 & 6.6)**:
-         - Tuân thủ Luật Giá và Nghị định 123/2020/NĐ-CP: Giá niêm yết trên menu B2C bắt buộc là **GIÁ ĐÃ BAO GỒM VAT (Gross Price)**.
-         - Công thức bóc tách ngược thuế VAT khi in bill: $\text{Giá trước thuế} = \frac{\text{Giá niêm yết}}{1 + \text{Thuế suất VAT}}$.
-         - Phân định thuế suất: 8% đối với món ăn chế biến sẵn; 10% đối với đồ uống có cồn (bia, rượu chịu thuế TTĐB).
-      4. **Ma Trận Kho 2 Chiều Khi Hủy Đơn Kiểm Toán (Admin Void Order - Mục 6.1 & Sơ đồ 8.8)**:
-         - Do kho trừ lúc thanh toán `PAID`: Xây dựng ma trận 2 chiều $\text{(PAID / UNPAID)} \times \text{(Chưa nấu / Đã nấu)}$.
-         - Đơn trả trước (`PAID`) hủy lúc chưa nấu (`PENDING`) $\rightarrow$ Bắt buộc **HOÀN KHO NGUYÊN LIỆU** (`RESTORE_INVENTORY`) theo BOM, sinh Phiếu Chi hoàn tiền, hủy hoa hồng.
-         - Đơn đã/đang nấu (`PREPARING/READY`) $\rightarrow$ Không hoàn kho món ăn nóng, hạch toán chi phí `SPOILAGE_WASTE`.
-         - Đơn chưa thanh toán (`UNPAID`) lúc `PENDING` $\rightarrow$ Không tác động kho; nếu đã nấu dở $\rightarrow$ trừ kho hao hụt bếp.
-      5. **Đồng Bộ Hóa Số Liệu Kiểm Thử Toàn Hệ Thống**:
-         - Cập nhật chỉ số **1,113 / 1,113 automated tests PASS 100%** (824 backend + 289 frontend).
-         - Cập nhật Definition of Done (DoD) với các mốc kiểm chứng tự động đã hoàn thành xuất sắc.
+42. **Nâng Cấp & Chuẩn Hóa Toàn Diện Đặc Tả Kiến Trúc SRS & SDD Lên Phiên Bản 5.7 (`CHUC_NANG_VA_THAO_TAC_NGUOI_DUNG.md`)**:
+    - *Bối cảnh*: Tiếp thu đầy đủ các phản biện chuyên sâu về tính nhất quán số liệu Gross VAT, vòng đời bàn tránh mất Live Tracker khi trả tiền sớm, công thức doanh thu/COGS tránh trừ đôi cho đơn Void, chuẩn hóa Prep Timer/Undo, mô hình lớp DDD (Bill/Payment/CashVoucher) và bảo mật Kiosk/Socket.
+    - *Các cải tiến cốt lõi trong Phiên bản 5.7*:
+      1. **Đồng Bộ Số Liệu Toàn Diện & Chuẩn Gross VAT (Mục 2.3, 4.3, Sơ đồ 8.1, 8.3)**:
+         - Quy chuẩn giá niêm yết là giá Gross đã gồm VAT theo tập quán F&B Việt Nam. Ghi nhận thời hạn giảm VAT 8% áp dụng đến 31/12/2026.
+         - Đồng bộ mọi sơ đồ và ví dụ: 2 Combo Gà Cay ($178.000đ$) - Voucher 10% ($17.800đ$) = **$160.200đ$** (khách đưa $200.000đ$ $\rightarrow$ thối lại **$39.800đ$** trong Sơ đồ 8.3 và phiếu thu nhiệt).
+         - Thanh toán hỗn hợp ở Mục 4.3 chuẩn hóa thành $178.000đ$ ($100.000đ$ tiền mặt + $78.000đ$ VietQR). Bỏ các trích dẫn pháp lý không căn cứ.
+      2. **Khắc Phục Lỗi Reset Bàn Sớm & Trạng Thái Trung Gian `PAID_AWAITING_SERVE` (Mục 1.1, 2.5, 4.1, 4.2, Sơ đồ 8.3)**:
+         - Khách thanh toán trước khi món ăn đang chế biến: Bàn chuyển trạng thái logic trung gian **`PAID_AWAITING_SERVE` (Đã thanh toán - Chờ ra đủ món)**, giữ nguyên bàn `OCCUPIED`, bảo toàn `sessionToken` và Live Tracker/Virtual Buzzer cho khách.
+         - Bàn chỉ chuyển sang `NEED_CLEANING` và đóng `TableSession` khi TOÀN BỘ đơn đã `PAID` VÀ TOÀN BỘ món đã phục vụ (`COMPLETED`).
+      3. **Sửa Lỗi Trừ Đôi Doanh Thu & Giá Vốn COGS cho Đơn Void (Mục 6.2, 6.1, Sơ đồ 8.8)**:
+         - Đơn Void chuyển trạng thái sang `VOIDED` nên tự động không nằm trong tập đơn `PAID`. Loại bỏ hoàn toàn lỗi trừ đôi "Hoàn tiền đơn Void" và "Giá vốn hoàn kho đơn Void". Chỉ `Sales Return` (đơn vẫn `PAID`) mới có dòng trừ riêng.
+         - Bổ sung trường hợp **`PAID + COMPLETED`** vào Ma trận Void: Khách đã ăn xong mới khiếu nại Void kiểm toán $\rightarrow$ Giữ nguyên COGS & Kho (không hoàn đồ ăn đã dùng, ghi nhận Spoilage Waste kiểm toán), sinh Phiếu Chi hoàn tiền, hủy hoa hồng.
+      4. **Chuẩn Hóa KDS Prep Timer, Nút Hoàn Tác & Chấm Công Kiosk (Mục 3.1, 3.2, 5.1, 5.2, Sơ đồ 8.6)**:
+         - Prep Timer chuẩn: Đồ uống 2 phút, Khoai tây/Burger 5 phút, Gà rán 12 phút (khớp Sơ đồ 8.1); vé nhiều món lấy thời gian chế biến lớn nhất (`Math.max`).
+         - Thống nhất cơ chế Undo: Nút đếm ngược 10 giây trên frontend UX và timeout guard 60 giây trên server.
+         - Chấm công Kiosk: Debounce 60 giây chống bấm đúp; tự động đóng ca theo Giờ kết thúc theo lịch $+ 2$ giờ (ca đêm 22:00 - 06:00 tự đóng lúc 08:00 sáng hôm sau, không đóng lúc 04:00); ca tự đóng ghi nhận 0h công chờ Admin duyệt.
+      5. **Chuẩn Hóa Sơ Đồ Lớp (Domain Class Diagram Chương 7) & Kiến Trúc Thực Thể**:
+         - Thiết kế phân cấp quan hệ: `TableSession "1" --> "0..1" Bill` và `Bill "1" --> "0..1" OrderInvoice`.
+         - Bổ sung thực thể `Bill`, `BillLine`, `Payment` (1 Bill có nhiều Payment, mỗi Payment liên kết `CashVoucher`), chuyển `cashierShiftId` về `Payment`/`CashVoucher`.
+         - Phục hồi đầy đủ các thực thể thiếu: `Category`, `TableArea`, `ModifierGroup`, `Voucher`, `InventoryTransaction`, `AuditLog`, `WorkShift`, `EmployeeSchedule`.
+         - Tinh gọn kiến trúc nhà hàng đơn cơ sở (Single-Store Focus), loại bỏ `Branch` nửa vời. Bổ sung dòng cấn trừ cọc `RESERVATION_DEPOSIT_OFFSET` trong đối soát quỹ.
+      6. **Tăng Cường Bảo Mật & Phân Vùng Real-Time (Mục 2.1, 2.6, 4.4, Chương 8)**:
+         - PIN 4 số mở bàn sinh ngẫu nhiên theo phiên (hết hạn 15 phút, giới hạn 5 lần thử/bàn/10 phút).
+         - Webhook thanh toán HMAC-SHA256, Idempotency `transactionId`, lưu `PaymentDiscrepancy` khi lệch tiền, Bill Lock chống thêm món khi đang quét QR.
+         - Phân tách Socket Rooms bảo mật: `session:{sessionId}` riêng tư có xác thực token, `restaurant:pos`, `cashier:{userId}` vs `restaurant:financial` (chỉ Admin).
+         - Hạn mức Sales Return tích lũy tối đa 200.000đ/ca cho Thu ngân, cơ chế Quản lý duyệt bằng Manager PIN Override (`approvedByUserId`).
+      7. **Minh Bạch Hóa Definition of Done (DoD 9.1 & 9.2)**:
+         - Ghi rõ tên file test cụ thể cho 100% tiêu chí tự động (1,113 tests PASS).
+         - Phân định rõ ràng Roadmap Backlog cho các bài toán nâng cao (OT/BHXH/TNCN, chi lương lẻ từng người, điều chỉnh công sau khi khóa kỳ, luồng hủy từng món chi tiết, hóa đơn điều chỉnh e-invoice).
 
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
