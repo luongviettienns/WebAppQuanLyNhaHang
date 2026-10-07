@@ -11,3 +11,7 @@ reportsRouter.get('/end-of-day', authenticate, authorize('ADMIN'), ReportsContro
 reportsRouter.get('/end-of-day/export', authenticate, authorize('ADMIN'), ReportsController.exportEndOfDayReport);
 reportsRouter.get('/profit-and-loss', authenticate, authorize('ADMIN'), ReportsController.getProfitAndLossReport);
 reportsRouter.get('/inventory-balance', authenticate, authorize('ADMIN'), ReportsController.getInventoryBalanceReport);
+reportsRouter.get('/customers', authenticate, authorize('ADMIN'), ReportsController.getCustomerReport);
+reportsRouter.get('/suppliers', authenticate, authorize('ADMIN'), ReportsController.getSupplierReport);
+reportsRouter.get('/employees', authenticate, authorize('ADMIN'), ReportsController.getEmployeeReport);
+reportsRouter.get('/channels', authenticate, authorize('ADMIN'), ReportsController.getChannelReport);

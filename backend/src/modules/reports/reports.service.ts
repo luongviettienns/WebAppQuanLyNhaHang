@@ -475,4 +475,350 @@ export class ReportsService {
       items
     };
   }
+
+  /**
+   * Helper parse timeframe
+   */
+  private static resolveTimeframe(query?: { date?: string; from?: string; to?: string }) {
+    let targetDate = query?.date;
+    if (!targetDate && !query?.from) {
+      const now = new Date();
+      const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Ho_Chi_Minh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      targetDate = formatter.format(now);
+    }
+
+    let startRange: Date;
+    let endRange: Date;
+
+    if (query?.from && query?.to) {
+      startRange = new Date(query.from.length === 10 ? `${query.from}T00:00:00.000+07:00` : query.from);
+      endRange = new Date(query.to.length === 10 ? `${query.to}T23:59:59.999+07:00` : query.to);
+    } else if (targetDate) {
+      startRange = new Date(`${targetDate}T00:00:00.000+07:00`);
+      endRange = new Date(`${targetDate}T23:59:59.999+07:00`);
+    } else {
+      const now = new Date();
+      startRange = new Date(now.setHours(0, 0, 0, 0));
+      endRange = new Date(now.setHours(23, 59, 59, 999));
+    }
+
+    return { startRange, endRange, targetDate };
+  }
+
+  /**
+   * Báo cáo Khách hàng (Customer Sales & Loyalty Report)
+   */
+  static async getCustomerReport(query?: { date?: string; from?: string; to?: string }) {
+    const { startRange, endRange, targetDate } = ReportsService.resolveTimeframe(query);
+
+    const orders = await prisma.order.findMany({
+      where: {
+        createdAt: { gte: startRange, lte: endRange },
+        status: 'COMPLETED'
+      },
+      include: {
+        customer: true
+      }
+    });
+
+    let memberRevenue = 0;
+    let guestRevenue = 0;
+    const customerMap = new Map<number, {
+      customerId: number;
+      code: string;
+      name: string;
+      phone: string;
+      orderCount: number;
+      totalSpend: number;
+      loyaltyPoints: number;
+    }>();
+
+    for (const order of orders) {
+      if (order.customer) {
+        memberRevenue += order.finalAmount;
+        const existing = customerMap.get(order.customer.id);
+        if (existing) {
+          existing.orderCount += 1;
+          existing.totalSpend += order.finalAmount;
+          existing.loyaltyPoints += Math.floor(order.finalAmount / 10000);
+        } else {
+          customerMap.set(order.customer.id, {
+            customerId: order.customer.id,
+            code: order.customer.code,
+            name: order.customer.name,
+            phone: order.customer.phone || '',
+            orderCount: 1,
+            totalSpend: order.finalAmount,
+            loyaltyPoints: Math.floor(order.finalAmount / 10000)
+          });
+        }
+      } else {
+        guestRevenue += order.finalAmount;
+      }
+    }
+
+    const totalCustomersBuying = customerMap.size;
+    const averageSpendPerCustomer = totalCustomersBuying > 0 ? Math.round(memberRevenue / totalCustomersBuying) : 0;
+    const topCustomers = Array.from(customerMap.values()).sort((a, b) => b.totalSpend - a.totalSpend);
+
+    return {
+      timeframe: {
+        from: startRange.toISOString(),
+        to: endRange.toISOString(),
+        date: targetDate
+      },
+      summary: {
+        totalCustomersBuying,
+        memberRevenue,
+        guestRevenue,
+        averageSpendPerCustomer
+      },
+      topCustomers
+    };
+  }
+
+  /**
+   * Báo cáo Nhà cung cấp (Supplier Purchase & Debt Report)
+   */
+  static async getSupplierReport(query?: { date?: string; from?: string; to?: string }) {
+    const { startRange, endRange, targetDate } = ReportsService.resolveTimeframe(query);
+
+    const [suppliers, receipts, payments] = await Promise.all([
+      prisma.supplier.findMany({
+        where: { isActive: true },
+        orderBy: { name: 'asc' }
+      }),
+      prisma.purchaseReceipt.findMany({
+        where: {
+          createdAt: { gte: startRange, lte: endRange },
+          status: 'POSTED'
+        }
+      }),
+      prisma.supplierPayment.findMany({
+        where: {
+          createdAt: { gte: startRange, lte: endRange }
+        }
+      })
+    ]);
+
+    const receiptMap = new Map<number, { count: number; total: number }>();
+    for (const r of receipts) {
+      if (!r.supplierId) continue;
+      const receiptTotal = Math.max(0, r.subtotalAmount - r.discountAmount);
+      const cur = receiptMap.get(r.supplierId) || { count: 0, total: 0 };
+      cur.count += 1;
+      cur.total += receiptTotal;
+      receiptMap.set(r.supplierId, cur);
+    }
+
+    const paymentMap = new Map<number, number>();
+    for (const p of payments) {
+      paymentMap.set(p.supplierId, (paymentMap.get(p.supplierId) || 0) + p.amount);
+    }
+
+    let totalPurchaseValue = 0;
+    let totalPaid = 0;
+    let outstandingDebt = 0;
+    let activeSupplierCount = 0;
+
+    const supplierRows = suppliers.map((s) => {
+      const r = receiptMap.get(s.id) || { count: 0, total: 0 };
+      const paid = paymentMap.get(s.id) || 0;
+      const debt = Math.max(0, r.total - paid);
+      if (r.count > 0 || paid > 0) activeSupplierCount += 1;
+      totalPurchaseValue += r.total;
+      totalPaid += paid;
+      outstandingDebt += debt;
+
+      return {
+        supplierId: s.id,
+        code: s.code,
+        name: s.name,
+        phone: s.phone || '',
+        receiptCount: r.count,
+        totalAmount: r.total,
+        paidAmount: paid,
+        currentDebt: debt
+      };
+    });
+
+    return {
+      timeframe: {
+        from: startRange.toISOString(),
+        to: endRange.toISOString(),
+        date: targetDate
+      },
+      summary: {
+        totalSuppliers: activeSupplierCount,
+        totalPurchaseValue,
+        totalPaid,
+        outstandingDebt
+      },
+      suppliers: supplierRows
+    };
+  }
+
+  /**
+   * Báo cáo Hiệu suất Nhân viên (Employee Performance & Revenue Report)
+   */
+  static async getEmployeeReport(query?: { date?: string; from?: string; to?: string }) {
+    const { startRange, endRange, targetDate } = ReportsService.resolveTimeframe(query);
+
+    const [employees, orders, commissions] = await Promise.all([
+      prisma.employee.findMany({
+        where: { status: 'WORKING' },
+        include: { user: true }
+      }),
+      prisma.order.findMany({
+        where: {
+          createdAt: { gte: startRange, lte: endRange },
+          status: 'COMPLETED'
+        }
+      }),
+      prisma.commissionEntry.findMany({
+        where: {
+          createdAt: { gte: startRange, lte: endRange }
+        }
+      })
+    ]);
+
+    const orderMap = new Map<number, { count: number; revenue: number }>();
+    for (const o of orders) {
+      const empId = o.receivedByEmployeeId || (o.createdByUserId ? employees.find(e => e.userId === o.createdByUserId)?.id : null);
+      if (empId) {
+        const cur = orderMap.get(empId) || { count: 0, revenue: 0 };
+        cur.count += 1;
+        cur.revenue += o.finalAmount;
+        orderMap.set(empId, cur);
+      }
+    }
+
+    const commMap = new Map<number, number>();
+    for (const c of commissions) {
+      commMap.set(c.employeeId, (commMap.get(c.employeeId) || 0) + c.commissionAmountDelta);
+    }
+
+    let totalRevenue = 0;
+    let totalOrders = 0;
+    let totalCommission = 0;
+    let activeEmployees = 0;
+
+    const employeeRows = employees.map((emp) => {
+      const ord = orderMap.get(emp.id) || { count: 0, revenue: 0 };
+      const comm = commMap.get(emp.id) || 0;
+      if (ord.count > 0) activeEmployees += 1;
+      totalRevenue += ord.revenue;
+      totalOrders += ord.count;
+      totalCommission += comm;
+
+      return {
+        employeeId: emp.id,
+        employeeCode: emp.code,
+        fullName: emp.name,
+        position: emp.user?.role || 'STAFF',
+        orderCount: ord.count,
+        revenue: ord.revenue,
+        commissionAmount: comm
+      };
+    }).sort((a, b) => b.revenue - a.revenue);
+
+    return {
+      timeframe: {
+        from: startRange.toISOString(),
+        to: endRange.toISOString(),
+        date: targetDate
+      },
+      summary: {
+        activeEmployees,
+        totalRevenue,
+        totalOrders,
+        totalCommission
+      },
+      employees: employeeRows
+    };
+  }
+
+  /**
+   * Báo cáo Kênh bán hàng (Sales Channels Report: Dine-in, Takeaway, Delivery)
+   */
+  static async getChannelReport(query?: { date?: string; from?: string; to?: string }) {
+    const { startRange, endRange, targetDate } = ReportsService.resolveTimeframe(query);
+
+    const orders = await prisma.order.findMany({
+      where: {
+        createdAt: { gte: startRange, lte: endRange },
+        status: 'COMPLETED'
+      },
+      include: {
+        deliveryPartner: true
+      }
+    });
+
+    let dineInCount = 0;
+    let dineInRevenue = 0;
+    let takeAwayCount = 0;
+    let takeAwayRevenue = 0;
+    let deliveryCount = 0;
+    let deliveryRevenue = 0;
+
+    const partnerMap = new Map<number, {
+      partnerId: number;
+      partnerName: string;
+      orderCount: number;
+      revenue: number;
+      deliveryFeeTotal: number;
+    }>();
+
+    for (const o of orders) {
+      if (o.orderType === 'DINE_IN') {
+        dineInCount += 1;
+        dineInRevenue += o.finalAmount;
+      } else if (o.orderType === 'TAKE_AWAY') {
+        takeAwayCount += 1;
+        takeAwayRevenue += o.finalAmount;
+      } else if (o.orderType === 'DELIVERY') {
+        deliveryCount += 1;
+        deliveryRevenue += o.finalAmount;
+        if (o.deliveryPartner) {
+          const cur = partnerMap.get(o.deliveryPartner.id) || {
+            partnerId: o.deliveryPartner.id,
+            partnerName: o.deliveryPartner.name,
+            orderCount: 0,
+            revenue: 0,
+            deliveryFeeTotal: 0
+          };
+          cur.orderCount += 1;
+          cur.revenue += o.finalAmount;
+          cur.deliveryFeeTotal += o.deliveryFee || 0;
+          partnerMap.set(o.deliveryPartner.id, cur);
+        }
+      }
+    }
+
+    const totalOrders = orders.length;
+    const totalRevenue = dineInRevenue + takeAwayRevenue + deliveryRevenue;
+
+    const pct = (val: number) => totalRevenue > 0 ? Math.round((val / totalRevenue) * 1000) / 10 : 0;
+
+    return {
+      timeframe: {
+        from: startRange.toISOString(),
+        to: endRange.toISOString(),
+        date: targetDate
+      },
+      summary: {
+        totalOrders,
+        totalRevenue,
+        dineIn: { orderCount: dineInCount, revenue: dineInRevenue, percentage: pct(dineInRevenue) },
+        takeAway: { orderCount: takeAwayCount, revenue: takeAwayRevenue, percentage: pct(takeAwayRevenue) },
+        delivery: { orderCount: deliveryCount, revenue: deliveryRevenue, percentage: pct(deliveryRevenue) }
+      },
+      deliveryPartners: Array.from(partnerMap.values()).sort((a, b) => b.revenue - a.revenue)
+    };
+  }
 }

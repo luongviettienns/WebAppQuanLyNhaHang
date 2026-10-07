@@ -40,3 +40,17 @@ export const getInventoryBalanceReportSchema = z.object({
 });
 
 export type GetInventoryBalanceReportQuery = z.infer<typeof getInventoryBalanceReportSchema>;
+
+export const getTimeframeReportSchema = z.object({
+  date: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Định dạng ngày phải là YYYY-MM-DD')
+    .refine((val) => !isNaN(new Date(`${val}T00:00:00+07:00`).getTime()), {
+      message: 'Ngày không hợp lệ'
+    })
+    .optional(),
+  from: z.string().optional(),
+  to: z.string().optional()
+});
+
+export type GetTimeframeReportQuery = z.infer<typeof getTimeframeReportSchema>;

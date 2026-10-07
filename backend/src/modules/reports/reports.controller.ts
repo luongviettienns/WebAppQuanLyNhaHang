@@ -1,6 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import { ReportsService } from './reports.service';
-import { getDailyReportSchema, getProfitAndLossReportSchema, getInventoryBalanceReportSchema } from './reports.schemas';
+import {
+  getDailyReportSchema,
+  getProfitAndLossReportSchema,
+  getInventoryBalanceReportSchema,
+  getTimeframeReportSchema
+} from './reports.schemas';
 import { ApiError } from '../../lib/api-error';
 import { parseEndOfDayQuery } from './end-of-day/end-of-day.schemas';
 import { EndOfDayReportService, EndOfDayReportRowLimitError } from './end-of-day/end-of-day.service';
@@ -63,5 +68,46 @@ export class ReportsController {
       next(error);
     }
   }
+
+  static async getCustomerReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const query = getTimeframeReportSchema.parse(req.query);
+      const data = await ReportsService.getCustomerReport(query);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getSupplierReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const query = getTimeframeReportSchema.parse(req.query);
+      const data = await ReportsService.getSupplierReport(query);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getEmployeeReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const query = getTimeframeReportSchema.parse(req.query);
+      const data = await ReportsService.getEmployeeReport(query);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getChannelReport(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const query = getTimeframeReportSchema.parse(req.query);
+      const data = await ReportsService.getChannelReport(query);
+      res.status(200).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
 }
+
 

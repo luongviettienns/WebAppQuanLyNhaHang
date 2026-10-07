@@ -2,20 +2,24 @@ import React, { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
+import { ChannelReportScreen } from './ChannelReportScreen';
+import { CustomerReportScreen } from './CustomerReportScreen';
 import { DashboardScreen } from './DashboardScreen';
+import { EmployeeReportScreen } from './EmployeeReportScreen';
 import { EndOfDayReportScreen } from './EndOfDayReportScreen';
 import { InventoryBalanceReportScreen } from './InventoryBalanceReportScreen';
 import { ProfitAndLossReportScreen } from './ProfitAndLossReportScreen';
+import { SupplierReportScreen } from './SupplierReportScreen';
 
 export type ReportsWorkspaceSection = 'end-of-day' | 'sales' | 'goods' | 'customers' | 'suppliers' | 'employees' | 'channels' | 'finance';
 const sections: { key: ReportsWorkspaceSection; label: string; disabled: boolean }[] = [
   { key: 'end-of-day', label: 'Cuối ngày', disabled: false },
   { key: 'sales', label: 'Bán hàng', disabled: false },
   { key: 'goods', label: 'Hàng hóa', disabled: false },
-  { key: 'customers', label: 'Khách hàng', disabled: true },
-  { key: 'suppliers', label: 'Nhà cung cấp', disabled: true },
-  { key: 'employees', label: 'Nhân viên', disabled: true },
-  { key: 'channels', label: 'Kênh bán hàng', disabled: true },
+  { key: 'customers', label: 'Khách hàng', disabled: false },
+  { key: 'suppliers', label: 'Nhà cung cấp', disabled: false },
+  { key: 'employees', label: 'Nhân viên', disabled: false },
+  { key: 'channels', label: 'Kênh bán hàng', disabled: false },
   { key: 'finance', label: 'Tài chính', disabled: false }
 ];
 
@@ -45,6 +49,14 @@ export const ReportsWorkspaceScreen: React.FC = () => {
         <DashboardScreen />
       ) : section === 'goods' ? (
         <InventoryBalanceReportScreen />
+      ) : section === 'customers' ? (
+        <CustomerReportScreen />
+      ) : section === 'suppliers' ? (
+        <SupplierReportScreen />
+      ) : section === 'employees' ? (
+        <EmployeeReportScreen />
+      ) : section === 'channels' ? (
+        <ChannelReportScreen />
       ) : section === 'finance' ? (
         <ProfitAndLossReportScreen />
       ) : (

@@ -2,25 +2,25 @@
 
 > **Hệ Thống Đa Nền Tảng Đặt Món & Quản Lý Nhà Hàng Fast Food "CRISPY BITE"**  
 > **Kiến trúc**: Full-Stack Monorepo (React Native / Expo SDK 54 + Node.js / Express / Prisma / MySQL + Real-time Socket.io)  
-> **Trạng thái**: Đã hoàn thành bổ sung 2 phân hệ báo cáo giá trị cốt lõi: Báo cáo Tài chính & Kết quả Kinh doanh Lãi Lỗ (P&L Statement) và Báo cáo Xuất - Nhập - Tồn Kho Nguyên Liệu (Inventory In-Out-Stock Balance). Tích hợp toàn diện trên Reports Workspace với kiểm thử TDD nghiêm ngặt; Full Quality Gate PASS 100% (1,322/1,322 tests, 0 lỗi typecheck).  
-> **Cập nhật lần cuối**: 2026-10-08 00:15:00
+> **Trạng thái**: Đã hoàn thiện trọn vẹn đầy đủ 8/8 phân hệ báo cáo chuẩn hệ thống mẫu POS F&B (Cuối ngày, Bán hàng, Hàng hóa, Khách hàng, Nhà cung cấp, Nhân viên, Kênh bán hàng, Tài chính) kèm bộ lọc khoảng thời gian chuẩn hóa dùng chung (DateRangeBar: Hôm nay, Hôm qua, 7 ngày, Tháng này, Tháng trước, Tùy chọn). Full Quality Gate PASS 100% (1,347/1,347 tests, 0 lỗi typecheck, 0 lỗi lint, 18/18 expo-doctor checks đạt chuẩn).  
+> **Cập nhật lần cuối**: 2026-10-08 00:45:00
 
 ---
 
 ## 📈 1. TỔNG QUAN TIẾN ĐỘ (OVERALL PROGRESS)
 
 ```
-[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 15; Hệ sinh thái Vận hành, Quản trị QSR, HRM, Sổ Quỹ, Hoa Hồng, Báo Cáo Cuối Ngày, Tài Chính P&L, X-N-T Kho & Thương Hiệu Toàn Diện)
+[████████████████████] 100% HOÀN THÀNH (Phase 0 đến Phase 16; Toàn bộ 8 Phân Hệ Báo Cáo QSR Chuẩn Mẫu, Bộ Lọc Khoảng Thời Gian, Hệ Sinh Thái Vận Hành & Quản Trị)
 ```
 
 ### 🧪 Bằng chứng kiểm chứng chất lượng (Verification Metrics)
-- **Backend Test Suite (Vitest)**: 135/135 test files passed (**986/986 tests pass 100%** — bao gồm Báo cáo P&L lãi lỗ, Báo cáo X-N-T kho nguyên liệu, Báo cáo cuối ngày 4 Adapters Sales/Cashflow/Goods/CancelledItems, Consistent Repeatable-Read Snapshots, Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, Nhân sự Employees, Lịch ca kíp Schedules, Chấm công Kiosk/Admin Debounce 60s, Tính lương Payroll, Cài đặt chính sách Employee Settings, Đặt bàn Reservations, Khách hàng Customers, Đối tác giao hàng Delivery Partners, Kho NVL, BOM & COGS, Price List, Menu Bulk/Import/Export, Voucher Engine, Table Transfer, KDS Kitchen Waste, Order Idempotency, FSM, Auth RBAC, Reports & Real-time Socket, FSM Undo 60s, Vòng đời dọn bàn `PAID_AWAITING_SERVE` & Gross VAT 8%).
-- **Frontend Test Suite (Vitest)**: 92/92 test files passed (**336/336 tests pass 100%** — bao gồm ProfitAndLossReportScreen, InventoryBalanceReportScreen, ReportsWorkspaceScreen 4 enabled sections, EndOfDayReportScreen, useEndOfDayReport, BrandMark logo sync, Sổ quỹ Cashbook, Hoa hồng nhân viên Employee Commissions, ViewModels & Screens cho Nhân sự, Lịch làm việc tuần, Chấm công Kiosk/Admin, Bảng lương, Cài đặt chính sách, Đặt bàn, Khách hàng, NCC, Phiếu nhập, Phiếu hủy, Phiếu kiểm kho, Bảng giá, Menu bulk, Notification helper, UI Tokens & Guards, KDSScreen Undo 10s & TableScreen NEED_CLEANING).
-- **Tổng Unit / Integration Tests**: **1,322/1,322 tests passed 100%** (986 backend + 336 frontend).
+- **Backend Test Suite (Vitest)**: 136/136 test files passed (**998/998 tests pass 100%** — bao gồm 4 endpoints báo cáo mới: Khách hàng, NCC, Nhân viên, Kênh bán hàng; P&L lãi lỗ; X-N-T kho; Báo cáo cuối ngày 4 Adapters; Sổ quỹ; Hoa hồng; HRM; Bán hàng; Kho BOM; FSM Bếp; Đặt bàn; Vouchers; RBAC).
+- **Frontend Test Suite (Vitest)**: 98/98 test files passed (**349/349 tests pass 100%** — bao gồm CustomerReportScreen, SupplierReportScreen, EmployeeReportScreen, ChannelReportScreen, ReportsWorkspaceScreen mở khóa trọn vẹn 8 tabs, DateRangeBar, P&L, X-N-T kho, EndOfDayReportScreen, useEndOfDayReport, BrandMark logo sync, Sổ quỹ, Hoa hồng, HRM, POS, KDS).
+- **Tổng Unit / Integration Tests**: **1,347/1,347 tests passed 100%** (998 backend + 349 frontend).
 - **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ **0 lỗi biên dịch** trên toàn bộ workspaces (`backend` + `frontend`).
-- **Monorepo Lint (ESLint)**: `npm run lint` $\rightarrow$ 0 lỗi trên toàn bộ workspaces.
-- **Expo Doctor Check**: `npm run doctor` $\rightarrow$ 18/18 checks đạt tiêu chuẩn Expo SDK 54.
-- **Database Migrations**: Đồng bộ nhất quán **34 migrations** trên cả `crispy_bite_dev` và `crispy_bite_test` (`20261008120000_end_of_day_report_foundation`) kèm bảng kiểm toán `_prisma_migrations`.
+- **Monorepo Lint (ESLint)**: `npm run lint` $\rightarrow$ **0 lỗi** trên toàn bộ workspaces.
+- **Expo Doctor Check**: `npm run doctor` $\rightarrow$ **18/18 checks** đạt tiêu chuẩn Expo SDK 54.
+- **Database Migrations**: Đồng bộ nhất quán **34 migrations** trên cả `crispy_bite_dev` và `crispy_bite_test`.
 
 ### 🗂️ Tiến độ theo Giai đoạn (Phase Summary)
 | Giai đoạn | Mục tiêu cốt lõi | Trạng thái |
@@ -517,3 +517,22 @@
 
 
 
+
+48. **Hoàn Thiện Trọn Vẹn 8/8 Phân Hệ Báo Cáo Chuẩn Mẫu POS F&B & Bộ Lọc Khoảng Thời Gian (TDD)**:
+    - *Bối cảnh & Yêu cầu Người dùng*:
+      - Người dùng cung cấp ảnh chụp giao diện chuẩn hệ thống quản lý POS F&B gồm đầy đủ 8 danh mục báo cáo: Cuối ngày, Bán hàng, Hàng hóa, Khách hàng, Nhà cung cấp, Nhân viên, Kênh bán hàng, Tài chính, kèm yêu cầu hỗ trợ xem báo cáo theo khoảng thời gian linh hoạt cho từng phân hệ.
+    - *Triển khai Backend (TDD)*:
+      - Xây dựng test suite TDD backend/test/reports/extended-reports.spec.ts (12 tests) bao phủ 4 endpoints mới: GET /api/reports/customers, GET /api/reports/suppliers, GET /api/reports/employees, GET /api/reports/channels.
+      - Bổ sung schema getTimeframeReportSchema hỗ trợ các tham số from, to, date (chuẩn ISO YYYY-MM-DD múi giờ Việt Nam Asia/Ho_Chi_Minh UTC+7).
+      - Triển khai logic tính toán chi tiết trong ReportsService (Khách hàng, NCC, Nhân viên, Kênh bán hàng).
+      - Tất cả endpoints được bảo vệ chặt chẽ bởi middleware authenticate và authorize('ADMIN').
+    - *Triển khai Frontend*:
+      - Tạo component DateRangeBar.tsx dùng chung với các preset nhanh: Hôm nay, Hôm qua, 7 ngày qua, Tháng này, Tháng trước và 2 ô nhập tùy biến Từ ngày - Đến ngày.
+      - Xây dựng 4 màn hình báo cáo hoàn chỉnh: CustomerReportScreen.tsx, SupplierReportScreen.tsx, EmployeeReportScreen.tsx, ChannelReportScreen.tsx.
+      - Mở khóa trọn vẹn 8/8 tabs trong ReportsWorkspaceScreen.tsx.
+      - Viết unit tests cho cả 4 màn hình và thanh công cụ: đạt 349/349 tests frontend PASS 100%.
+    - *Nghiệm Thu Toàn Diện (Full Release Gates)*:
+      - npm run typecheck: 0 lỗi biên dịch.
+      - npm run lint: 0 lỗi.
+      - npm run doctor: 18/18 checks đạt chuẩn.
+      - Tổng test suite toàn hệ thống: 1,347/1,347 tests pass 100%.
