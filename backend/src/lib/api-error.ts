@@ -37,6 +37,7 @@ export type ErrorCode =
   | 'KIOSK_SESSION_EXPIRED'
   | 'KIOSK_SESSION_REVOKED'
   | 'ATTENDANCE_CREDENTIAL_INVALID'
+  | 'ATTENDANCE_PUNCH_DEBOUNCED'
   | 'IDEMPOTENCY_KEY_REUSED'
   | 'ATTENDANCE_SESSION_ALREADY_OPEN'
   | 'NO_OPEN_ATTENDANCE_SESSION'
@@ -157,6 +158,10 @@ export class ApiError extends Error {
 
   static rateLimited(message = 'Ban da gui qua nhieu yeu cau. Vui long thu lai sau.', retryAfterSec = 60) {
     return new ApiError(429, 'RATE_LIMITED', message, undefined, retryAfterSec);
+  }
+
+  static attendancePunchDebounced(message = 'Bạn vừa chấm công, vui lòng chờ 1 phút.', retryAfterSec = 60) {
+    return new ApiError(429, 'ATTENDANCE_PUNCH_DEBOUNCED', message, undefined, retryAfterSec);
   }
 
   static internal(message = 'Da xay ra loi noi bo he thong. Vui long thu lai sau.') {

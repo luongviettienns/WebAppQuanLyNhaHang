@@ -436,6 +436,26 @@
          - Toàn bộ 86 test files (289 tests) Frontend PASS 100%.
          - `npm run typecheck` đạt **0 lỗi biên dịch** trên cả 2 workspace.
 
+45. **Triển Khai Gói 3: Chống Bấm Đúp Kiosk Chấm Công (Debounce 60 Giây - TDD)**:
+    - *Bối cảnh*: Theo đặc tả vận hành thực tế tại mục 2.1, 5.1 và sơ đồ 8.6 của `CHUC_NANG_VA_THAO_TAC_NGUOI_DUNG.md`, việc nhân viên vô tình chạm đúp hoặc gửi liên tiếp 2 lệnh chấm công trong thời gian ngắn sẽ gây lỗi nghiêm trọng (vừa Check-in xong bị Check-out nhầm ngay lập tức, hoặc ngược lại). Cần một cơ chế Debounce 60 giây ở cấp độ server giao dịch có khóa hàng nhân viên (`lockEmployeeRows`).
+    - *Các hạng mục đã triển khai theo TDD*:
+      1. **Bổ Sung Mã Lỗi & DTO Contracts Chung**:
+         - Bổ sung mã lỗi `ATTENDANCE_PUNCH_DEBOUNCED` vào union `ErrorCode` trong cả `backend/src/lib/api-error.ts` và `frontend/src/api/contracts.ts`.
+         - Bổ sung helper `ApiError.attendancePunchDebounced('Bạn vừa chấm công, vui lòng chờ 1 phút.', retryAfterSec)` trả về HTTP 429 và header `Retry-After`.
+      2. **Triển Khai Cơ Chế Debounce Giao Dịch Trong `EmployeeAttendancePunchService`**:
+         - Trong tương tác giao dịch đã khóa hàng nhân viên (`lockEmployeeRows(tx, [employeeId])`), truy vấn phiên chấm công gần nhất `lastSession` của nhân viên đó.
+         - Xác định thời điểm chấm công gần nhất: `lastPunchTime = Math.max(lastSession.checkInAt.getTime(), lastSession.checkOutAt ? lastSession.checkOutAt.getTime() : 0)`.
+         - Nếu `0 <= now - lastPunchTime < 60_000`, tính toán `retryAfterSec` còn lại và từ chối với lỗi 429 `ATTENDANCE_PUNCH_DEBOUNCED`.
+         - Bảo toàn luồng Idempotency Replay: Các yêu cầu gửi lại do lỗi mạng có cùng `idempotencyKey` và digest hợp lệ được trả về kết quả lưu trữ trước đó mà không bị chặn bởi bộ lọc debounce.
+         - Cho phép thực hiện nếu khoảng cách giữa 2 lần chấm công $\ge 60$ giây hoặc nếu nhân viên chưa có lịch sử chấm công trước đó.
+      3. **Bộ Test TDD Toàn Diện & Quality Gates**:
+         - Viết 4 test cases TDD kiểm chứng Red $\rightarrow$ Green trong `employee-attendance-punch.service.spec.ts`.
+         - Toàn bộ 16 tests trong `employee-attendance-punch.service.spec.ts` pass 100%.
+         - Toàn bộ 11 test files (96 tests) phân hệ `employee-attendance` pass 100%.
+         - Toàn bộ 123 backend test files (833 tests) pass 100%.
+         - Toàn bộ 86 frontend test files (289 tests) pass 100%.
+         - `npm run typecheck` đạt **0 lỗi biên dịch** trên cả 2 workspace.
+
 ---
 *Tệp tiến độ được tối ưu hóa tinh gọn, lưu trữ các quy chuẩn kiến trúc và tiến độ cập nhật phục vụ phát triển liên tục.*
 

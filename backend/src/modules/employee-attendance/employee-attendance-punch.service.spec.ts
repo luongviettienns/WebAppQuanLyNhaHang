@@ -44,7 +44,16 @@ function buildClient(options: {
       updateMany: vi.fn().mockResolvedValue({ count: 1 })
     }
   };
-  Object.assign(tx, options.transaction ?? {});
+  if (options.transaction) {
+    const { employeeAttendanceSession, ...rest } = options.transaction as {
+      employeeAttendanceSession?: Record<string, unknown>;
+      [key: string]: unknown;
+    };
+    Object.assign(tx, rest);
+    if (employeeAttendanceSession) {
+      Object.assign(tx.employeeAttendanceSession, employeeAttendanceSession);
+    }
+  }
   const client = {
     employee: { findUnique: vi.fn().mockResolvedValue(options.employeeLookup === undefined ? employee : options.employeeLookup) },
     attendanceKioskIdempotency: { findUnique: vi.fn().mockResolvedValue(null) },
@@ -235,7 +244,7 @@ describe('transactional kiosk attendance punches', () => {
   it('refuses check-out when the open session belongs to a different branch', async () => {
     const { client, tx } = buildClient({ transaction: {
       employeeAttendanceSession: {
-        findMany: vi.fn().mockResolvedValue([{ id: 70, branchId: 99, checkInAt: now, checkOutAt: null, scheduleLinkStatus: 'SCHEDULED', plannedShiftName: 'Ca sáng' }]),
+        findMany: vi.fn().mockResolvedValue([{ id: 70, branchId: 99, checkInAt: new Date('2026-09-29T00:55:00.000Z'), checkOutAt: null, scheduleLinkStatus: 'SCHEDULED', plannedShiftName: 'Ca sáng' }]),
         updateMany: vi.fn()
       }
     } });
@@ -266,8 +275,96 @@ describe('transactional kiosk attendance punches', () => {
     } });
     const service = new EmployeeAttendancePunchService(client, () => now);
 
-    await expect(service.punch({ attendanceCode: 'secret-code', action: 'CHECK_IN', idempotencyKey: 'punch-key-0010' }, kiosk))
+    await expect(service.punch({ attendanceCode: 'secret-code', action: 'CHECK_IN', idempotencyKey: 'punch-key-010' }, kiosk))
       .rejects.toMatchObject({ code: 'IDEMPOTENCY_KEY_REUSED' });
     expect(tx.employeeAttendanceSession.findMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects check-out when employee checked in within the last 60 seconds (debounce)', async () => {
+    const recentCheckIn = new Date(now.getTime() - 10_000);
+    const openSession = {
+      id: 70, branchId: kiosk.branchId, checkInAt: recentCheckIn, checkOutAt: null,
+      scheduleLinkStatus: 'SCHEDULED' as const, scheduleDate: new Date('2026-09-29T00:00:00.000Z'),
+      plannedWorkDate: new Date('2026-09-29T00:00:00.000Z'), plannedShiftName: 'Ca sáng'
+    };
+    const { client, tx } = buildClient({ transaction: {
+      employeeAttendanceSession: {
+        findMany: vi.fn().mockResolvedValue([openSession]),
+        findFirst: vi.fn().mockResolvedValue(openSession),
+        updateMany: vi.fn().mockResolvedValue({ count: 1 })
+      }
+    } });
+    const service = new EmployeeAttendancePunchService(client, () => now);
+
+    await expect(service.punch({ attendanceCode: 'secret-code', action: 'CHECK_OUT', idempotencyKey: 'punch-key-debounce-1' }, kiosk))
+      .rejects.toMatchObject({
+        statusCode: 429,
+        code: 'ATTENDANCE_PUNCH_DEBOUNCED',
+        message: 'Bạn vừa chấm công, vui lòng chờ 1 phút.',
+        retryAfterSec: 50
+      });
+    expect(tx.employeeAttendanceSession.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rejects check-in when employee checked out within the last 60 seconds (debounce)', async () => {
+    const recentCheckOut = new Date(now.getTime() - 20_000);
+    const recentSession = {
+      id: 69, branchId: kiosk.branchId, checkInAt: new Date(now.getTime() - 3600_000), checkOutAt: recentCheckOut
+    };
+    const { client, tx } = buildClient({ transaction: {
+      employeeAttendanceSession: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findFirst: vi.fn().mockResolvedValue(recentSession),
+        create: vi.fn()
+      }
+    } });
+    const service = new EmployeeAttendancePunchService(client, () => now);
+
+    await expect(service.punch({ attendanceCode: 'secret-code', action: 'CHECK_IN', outsideScheduleConfirmation: true, idempotencyKey: 'punch-key-debounce-2' }, kiosk))
+      .rejects.toMatchObject({
+        statusCode: 429,
+        code: 'ATTENDANCE_PUNCH_DEBOUNCED',
+        message: 'Bạn vừa chấm công, vui lòng chờ 1 phút.',
+        retryAfterSec: 40
+      });
+    expect(tx.employeeAttendanceSession.create).not.toHaveBeenCalled();
+  });
+
+  it('allows punch when more than 60 seconds have elapsed since last punch', async () => {
+    const previousCheckOut = new Date(now.getTime() - 65_000);
+    const previousSession = {
+      id: 69, branchId: kiosk.branchId, checkInAt: new Date(now.getTime() - 3600_000), checkOutAt: previousCheckOut
+    };
+    const { client, tx } = buildClient({ transaction: {
+      employeeAttendanceSession: {
+        findMany: vi.fn().mockResolvedValue([]),
+        findFirst: vi.fn().mockResolvedValue(previousSession),
+        create: vi.fn().mockResolvedValue({ id: 71 })
+      }
+    } });
+    const service = new EmployeeAttendancePunchService(client, () => now);
+
+    const result = await service.punch({ attendanceCode: 'secret-code', action: 'CHECK_IN', outsideScheduleConfirmation: true, idempotencyKey: 'punch-key-debounce-3' }, kiosk);
+    expect(result).toMatchObject({ action: 'CHECK_IN' });
+    expect(tx.employeeAttendanceSession.create).toHaveBeenCalled();
+  });
+
+  it('allows idempotent replay of punch within 60 seconds without triggering debounce', async () => {
+    const cachedResponse = { action: 'CHECK_IN', employeeName: 'Nguyễn Minh Anh', state: 'OPEN' };
+    const { client } = buildClient({ transaction: {
+      attendanceKioskIdempotency: {
+        findUnique: vi.fn().mockResolvedValue({
+          requestDigest: createAttendancePunchDigest({
+            employeeId: employee.id,
+            action: 'CHECK_IN'
+          }),
+          response: cachedResponse
+        })
+      }
+    } });
+    const service = new EmployeeAttendancePunchService(client, () => now);
+
+    const result = await service.punch({ attendanceCode: 'secret-code', action: 'CHECK_IN', idempotencyKey: 'punch-key-cached' }, kiosk);
+    expect(result).toEqual(cachedResponse);
   });
 });

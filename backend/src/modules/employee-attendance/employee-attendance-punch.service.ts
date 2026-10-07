@@ -225,6 +225,23 @@ export class EmployeeAttendancePunchService {
     }
     if (currentEmployee.status !== 'WORKING') throw credentialInvalid();
 
+    const lastSession = await tx.employeeAttendanceSession.findFirst({
+      where: { employeeId },
+      orderBy: { id: 'desc' },
+      select: { checkInAt: true, checkOutAt: true }
+    });
+    if (lastSession) {
+      const lastPunchTime = Math.max(
+        lastSession.checkInAt.getTime(),
+        lastSession.checkOutAt ? lastSession.checkOutAt.getTime() : 0
+      );
+      const elapsedMs = now.getTime() - lastPunchTime;
+      if (elapsedMs >= 0 && elapsedMs < 60_000) {
+        const retryAfterSec = Math.max(1, Math.ceil((60_000 - elapsedMs) / 1000));
+        throw ApiError.attendancePunchDebounced('Bạn vừa chấm công, vui lòng chờ 1 phút.', retryAfterSec);
+      }
+    }
+
     const openSessions = await tx.employeeAttendanceSession.findMany({
       where: { employeeId, checkOutAt: null },
       orderBy: { checkInAt: 'asc' },
