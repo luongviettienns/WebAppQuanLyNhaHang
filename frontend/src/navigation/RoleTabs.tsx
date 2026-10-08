@@ -171,26 +171,29 @@ export const RoleTabs: React.FC = () => {
       </View>
 
       {!isDesktop && !isMobile && tabs.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={[styles.tabletNav, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}
-          contentContainerStyle={styles.horizontalNavContent}
-        >
-          <NavigationItems tabs={tabs} activeTab={selected.key} onSelect={setActiveTab} />
-        </ScrollView>
+        <View style={[styles.tabletNav, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.horizontalNavContent}
+          >
+            <NavigationItems tabs={tabs} activeTab={selected.key} onSelect={setActiveTab} />
+          </ScrollView>
+        </View>
       )}
 
       <View style={styles.workspace}>
         {isDesktop && tabs.length > 1 && (
-          <ScrollView
-            style={[styles.rail, { backgroundColor: theme.surfaceBase, borderRightColor: theme.borderSubtle }]}
-            contentContainerStyle={styles.railContent}
-            showsVerticalScrollIndicator={false}
-          >
-            <Text style={[styles.railHeading, { color: theme.textSecondary }]}>Khu vực làm việc</Text>
-            <NavigationItems tabs={tabs} activeTab={selected.key} onSelect={setActiveTab} vertical />
-          </ScrollView>
+          <View style={[styles.rail, { backgroundColor: theme.surfaceBase, borderRightColor: theme.borderSubtle }]}>
+            <ScrollView
+              style={styles.railScroll}
+              contentContainerStyle={styles.railContent}
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={[styles.railHeading, { color: theme.textSecondary }]}>Khu vực làm việc</Text>
+              <NavigationItems tabs={tabs} activeTab={selected.key} onSelect={setActiveTab} vertical />
+            </ScrollView>
+          </View>
         )}
         <View style={styles.screenContainer}>
           <ActiveComponent />
@@ -198,14 +201,15 @@ export const RoleTabs: React.FC = () => {
       </View>
 
       {isMobile && tabs.length > 1 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={[styles.bottomNav, { backgroundColor: theme.surfaceBase, borderTopColor: theme.borderSubtle }]}
-          contentContainerStyle={styles.horizontalNavContent}
-        >
-          <NavigationItems tabs={tabs} activeTab={selected.key} onSelect={setActiveTab} />
-        </ScrollView>
+        <View style={[styles.bottomNav, { backgroundColor: theme.surfaceBase, borderTopColor: theme.borderSubtle }]}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.horizontalNavContent}
+          >
+            <NavigationItems tabs={tabs} activeTab={selected.key} onSelect={setActiveTab} />
+          </ScrollView>
+        </View>
       )}
     </SafeAreaView>
   );
@@ -224,8 +228,16 @@ const styles = StyleSheet.create({
   logoutLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
   workspace: { flex: 1, flexDirection: 'row' },
   screenContainer: { flex: 1, minWidth: 0 },
-  tabletNav: { borderBottomWidth: 1 },
-  rail: { borderRightWidth: 1, width: 220, flexShrink: 0 },
+  tabletNav: { borderBottomWidth: 1, flexGrow: 0, flexShrink: 0 },
+  rail: {
+    borderRightWidth: 1,
+    flexGrow: 0,
+    flexShrink: 0,
+    maxWidth: 208,
+    minWidth: 208,
+    width: 208,
+  },
+  railScroll: { flex: 1, width: '100%' },
   railContent: { padding: spacing.md, paddingBottom: spacing.xxl },
   railHeading: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs, marginBottom: spacing.sm, paddingHorizontal: spacing.sm },
   verticalNav: { gap: spacing.xs },
@@ -234,5 +246,5 @@ const styles = StyleSheet.create({
   railItem: { alignItems: 'center', borderLeftWidth: 3, borderRadius: radii.sm, flexDirection: 'row', gap: spacing.sm, minHeight: 48, paddingHorizontal: spacing.md },
   tabItem: { alignItems: 'center', borderBottomWidth: 3, borderRadius: radii.sm, minWidth: 90, gap: 2, justifyContent: 'center', minHeight: 54, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   navLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
-  bottomNav: { borderTopWidth: 1 },
+  bottomNav: { borderTopWidth: 1, flexGrow: 0, flexShrink: 0 },
 });
