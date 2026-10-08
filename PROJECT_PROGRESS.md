@@ -647,7 +647,37 @@
       - [`table-session-isolation.audit.spec.ts`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/backend/test/tables/table-session-isolation.audit.spec.ts): PASS 100%.
       - `npm run typecheck`: **0 lỗi biên dịch** trên toàn bộ workspaces (`backend` + `frontend`).
 
+54. **Phân Tách Phiên Phục Vụ Bàn (Table Session Isolation) — Khắc Phục Triệt Để Lỗi Cộng Dồn Đơn Khách Cũ Vào Khách Mới**:
+    - *Bối cảnh & Phân tích Nguyên nhân gốc rễ (Root Cause Analysis - RCA)*:
+      - *Hiện tượng*: Khách A ăn tại bàn 4 gọi 100.000đ, đã thanh toán và hoàn tất. Nhân viên dọn bàn đưa về `AVAILABLE`. Khách B vào ngồi cùng bàn 4 gọi 200.000đ $\rightarrow$ Màn hình khách B hiển thị tổng bill 300.000đ và hiện lại cả đơn của khách A.
+      - *Nguyên nhân Backend*: Trước đây backend lọc đơn theo cửa sổ thời gian tĩnh 12 giờ gần nhất (`createdAt >= now - 12h`) mà không có khái niệm phân tách phiên ngồi (visit/session). Đơn của khách A dù đã `COMPLETED` và `PAID` vẫn được trả về trong danh sách đơn của bàn.
+      - *Nguyên nhân Frontend*: `TableOrderScreen.tsx` tính tổng tiền `totalTableAmount` bằng cách cộng toàn bộ đơn trong `table.orders`.
+    - *Kiến trúc & Triển khai Phiên Phục Vụ Bàn*:
+      - **Prisma Schema & Migration** ([`20261008190000_table_session_isolation`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/backend/prisma/migrations/20261008190000_table_session_isolation/migration.sql)):
+        - `DiningTable`: Thêm trường `currentSessionId` (UUID, unique index).
+        - `Order`: Thêm trường `tableSessionId` (UUID, index `[tableId, tableSessionId, status]`).
+        - `Reservation`: Thêm trường `tableSessionId` (UUID).
+      - **Vòng đời phiên bàn chuẩn xác ([`table-session.ts`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/backend/src/modules/tables/table-session.ts))**:
+        - *Mở phiên tự động (`ensureTableVisit`)*: Khi khách hoặc thu ngân tạo đơn đầu tiên cho bàn trống, sinh `currentSessionId` mới dưới khoá ghi `SELECT ... FOR UPDATE` tránh race condition khi nhiều người cùng gửi đơn.
+        - *Gọi thêm món*: Các đợt gọi món tiếp theo của cùng lượt ngồi kế thừa cùng `currentSessionId`.
+        - *Đặt bàn (`checkIn`)*: Nhân viên check-in mở phiên phục vụ ngay, gán `tableSessionId` cho đặt chỗ và đơn của đợt đó.
+        - *Dọn bàn (`updateTableStatus` sang `AVAILABLE`)*: Xóa `currentSessionId = null`, hoàn tất đặt bàn liên quan (`status = COMPLETED`). Chặn dọn bàn nếu còn món đã trả tiền nhưng đang chế biến (`PREPARING`) hoặc đơn đang chờ xác nhận ngân hàng (`WAITING_CONFIRMATION`).
+        - *Chuyển bàn (`transferTable`)*: Di chuyển nguyên vẹn `currentSessionId` và toàn bộ các đơn hàng của phiên sang bàn đích.
+        - *Bảo vệ phiên gửi món (`expectedTableSessionId`)*: Client gửi kèm mã phiên quan sát được; nếu phiên bàn đã thay đổi (bàn đã dọn và có khách mới), server từ chối ngay với mã lỗi 409 Conflict.
+      - **Giao diện Khách hàng ([`TableOrderScreen.tsx`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/frontend/src/features/customer/TableOrderScreen.tsx))**:
+        - Thêm bộ lọc `isOrderInTableSession(order, table)`: Chỉ hiển thị và cộng tiền các đơn khớp với `table.currentSessionId` hiện tại.
+        - Khi bàn được dọn (phiên kết thúc), giao diện tự động dọn sạch đơn cũ, đóng modal thanh toán và cập nhật giao diện bàn trống sẵn sàng cho khách mới.
+    - *Khóa lỗi bằng Test Suites (TDD & Regression)*:
+      - [`table-session-lifecycle.spec.ts`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/backend/test/tables/table-session-lifecycle.spec.ts): 7/7 tests PASS (kiểm thử đa đợt gọi món, xóa phiên khi dọn, cô lập dữ liệu khách sau, giữ đơn qua 12h, chặn dọn khi đang nấu, chặn phiên stale 409, đồng thời mở phiên an toàn, chuyển bàn mang trọn phiên, mở phiên qua check-in đặt bàn).
+      - [`table-session-isolation.audit.spec.ts`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/backend/test/tables/table-session-isolation.audit.spec.ts): 1/1 test PASS (kiểm chứng loại trừ 100% đơn của khách trước).
+      - [`TableOrderScreen.test.tsx`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/frontend/src/features/customer/TableOrderScreen.test.tsx): 12/12 tests PASS.
+      - [`RestaurantContext.tableSession.test.tsx`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/frontend/src/contexts/RestaurantContext.tableSession.test.tsx): 3/3 tests PASS.
+    - *Nghiệm thu Chất lượng Toàn diện*:
+      - `npm run typecheck`: **0 lỗi biên dịch** trên toàn bộ monorepo (`backend` + `frontend`).
+      - Backend test suites liên quan: 8/8 tests PASS.
+      - Frontend test suites liên quan: 15/15 tests PASS.
 
-### Nhật ký 2026-10-08 — Hoàn thiện báo hao hụt Kitchen & VietQR Khách Hàng
 
-Hoàn tất chọn toàn bộ nguyên liệu hoạt động, nhập lượng thập phân có đơn vị, preview BOM/tồn và idempotency lưu DB/thiết bị. Tách `KitchenWasteModal` khỏi KDS để kiểm thử trực tiếp luồng người dùng. Xác nhận 23 test liên quan đạt, typecheck/lint/build web đạt; ghi nhận hai lỗi baseline thanh toán ngoài phạm vi tại bài học ở trên. Nâng cấp modal thanh toán khách hàng gọi món tại bàn sang mã VietQR thật 100% kết nối tài khoản NCB (.env) kèm tiện ích sao chép nhanh 1 chạm. Backend local đã khởi động lại sau cập nhật Prisma và migration.
+### Nhật ký 2026-10-08 — Hoàn thiện Báo hao hụt, VietQR Khách Hàng & Cô Lập Phiên Phục Vụ Bàn
+
+Hoàn tất chọn toàn bộ nguyên liệu hoạt động, nhập lượng thập phân có đơn vị, preview BOM/tồn và idempotency lưu DB/thiết bị. Tách `KitchenWasteModal` khỏi KDS để kiểm thử trực tiếp luồng người dùng. Xác nhận 23 test liên quan đạt, typecheck/lint/build web đạt. Nâng cấp modal thanh toán khách hàng gọi món tại bàn sang mã VietQR thật 100% kết nối tài khoản NCB (.env) kèm tiện ích sao chép nhanh 1 chạm. Khắc phục triệt để lỗi cộng dồn đơn của khách trước bằng kiến trúc phân tách phiên phục vụ bàn (`currentSessionId` / `tableSessionId`) từ CSDL, API đến giao diện khách hàng. Full quality check PASS 100%.

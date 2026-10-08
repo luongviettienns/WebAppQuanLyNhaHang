@@ -17,7 +17,6 @@ export const createOrderSchema = z.object({
   orderType: z.enum(['DINE_IN', 'TAKE_AWAY', 'DELIVERY']).default('DINE_IN'),
   tableId: z.number().optional(),
   expectedTableSessionId: z.string().uuid().nullable().optional(),
-  expectedTableSessionId: z.string().uuid().nullable().optional(),
   customerId: z.number().int().positive().optional(),
   payLaterOverride: z.boolean().optional(),
   payLaterReason: z.string().trim().min(3).max(500).optional(),
