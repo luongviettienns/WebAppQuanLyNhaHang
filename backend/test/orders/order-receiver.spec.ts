@@ -97,6 +97,7 @@ describe('first order receiver', () => {
     const orderId = response.body.data.order.id;
     expect(response.body.data.order.receivedByEmployeeId).toBeNull();
     expect((await prismaTest.order.findUniqueOrThrow({ where: { id: orderId } })).createdByUserId).toBeNull();
+    await prismaTest.order.update({ where: { id: orderId }, data: { payLaterAuthorized: true } });
     const preparing = await transition(orderId, firstUserId);
     expect(preparing.status).toBe(200);
     expect(preparing.body.data.receivedByEmployeeId).toBe(firstEmployeeId);

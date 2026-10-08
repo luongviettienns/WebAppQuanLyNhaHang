@@ -226,6 +226,20 @@ describe('multiple unpaid orders on one table', () => {
       status: 'COMPLETED' as const,
       completedAt: new Date()
     } as never);
+    (prisma.$transaction as any).mockImplementation(async (callback: (client: any) => Promise<unknown>) => {
+      const tx = {
+        $queryRaw: mockRawQueries(),
+        order: {
+          findUnique: vi.fn().mockResolvedValue(paidReadyOrder),
+          update: vi.fn().mockResolvedValue({
+            ...paidReadyOrder,
+            status: 'COMPLETED' as const,
+            completedAt: new Date()
+          })
+        }
+      };
+      return callback(tx);
+    });
     vi.mocked(prisma.order.findFirst).mockResolvedValue(null); // Không còn đơn nào khác đang chờ
     vi.mocked(prisma.diningTable.update).mockResolvedValue({
       id: 1,

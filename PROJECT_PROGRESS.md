@@ -567,3 +567,18 @@
       - `npm run typecheck`: Đạt 0 lỗi biên dịch trên cả hai workspaces backend & frontend.
       - `npm run test:frontend`: 349/349 tests PASS 100%.
       - Đã re-build bản phân phối web tĩnh `frontend/dist` (`npm run build:frontend`).
+
+51. **Đồng Bộ Nhánh main với pKhanh & Chuẩn Hóa Test Suites Khớp Quy Tắc Prepayment Mới**:
+    - *Bối cảnh & Đồng bộ Git*:
+      - Nhận yêu cầu đồng bộ nhánh `main` với nhánh `pKhanh`. Remote `origin/main` có commit `aa83a83` (*"fix(orders): require payment before walk-in QR kitchen release"*) từ cộng tác viên `pKhanh123`.
+      - Đã fast-forward kéo `main` lên `aa83a83`, đồng bộ `pKhanh` (local và `origin/pKhanh`) về cùng commit `aa83a83`. Cả 4 nhánh `main`, `origin/main`, `pKhanh`, `origin/pKhanh` đồng bộ 100%.
+    - *Phân tích RCA & Khóa lỗi Kiểm thử (TDD/Regression)*:
+      - Khi commit `aa83a83` đưa vào quy tắc yêu cầu khách vãng lai gọi món QR phải thanh toán trước thì đơn mới vào bếp và bàn mới thành `OCCUPIED`, 3 bộ test cũ bị lệch kỳ vọng:
+        1. `orders.spec.ts`: Cũ kỳ vọng bàn `OCCUPIED` ngay khi khách gửi đơn. Đã cập nhật kiểm thử đúng luồng mới: tạo đơn bàn giữ `AVAILABLE`, sau khi khách khai báo thanh toán (`POST /api/orders/:id/payment-declaration`) và thu ngân đối soát (`POST /api/orders/:id/payment/confirm`) thì bàn cập nhật `OCCUPIED`.
+        2. `order-receiver.spec.ts`: Đơn khách tạo cần có cờ `payLaterAuthorized: true` hoặc xác nhận thanh toán trước khi chuyển sang `PREPARING` để kiểm thử logic ghi nhận nhân viên tiếp nhận đầu tiên (`receivedByEmployeeId`).
+        3. `table-order-consistency.spec.ts`: Bổ sung mock `prisma.$transaction` khi gọi `updateOrderStatus` để trả về bản ghi cập nhật nhất quán thay vì `undefined`.
+    - *Nghiệm thu Chất lượng Toàn diện*:
+      - `npm run typecheck`: PASS 100% (0 lỗi biên dịch).
+      - `npm run test:backend -- test/orders`: PASS 100% (17/17 test files, 133/133 tests).
+      - `npm run test:frontend`: PASS 100% (98/98 test files, 349/349 tests).
+

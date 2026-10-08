@@ -113,7 +113,7 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     expect(res.body.error.code).toBe('VALIDATION_ERROR');
   });
 
-  it('POST /api/orders cho phep khach vang lai quet QR hop le tao don tai ban truc tiep', async () => {
+  it('POST /api/orders cho phep khach vang lai quet QR hop le tao don tai ban truc tiep va cap nhat OCCUPIED khi xac nhan thanh toan', async () => {
     const table = await prismaTest.diningTable.findFirstOrThrow({ where: { tableNumber: 11 } });
     const item = await prismaTest.menuItem.findFirstOrThrow({
       where: {
@@ -134,6 +134,26 @@ describe('Dine-In Orders & Tables API (Task 9 - Smart Dine-In)', () => {
     expect(res.body.data.order.tableId).toBe(table.id);
     expect(res.body.data.order.status).toBe('PENDING');
     expect(res.body.data.order.paymentStatus).toBe('UNPAID');
+
+    // Theo co che prepayment moi tu aa83a83, ban van o trang thai AVAILABLE cho toi khi xac nhan thanh toan
+    const initialTable = await prismaTest.diningTable.findUnique({ where: { id: table.id } });
+    expect(initialTable?.status).toBe('AVAILABLE');
+
+    // Khach khai bao thanh toan qua QR
+    const declareRes = await request(app)
+      .post(`/api/orders/${res.body.data.order.id}/payment-declaration`)
+      .send({ qrCodeToken: table.qrCodeToken });
+    expect(declareRes.status).toBe(200);
+
+    // Thu ngan xac nhan thanh toan -> ban chuyen sang OCCUPIED
+    const confirmRes = await request(app)
+      .post(`/api/orders/${res.body.data.order.id}/payment/confirm`)
+      .set('Authorization', `Bearer ${cashierToken}`)
+      .send({
+        amount: res.body.data.order.finalAmount,
+        externalReference: 'QR-REF-001'
+      });
+    expect(confirmRes.status).toBe(200);
 
     const updatedTable = await prismaTest.diningTable.findUnique({ where: { id: table.id } });
     expect(updatedTable?.status).toBe('OCCUPIED');
