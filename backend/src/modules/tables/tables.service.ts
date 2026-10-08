@@ -1,10 +1,12 @@
 import { prisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToAll, emitToRoom } from '../../lib/socket';
+import { getVietQrConfig } from '../../lib/vietqr';
 import { randomUUID } from 'crypto';
 import { Prisma } from '@prisma/client';
 import { AuditService } from '../audit/audit.service';
 import { CreateTableInput, TableManageQuery, UpdateTableInput } from './tables.schemas';
+import { closeTableVisit, unfinishedVisitWhere } from './table-session';
 
 function managementDto(table: any) {
   return { ...table, displayName: table.displayName || `Bàn ${table.tableNumber}`, seatCount: table.capacity, area: table.area ?? null };
@@ -20,13 +22,11 @@ function deriveTableState<T extends { status: string; orders: Array<{ id: number
   ) ?? table.orders[0];
 
   let status = table.status;
-  if (table.orders.length > 0) {
-    status = 'OCCUPIED';
-  } else if (table.status === 'OCCUPIED') {
-    status = 'AVAILABLE';
-  } else if (table.status === 'NEED_CLEANING') {
-    status = 'DIRTY';
-  }
+  const unfinished = table.orders.some(order => order.status !== 'CANCELLED' &&
+    (order.paymentStatus === 'UNPAID' || order.paymentStatus === 'WAITING_CONFIRMATION' ||
+      ['PENDING', 'PREPARING', 'READY'].includes(order.status || '')));
+  if (unfinished) status = 'OCCUPIED';
+  else if (table.status === 'NEED_CLEANING') status = 'DIRTY';
 
   return {
     ...table,
@@ -36,34 +36,17 @@ function deriveTableState<T extends { status: string; orders: Array<{ id: number
 }
 
 export class TablesService {
-  private static getTableOrdersInclude() {
-    const activeSessionThreshold = new Date(Date.now() - 12 * 60 * 60 * 1000);
-    return {
-      orders: {
-        where: {
-          status: { not: 'CANCELLED' as const },
-          createdAt: { gte: activeSessionThreshold }
-        },
-        orderBy: { createdAt: 'desc' as const },
-        include: {
-          items: true
-        }
-      }
-    };
-  }
-
-  private static filterSessionOrders<T extends { status: string; orders: Array<{ id: number; status: string; paymentStatus: string }> }>(table: T): T {
-    const activeOrders = table.orders.filter(order =>
-      order.paymentStatus === 'UNPAID' ||
-      order.paymentStatus === 'WAITING_CONFIRMATION' ||
-      ['PENDING', 'PREPARING', 'READY'].includes(order.status)
-    );
-
-    if (table.status !== 'OCCUPIED' && activeOrders.length === 0) {
-      return { ...table, orders: [] };
-    }
-
-    return table;
+  private static async attachSessionOrders<T extends { id: number; currentSessionId: string | null }>(tables: T[]) {
+    const sessions = tables.filter(table => table.currentSessionId !== null);
+    const orders = sessions.length === 0 ? [] : await prisma.order.findMany({
+      where: {
+        OR: sessions.map(table => ({ tableId: table.id, tableSessionId: table.currentSessionId })),
+        status: { not: 'CANCELLED' }
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], include: { items: true }
+    });
+    return tables.map(table => ({ ...table, orders: table.currentSessionId === null ? [] :
+      orders.filter(order => order.tableId === table.id && order.tableSessionId === table.currentSessionId) }));
   }
 
   static async manage(query: TableManageQuery) {
@@ -127,27 +110,23 @@ export class TablesService {
     const tables = await prisma.diningTable.findMany({
       where: { isActive: true },
       orderBy: { tableNumber: 'asc' },
-      include: this.getTableOrdersInclude()
     });
 
     return {
-      tables: tables
-        .map(t => this.filterSessionOrders(t as any))
-        .map(deriveTableState)
+      tables: (await this.attachSessionOrders(tables)).map(deriveTableState)
     };
   }
 
   static async getTableById(id: number) {
     const table = await prisma.diningTable.findUnique({
       where: { id },
-      include: this.getTableOrdersInclude()
     });
 
     if (!table) {
       throw ApiError.notFound(`Bàn ăn ID ${id} không tồn tại`);
     }
 
-    return { table: deriveTableState(this.filterSessionOrders(table as any)) };
+    return { table: deriveTableState((await this.attachSessionOrders([table]))[0]) };
   }
 
   static async getTableByQrToken(qrCodeToken: string) {
@@ -169,30 +148,30 @@ export class TablesService {
           ...(tableNumberToMatch !== null ? [{ tableNumber: tableNumberToMatch }] : [])
         ]
       },
-      include: this.getTableOrdersInclude()
     });
 
     if (!table) {
       throw ApiError.notFound('Mã QR bàn không hợp lệ hoặc đã hết hạn');
     }
 
-    const safeTable = deriveTableState(this.filterSessionOrders(table as any)) as Record<string, unknown>;
+    const safeTable = deriveTableState((await this.attachSessionOrders([table]))[0]) as Record<string, unknown>;
     delete safeTable.qrCodeToken;
-    return { table: safeTable };
+    const vietQrConfig = getVietQrConfig();
+    return { table: safeTable, vietQrConfig };
   }
 
   static async getTableByTableNumber(tableNumber: number) {
     const table = await prisma.diningTable.findUnique({
       where: { tableNumber, isActive: true },
-      include: this.getTableOrdersInclude()
     });
 
     if (!table) {
       throw ApiError.notFound(`Bàn số ${tableNumber} không tồn tại`);
     }
 
-    const { qrCodeToken, ...safeTable } = deriveTableState(this.filterSessionOrders(table as any));
-    return { table: safeTable, qrCodeToken };
+    const { qrCodeToken, ...safeTable } = deriveTableState((await this.attachSessionOrders([table]))[0]);
+    const vietQrConfig = getVietQrConfig();
+    return { table: safeTable, qrCodeToken, vietQrConfig };
   }
 
   static async getPublicTables() {
@@ -211,215 +190,62 @@ export class TablesService {
   }
 
   static async updateTableStatus(id: number, inputStatus: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') {
-    const existingTable = await prisma.diningTable.findUnique({
-      where: { id },
-      include: {
-        orders: {
-          where: {
-            paymentStatus: 'UNPAID',
-            status: { not: 'CANCELLED' }
-          }
+    await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${id} FOR UPDATE`;
+      const table = await tx.diningTable.findUnique({ where: { id } });
+      if (!table) throw ApiError.notFound(`Bàn ăn ID ${id} không tồn tại`);
+      if (inputStatus === 'AVAILABLE') {
+        if (await tx.order.findFirst({ where: unfinishedVisitWhere(id, table.currentSessionId), select: { id: true } })) {
+          throw ApiError.orderStateInvalid('Không thể dọn xong bàn khi còn đơn chưa thanh toán hoặc chưa phục vụ xong');
         }
+        await closeTableVisit(tx, id, table.currentSessionId);
       }
+      await tx.diningTable.update({ where: { id }, data: { status: inputStatus === 'AVAILABLE' ? 'AVAILABLE' : 'DIRTY' } });
     });
-
-    if (!existingTable) {
-      throw ApiError.notFound(`Bàn ăn ID ${id} không tồn tại`);
-    }
-
-    if (inputStatus === 'AVAILABLE') {
-      if (existingTable.orders.length > 0) {
-        throw ApiError.orderStateInvalid('Không thể chuyển bàn về AVAILABLE khi vẫn còn đơn hàng chưa thanh toán');
-      }
-    }
-
-    const dbStatus = inputStatus === 'NEED_CLEANING' || inputStatus === 'DIRTY' ? 'DIRTY' : 'AVAILABLE';
-
-    const updatedTable = await prisma.diningTable.update({
-      where: { id },
-      data: {
-        status: dbStatus,
-        currentOrderId: null
-      },
-      include: {
-        orders: {
-          where: {
-            paymentStatus: 'UNPAID',
-            status: { not: 'CANCELLED' }
-          },
-          include: { items: true }
-        }
-      }
-    });
-
-    const derived = deriveTableState(updatedTable);
-
-    emitToAll('table:statusChanged', {
-      tableId: derived.id,
-      tableNumber: derived.tableNumber,
-      status: derived.status as any,
-      currentOrderId: derived.currentOrderId
-    });
-
-    return { table: derived };
+    const { table } = await this.getTableById(id);
+    emitToAll('table:statusChanged', { tableId: table.id, tableNumber: table.tableNumber, status: table.status as any,
+      currentOrderId: table.currentOrderId, currentSessionId: table.currentSessionId });
+    emitToAll('reservations:changed', { ids: [], updatedAt: new Date().toISOString() });
+    return { table };
   }
 
-  static async transferTable(
-    fromTableId: number,
-    toTableId: number,
-    actor: { id: number; name?: string | null }
-  ) {
-    if (fromTableId === toTableId) {
-      throw ApiError.badRequest('Bàn nguồn và bàn đích không được trùng nhau');
-    }
-
-    const result = await prisma.$transaction(async (tx) => {
-      // Khoa ca 2 ban bang SELECT ... FOR UPDATE de tranh race condition
-      await tx.$queryRaw`SELECT id FROM DiningTable WHERE id IN (${fromTableId}, ${toTableId}) FOR UPDATE`;
-
-      const fromTable = await tx.diningTable.findUnique({
-        where: { id: fromTableId },
-        include: {
-          orders: {
-            where: {
-              paymentStatus: 'UNPAID',
-              status: { notIn: ['COMPLETED', 'CANCELLED'] }
-            }
-          }
-        }
+  static async transferTable(fromTableId: number, toTableId: number, actor: { id: number; name?: string | null }) {
+    if (fromTableId === toTableId) throw ApiError.badRequest('Bàn nguồn và bàn đích không được trùng nhau');
+    const result = await prisma.$transaction(async tx => {
+      await tx.$queryRaw`SELECT id FROM DiningTable WHERE id IN (${fromTableId}, ${toTableId}) ORDER BY id FOR UPDATE`;
+      const from = await tx.diningTable.findUnique({ where: { id: fromTableId } });
+      const to = await tx.diningTable.findUnique({ where: { id: toTableId } });
+      if (!from || !to) throw ApiError.notFound('Bàn nguồn hoặc bàn đích không tồn tại');
+      if (!from.currentSessionId) throw ApiError.orderStateInvalid('Bàn nguồn không có lượt phục vụ đang hoạt động');
+      if (to.status !== 'AVAILABLE' || to.currentSessionId || await tx.order.findFirst({
+        where: unfinishedVisitWhere(to.id, null), select: { id: true }
+      })) throw ApiError.conflict('Bàn đích chưa sẵn sàng hoặc đang có khách phục vụ');
+      const orders = await tx.order.findMany({
+        where: { tableId: from.id, tableSessionId: from.currentSessionId, status: { not: 'CANCELLED' } },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }]
       });
-
-      if (!fromTable) {
-        throw ApiError.notFound(`Bàn nguồn ID ${fromTableId} không tồn tại`);
-      }
-
-      if (fromTable.orders.length === 0) {
-        throw ApiError.orderStateInvalid(`Bàn ${fromTable.tableNumber} không có đơn hàng nào đang hoạt động để chuyển`);
-      }
-
-      const toTable = await tx.diningTable.findUnique({
-        where: { id: toTableId },
-        include: {
-          orders: {
-            where: {
-              paymentStatus: 'UNPAID',
-              status: { notIn: ['COMPLETED', 'CANCELLED'] }
-            }
-          }
-        }
-      });
-
-      if (!toTable) {
-        throw ApiError.notFound(`Bàn đích ID ${toTableId} không tồn tại`);
-      }
-
-      if (toTable.status === 'DIRTY' || toTable.status === 'NEED_CLEANING') {
-        throw ApiError.conflict(`Bàn đích (Bàn ${toTable.tableNumber}) đang chờ dọn dẹp, vui lòng dọn bàn trước khi chuyển`);
-      }
-
-      if (toTable.orders.length > 0 || toTable.status === 'OCCUPIED') {
-        throw ApiError.conflict(`Bàn đích (Bàn ${toTable.tableNumber}) đang có khách phục vụ, không thể chuyển sang`);
-      }
-
-      const activeOrderIds = fromTable.orders.map((o) => o.id);
-      const primaryOrderId = fromTable.orders[0]?.id ?? null;
-
-      // Chuyển toàn bộ đơn hàng sang bàn đích
-      await tx.order.updateMany({
-        where: { id: { in: activeOrderIds } },
-        data: { tableId: toTableId }
-      });
-
-      // Cập nhật trạng thái 2 bàn
-      const updatedFromTable = await tx.diningTable.update({
-        where: { id: fromTableId },
-        data: {
-          status: 'AVAILABLE',
-          currentOrderId: null
-        },
-        include: {
-          orders: {
-            where: {
-              paymentStatus: 'UNPAID',
-              status: { notIn: ['COMPLETED', 'CANCELLED'] }
-            },
-            include: { items: true }
-          }
-        }
-      });
-
-      const updatedToTable = await tx.diningTable.update({
-        where: { id: toTableId },
-        data: {
-          status: 'OCCUPIED',
-          currentOrderId: primaryOrderId
-        },
-        include: {
-          orders: {
-            where: {
-              paymentStatus: 'UNPAID',
-              status: { notIn: ['COMPLETED', 'CANCELLED'] }
-            },
-            include: { items: true }
-          }
-        }
-      });
-
-      return {
-        fromTable: updatedFromTable,
-        toTable: updatedToTable,
-        transferredOrdersCount: activeOrderIds.length,
-        transferredOrderCodes: fromTable.orders.map((o) => o.code),
-        fromTableNumber: fromTable.tableNumber,
-        toTableNumber: toTable.tableNumber,
-        activeOrderIds
-      };
+      if (!orders.length) throw ApiError.orderStateInvalid('Bàn nguồn không có đơn hàng để chuyển');
+      const activeOrderIds = orders.map(order => order.id);
+      const primaryOrderId = orders.find(order => order.paymentStatus !== 'PAID' || order.status !== 'COMPLETED')?.id ?? orders[0].id;
+      // Clear the source marker before assigning the unique active marker to the destination.
+      await tx.diningTable.update({ where: { id: from.id }, data: { currentSessionId: null, currentOrderId: null, status: 'AVAILABLE' } });
+      await tx.order.updateMany({ where: { id: { in: activeOrderIds } }, data: { tableId: to.id } });
+      await tx.reservation.updateMany({ where: { tableId: from.id, tableSessionId: from.currentSessionId, status: 'CHECKED_IN' }, data: { tableId: to.id } });
+      await tx.diningTable.update({ where: { id: to.id }, data: { currentSessionId: from.currentSessionId, currentOrderId: primaryOrderId, status: 'OCCUPIED' } });
+      await AuditService.logInTransaction(tx, { action: 'TABLE_TRANSFERRED', targetType: 'DiningTable', targetId: to.id,
+        actorId: actor.id, actorName: actor.name, metadata: { fromTableNumber: from.tableNumber, toTableNumber: to.tableNumber,
+          orderCodes: orders.map(order => order.code), ordersCount: orders.length, tableSessionId: from.currentSessionId } });
+      return { activeOrderIds, fromTableNumber: from.tableNumber, toTableNumber: to.tableNumber };
     });
-
-    const derivedFrom = deriveTableState(result.fromTable);
-    const derivedTo = deriveTableState(result.toTable);
-
-    // Phát socket đồng bộ trạng thái bàn cho toàn hệ thống
-    emitToAll('table:statusChanged', {
-      tableId: derivedFrom.id,
-      tableNumber: derivedFrom.tableNumber,
-      status: derivedFrom.status as any,
-      currentOrderId: derivedFrom.currentOrderId
+    const fromTable = (await this.getTableById(fromTableId)).table;
+    const toTable = (await this.getTableById(toTableId)).table;
+    for (const table of [fromTable, toTable]) emitToAll('table:statusChanged', {
+      tableId: table.id, tableNumber: table.tableNumber, status: table.status as any,
+      currentOrderId: table.currentOrderId, currentSessionId: table.currentSessionId
     });
-
-    emitToAll('table:statusChanged', {
-      tableId: derivedTo.id,
-      tableNumber: derivedTo.tableNumber,
-      status: derivedTo.status as any,
-      currentOrderId: derivedTo.currentOrderId
-    });
-
-    // Phát sự kiện chuyển bàn cho KDS Bếp
-    emitToRoom('restaurant:kds', 'order:tableTransferred', {
-      orderIds: result.activeOrderIds,
-      fromTableNumber: result.fromTableNumber,
-      toTableNumber: result.toTableNumber
-    });
-
-    // Ghi nhận Audit Log
-    await AuditService.log({
-      action: 'TABLE_TRANSFERRED',
-      targetType: 'DiningTable',
-      targetId: toTableId,
-      actorId: actor.id,
-      actorName: actor.name,
-      metadata: {
-        fromTableNumber: result.fromTableNumber,
-        toTableNumber: result.toTableNumber,
-        orderCodes: result.transferredOrderCodes,
-        ordersCount: result.transferredOrdersCount
-      }
-    });
-
-    return {
-      fromTable: derivedFrom,
-      toTable: derivedTo,
-      transferredOrdersCount: result.transferredOrdersCount
-    };
+    emitToRoom('restaurant:kds', 'order:tableTransferred', { orderIds: result.activeOrderIds,
+      fromTableNumber: result.fromTableNumber, toTableNumber: result.toTableNumber });
+    emitToAll('reservations:changed', { ids: [], updatedAt: new Date().toISOString() });
+    return { fromTable, toTable, transferredOrdersCount: result.activeOrderIds.length };
   }
 }

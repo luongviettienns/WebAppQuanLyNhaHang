@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -12,7 +12,7 @@ import {
   Text,
   View
 } from 'react-native';
-import { Bell, Check, ChefHat, ChevronLeft, ChevronRight, CreditCard, Plus, QrCode, ReceiptText, RefreshCw, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
+import { Bell, Check, ChefHat, ChevronLeft, ChevronRight, Copy, CreditCard, Plus, ReceiptText, RefreshCw, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
 import { DiningTableDto, MenuItemDto, OrderDto, OrderStatus, VoucherValidationResultDto } from '../../api/contracts';
 import { getApiBaseUrl } from '../../api/config';
 import { useRestaurant } from '../../contexts/RestaurantContext';
@@ -38,6 +38,13 @@ const formatVND = (amount: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
 
 const formatTableNumber = (value: number) => value.toString().padStart(2, '0');
+
+const isOrderInTableSession = (order: OrderDto | null | undefined, table: DiningTableDto | null): boolean => {
+  if (!order || !table || order.status === 'CANCELLED' || (order.tableId != null && order.tableId !== table.id)) return false;
+  // Undefined supports legacy callers; the live API always supplies a nullable marker.
+  if (table.currentSessionId === undefined) return order.tableSessionId === undefined;
+  return table.currentSessionId !== null && order.tableSessionId === table.currentSessionId && order.tableId === table.id;
+};
 
 const orderStatusConfig = (order: Pick<OrderDto, 'status' | 'paymentStatus' | 'payLaterAuthorized'>): { label: string; tone: StatusTone } => {
   if (order.status === 'PENDING' && order.paymentStatus !== 'PAID' && !order.payLaterAuthorized) return { label: 'Chờ xác nhận tiền', tone: 'warning' };
@@ -105,8 +112,28 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
 
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [vietQrConfig, setVietQrConfig] = useState<{ bankId: string; accountNumber: string; accountName: string } | null>(null);
+  const [copySuccessMessage, setCopySuccessMessage] = useState<string | null>(null);
+  const guestTableRequestRef = useRef(0);
+
+  const copyText = useCallback(async (value: string, label: string) => {
+    try {
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(value);
+      }
+      setCopySuccessMessage(`Đã sao chép ${label}!`);
+      showToast({
+        type: 'success',
+        message: `Đã sao chép ${label}: ${value}`
+      });
+    } catch {
+      setCopySuccessMessage(`Hãy chọn và sao chép ${label}.`);
+    }
+    setTimeout(() => setCopySuccessMessage(null), 3000);
+  }, [showToast]);
 
   const loadGuestTable = useCallback(async () => {
+    const requestId = ++guestTableRequestRef.current;
     setGuestTableError(null);
     try {
       if (qrCodeToken) {
@@ -115,8 +142,12 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
         if (!response.ok) {
           throw new Error(json.error?.message || 'Mã QR bàn không hợp lệ');
         }
+        if (requestId !== guestTableRequestRef.current) return;
         setGuestTable(json.data.table);
         setResolvedQrToken(qrCodeToken);
+        if (json.data.vietQrConfig) {
+          setVietQrConfig(json.data.vietQrConfig);
+        }
         return json.data.table;
       } else if (tableNumber) {
         // Tu dong nhan dien va lay token hop le theo so ban tu server
@@ -125,14 +156,18 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
         if (!response.ok) {
           throw new Error(json.error?.message || `Không thể tải thông tin Bàn ${tableNumber}`);
         }
+        if (requestId !== guestTableRequestRef.current) return;
         setGuestTable(json.data.table);
         if (json.data.qrCodeToken) {
           setResolvedQrToken(json.data.qrCodeToken);
         }
+        if (json.data.vietQrConfig) {
+          setVietQrConfig(json.data.vietQrConfig);
+        }
         return json.data.table;
       }
     } catch (err: any) {
-      setGuestTableError(err.message || 'Không thể tải thông tin bàn');
+      if (requestId === guestTableRequestRef.current) setGuestTableError(err.message || 'Không thể tải thông tin bàn');
     }
   }, [qrCodeToken, tableNumber]);
 
@@ -164,14 +199,16 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
   }, [loadGuestTable, fetchTables, showToast]);
 
   const effectiveQrToken = qrCodeToken || resolvedQrToken;
-  const table = guestTable || tables.find((t) => t.tableNumber === tableNumber) || (tables.length > 0 ? tables[0] : null);
+  const table = guestTable || tables.find((t) => t.tableNumber === tableNumber) || null;
+  const currentTableRef = useRef(table);
+  currentTableRef.current = table;
   const tableId = table?.id;
   const displayTableNumber = table?.tableNumber ?? tableNumber;
-  const allTableOrders = table?.orders || [];
+  const allTableOrders = useMemo(() => (table?.orders || []).filter((order) => isOrderInTableSession(order, table)), [table]);
   const liveOrder =
     (selectedOrderId ? allTableOrders.find((o) => o.id === selectedOrderId) : null) ||
-    currentOrder ||
-    activeTableOrder ||
+    (isOrderInTableSession(currentOrder, table) ? currentOrder : null) ||
+    (isOrderInTableSession(activeTableOrder, table) ? activeTableOrder : null) ||
     allTableOrders[0] ||
     null;
 
@@ -179,6 +216,21 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     allTableOrders.length > 0
       ? allTableOrders.reduce((sum, o) => sum + (o.finalAmount || 0), 0)
       : liveOrder?.finalAmount || 0;
+
+  const effectiveVietQrConfig = vietQrConfig || {
+    bankId: '970423',
+    accountNumber: '10001317794',
+    accountName: 'PHAN VAN KHANH'
+  };
+
+  const qrAmountToPay = totalTableAmount > 0 ? totalTableAmount : (liveOrder?.finalAmount || 0);
+  const qrTransferContent = liveOrder?.code ? `THU ${liveOrder.code}` : `BAN${formatTableNumber(displayTableNumber)}`;
+  const vietQrQuery = new URLSearchParams({
+    amount: String(qrAmountToPay),
+    addInfo: qrTransferContent,
+    accountName: effectiveVietQrConfig.accountName
+  });
+  const liveVietQrUrl = `https://img.vietqr.io/image/${encodeURIComponent(effectiveVietQrConfig.bankId)}-${encodeURIComponent(effectiveVietQrConfig.accountNumber)}-compact2.png?${vietQrQuery.toString()}`;
 
   const batchScrollRef = useRef<ScrollView>(null);
 
@@ -202,14 +254,29 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
   // Luu vet status da thong bao de chan triet de viec spam chuong / rung / toast
   const lastNotifiedStatusKeyRef = useRef<string | null>(null);
   const isFirstMountRef = useRef<boolean>(true);
+  const previousVisitRef = useRef({ tableId: table?.id, sessionId: table?.currentSessionId });
+
+  useEffect(() => {
+    const previous = previousVisitRef.current;
+    previousVisitRef.current = { tableId: table?.id, sessionId: table?.currentSessionId };
+    if (previous.tableId === table?.id && previous.sessionId === table?.currentSessionId) return;
+    setCurrentOrder((order) => isOrderInTableSession(order, table) ? order : null);
+    setSelectedOrderId(null);
+    setIsVietQRModalOpen(false);
+    setPaymentDeclaration((declaration) => isOrderInTableSession(declaration?.order, table) ? declaration : null);
+    setOrderError(null);
+    lastNotifiedStatusKeyRef.current = null;
+    isFirstMountRef.current = true;
+  }, [table]);
 
   // Fallback polling dinh ky nhe nhang (4.5s) de dong bo trang thai khi dien thoai mo khoa man hinh
   useEffect(() => {
     const interval = setInterval(() => {
       fetchTables();
+      void loadGuestTable();
     }, 4500);
     return () => clearInterval(interval);
-  }, [fetchTables]);
+  }, [fetchTables, loadGuestTable]);
 
   // Ham thong bao chuyen trang thai cho khach (dam bao moi cap orderId + status chi kich hoat 1 lan duy nhat)
   const notifyStatusTransition = useCallback((orderId: number, status: OrderStatus) => {
@@ -254,7 +321,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
 
   // Tu dong cap nhat don hang hien tai khi du lieu ban an thay doi (polling fallback)
   useEffect(() => {
-    const latestTableOrder = table?.orders?.[0];
+    const latestTableOrder = allTableOrders[0];
     if (latestTableOrder) {
       if (!selectedOrderId) {
         setSelectedOrderId(latestTableOrder.id);
@@ -271,16 +338,19 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
         notifyStatusTransition(latestTableOrder.id, latestTableOrder.status);
       }
     }
-  }, [table?.orders, selectedOrderId, notifyStatusTransition]);
+  }, [allTableOrders, selectedOrderId, notifyStatusTransition]);
 
   useEffect(() => {
-    if (orderPaymentsRevision > 0) void fetchTables();
-  }, [orderPaymentsRevision, fetchTables]);
+    if (orderPaymentsRevision > 0) {
+      void fetchTables();
+      void loadGuestTable();
+    }
+  }, [orderPaymentsRevision, fetchTables, loadGuestTable]);
 
   useEffect(() => {
     if (!currentOrder || (!currentOrder.payLaterAuthorized && currentOrder.paymentStatus !== 'PAID')) return;
     setPaymentDeclaration(null);
-  }, [currentOrder?.payLaterAuthorized, currentOrder?.paymentStatus]);
+  }, [currentOrder]);
 
   useEffect(() => {
     if (!latestOrderPaymentChanged || latestOrderPaymentChanged.orderId !== liveOrder?.id) return;
@@ -294,17 +364,14 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
   // Lang nghe socket cap nhat tien do don hang theo thoi gian thuc cho khach
   useEffect(() => {
     if (!latestOrderStatusChanged) return;
-    const isThisTable =
-      (latestOrderStatusChanged.tableNumber != null && latestOrderStatusChanged.tableNumber === displayTableNumber) ||
-      (latestOrderStatusChanged.tableId != null && latestOrderStatusChanged.tableId === tableId) ||
-      (liveOrder && liveOrder.id === latestOrderStatusChanged.orderId) ||
-      table?.orders?.some((o) => o.id === latestOrderStatusChanged.orderId);
+    const matchingOrder = allTableOrders.find((order) => order.id === latestOrderStatusChanged.orderId) ||
+      (liveOrder?.id === latestOrderStatusChanged.orderId ? liveOrder : null);
 
-    if (isThisTable) {
+    if (matchingOrder) {
       setCurrentOrder((prev) => {
-        const base = prev || liveOrder || table?.orders?.find((o) => o.id === latestOrderStatusChanged.orderId);
+        const base = prev?.id === matchingOrder.id && isOrderInTableSession(prev, table) ? prev : matchingOrder;
         if (base) {
-          return {
+          const updated = {
             ...base,
             status: latestOrderStatusChanged.status,
             prepTimeSec: latestOrderStatusChanged.prepTimeSec ?? base.prepTimeSec,
@@ -312,13 +379,16 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
             readyAt: latestOrderStatusChanged.readyAt ?? base.readyAt,
             completedAt: latestOrderStatusChanged.completedAt ?? base.completedAt
           };
+          if (base === prev && base.status === updated.status && base.prepTimeSec === updated.prepTimeSec &&
+              base.preparingAt === updated.preparingAt && base.readyAt === updated.readyAt && base.completedAt === updated.completedAt) return prev;
+          return updated;
         }
         return prev;
       });
 
       notifyStatusTransition(latestOrderStatusChanged.orderId, latestOrderStatusChanged.status);
     }
-  }, [latestOrderStatusChanged, tableId, displayTableNumber, notifyStatusTransition]);
+  }, [latestOrderStatusChanged, allTableOrders, liveOrder, table, notifyStatusTransition]);
 
   const handleEnableNotification = async () => {
     setIsNotifPromptModalOpen(false);
@@ -364,18 +434,32 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
     notificationHelper.requestPermission().catch(() => {});
 
     const tokenToSend = effectiveQrToken || (table as any)?.qrCodeToken || undefined;
-    const result = await createDineInOrder(tableId, orderNotes.trim() || undefined, tokenToSend, appliedVoucher?.code, reservationAccessToken);
+    const observedSessionId = table?.currentSessionId;
+    const result = await createDineInOrder(tableId, orderNotes.trim() || undefined, tokenToSend, appliedVoucher?.code, reservationAccessToken, observedSessionId);
     setIsSubmitting(false);
 
     if (result.success && result.order) {
       let order = result.order;
+      const latestTable = currentTableRef.current;
+      if (latestTable?.id !== tableId ||
+          (latestTable.currentSessionId !== observedSessionId && !isOrderInTableSession(order, latestTable))) return;
+      // Adopt the new marker immediately: the guest read can still be refreshing after POST.
+      if (order.tableSessionId != null) {
+        ++guestTableRequestRef.current;
+        const updatedTable = { ...latestTable, currentSessionId: order.tableSessionId,
+          orders: [order, ...(latestTable.orders || []).filter((existing) => existing.id !== order.id && existing.tableSessionId === order.tableSessionId)] };
+        currentTableRef.current = updatedTable;
+        setGuestTable(updatedTable);
+      }
       if (tokenToSend) {
         let declaration: QrOrderPaymentDeclaration;
         try {
           declaration = await declareQrOrderPaymentApi(order.id, reservationAccessToken ? { reservationAccessToken } : { qrCodeToken: tokenToSend });
+          if (!isOrderInTableSession(order, currentTableRef.current)) return;
           setPaymentDeclaration(declaration);
           order = declaration.order;
         } catch (failure: any) {
+          if (!isOrderInTableSession(order, currentTableRef.current)) return;
           setCurrentOrder(order);
           setOrderError(failure.message || 'Order đã tạo nhưng chưa thể khai báo thanh toán. Vui lòng nhờ thu ngân kiểm tra.');
           setIsBrowsingMenu(false); setIsCartModalOpen(false); setOrderNotes('');
@@ -518,6 +602,7 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
           {/* Nút Thanh toán */}
           {liveOrder && (
             <Pressable
+              testID="customer-header-payment-btn"
               accessibilityRole="button"
               accessibilityLabel={'Thanh toán ' + formatVND(totalTableAmount)}
               onPress={() => setIsVietQRModalOpen(true)}
@@ -1100,8 +1185,10 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
           <SafeAreaView style={[styles.qrModal, elevation.modal, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}>
             <View style={[styles.qrHeader, { borderBottomColor: theme.borderSubtle }]}>
               <View style={styles.qrHeaderCopy}>
-                <Text accessibilityRole="header" style={[styles.qrTitle, { color: theme.textPrimary }]}>Thanh toán chuyển khoản</Text>
-                <Text style={[styles.qrSubtitle, { color: theme.textSecondary }]}>Bàn {formatTableNumber(displayTableNumber)}</Text>
+                <Text accessibilityRole="header" style={[styles.qrTitle, { color: theme.textPrimary }]}>Thanh toán VietQR</Text>
+                <Text style={[styles.qrSubtitle, { color: theme.textSecondary }]}>
+                  Bàn {formatTableNumber(displayTableNumber)} · {allTableOrders.length > 1 ? `${allTableOrders.length} đợt gọi món` : (liveOrder?.code ? `Đơn #${liveOrder.code}` : 'Chưa có đơn')}
+                </Text>
               </View>
               <Pressable
                 accessibilityRole="button"
@@ -1113,36 +1200,116 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={styles.qrBody}>
+            <ScrollView contentContainerStyle={styles.qrBody} showsVerticalScrollIndicator={false}>
               <Surface level="sunken" style={styles.qrCodePanel}>
-                <View style={[styles.qrPlaceholder, { backgroundColor: theme.surfaceBase, borderColor: theme.borderStrong }]}>
-                  <AppIcon icon={QrCode} color={theme.textPrimary} size={88} />
-                </View>
-                <Text style={[styles.qrIllustrationHint, { color: theme.textSecondary }]}>Mã minh họa, không dùng để thanh toán.</Text>
-                <Text style={[styles.qrBankName, { color: theme.textPrimary }]}>MB Bank</Text>
-                <Text style={[styles.qrAccount, { color: theme.textSecondary }]}>0369888999 · Crispy Bite</Text>
+                <Image
+                  source={{ uri: liveVietQrUrl }}
+                  accessibilityLabel="Mã VietQR thanh toán chuyển khoản ngân hàng"
+                  style={styles.realQrImage}
+                  resizeMode="contain"
+                />
+                <Text style={[styles.qrBankName, { color: theme.textPrimary }]}>
+                  {effectiveVietQrConfig.bankId === '970423' ? 'NCB (Ngân hàng Quốc Dân)' : `Ngân hàng mã ${effectiveVietQrConfig.bankId}`}
+                </Text>
+                <Text style={[styles.qrAccount, { color: theme.textSecondary }]}>
+                  STK: {effectiveVietQrConfig.accountNumber} · {effectiveVietQrConfig.accountName}
+                </Text>
               </Surface>
 
               <View style={styles.paymentDetails}>
-                <View>
-                  <Text style={[styles.paymentLabel, { color: theme.textSecondary }]}>Số tiền</Text>
-                  <Text style={[styles.qrAmount, { color: theme.primary }]}>{formatVND(totalTableAmount)}</Text>
+                <View style={styles.copyableRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.paymentLabel, { color: theme.textSecondary }]}>Số tiền thanh toán</Text>
+                    <Text style={[styles.qrAmount, { color: theme.primary }]}>{formatVND(qrAmountToPay)}</Text>
+                  </View>
+                  <Pressable
+                    testID="copy-amount-btn"
+                    accessibilityRole="button"
+                    accessibilityLabel="Sao chép số tiền"
+                    onPress={() => void copyText(String(qrAmountToPay), 'số tiền')}
+                    style={({ pressed }) => [
+                      styles.copyButton,
+                      { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceRaised, borderColor: theme.borderSubtle }
+                    ]}
+                  >
+                    <AppIcon icon={Copy} color={theme.primary} size={15} />
+                    <Text style={[styles.copyButtonText, { color: theme.primary }]}>Sao chép</Text>
+                  </Pressable>
                 </View>
-                <View>
-                  <Text style={[styles.paymentLabel, { color: theme.textSecondary }]}>Nội dung chuyển khoản</Text>
-                  <Text style={[styles.transferContent, { color: theme.textPrimary }]}>
-                    BAN{displayTableNumber} {allTableOrders.length > 1 ? `TONG${allTableOrders.length}DON` : (liveOrder?.code || '')}
-                  </Text>
+
+                <View style={styles.copyableRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.paymentLabel, { color: theme.textSecondary }]}>Số tài khoản nhận</Text>
+                    <Text selectable style={[styles.qrFieldText, { color: theme.textPrimary }]}>
+                      {effectiveVietQrConfig.accountNumber}
+                    </Text>
+                  </View>
+                  <Pressable
+                    testID="copy-account-btn"
+                    accessibilityRole="button"
+                    accessibilityLabel="Sao chép số tài khoản"
+                    onPress={() => void copyText(effectiveVietQrConfig.accountNumber, 'số tài khoản')}
+                    style={({ pressed }) => [
+                      styles.copyButton,
+                      { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceRaised, borderColor: theme.borderSubtle }
+                    ]}
+                  >
+                    <AppIcon icon={Copy} color={theme.primary} size={15} />
+                    <Text style={[styles.copyButtonText, { color: theme.primary }]}>Sao chép</Text>
+                  </Pressable>
+                </View>
+
+                <View style={styles.copyableRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.paymentLabel, { color: theme.textSecondary }]}>Nội dung chuyển khoản (bắt buộc)</Text>
+                    <Text selectable style={[styles.transferContentText, { color: theme.primary, backgroundColor: theme.surfaceSunken }]}>
+                      {qrTransferContent}
+                    </Text>
+                  </View>
+                  <Pressable
+                    testID="copy-content-btn"
+                    accessibilityRole="button"
+                    accessibilityLabel="Sao chép nội dung chuyển khoản"
+                    onPress={() => void copyText(qrTransferContent, 'nội dung chuyển khoản')}
+                    style={({ pressed }) => [
+                      styles.copyButton,
+                      { backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceRaised, borderColor: theme.borderSubtle }
+                    ]}
+                  >
+                    <AppIcon icon={Copy} color={theme.primary} size={15} />
+                    <Text style={[styles.copyButtonText, { color: theme.primary }]}>Sao chép</Text>
+                  </Pressable>
                 </View>
               </View>
 
+              {copySuccessMessage ? (
+                <Text style={{ color: theme.primary, textAlign: 'center', fontFamily: typography.families.bodyMedium }}>
+                  ✓ {copySuccessMessage}
+                </Text>
+              ) : null}
+
               <InlineAlert
                 tone="info"
-                title="Cách thanh toán"
-                message="Vui lòng liên hệ nhân viên để xác nhận thông tin chuyển khoản và thanh toán."
+                title="Hướng dẫn thanh toán"
+                message="Mở ứng dụng ngân hàng quét mã QR ở trên hoặc chuyển khoản theo đúng STK và nội dung. Sau khi chuyển, thu ngân sẽ đối chiếu và xác nhận hóa đơn ngay."
               />
 
-              <Button variant="quiet" label="Đóng" onPress={() => setIsVietQRModalOpen(false)} />
+              <View style={styles.qrModalActions}>
+                <Button
+                  variant="primary"
+                  label="Tôi đã chuyển tiền xong"
+                  icon={Check}
+                  onPress={() => {
+                    setIsVietQRModalOpen(false);
+                    showToast({
+                      type: 'info',
+                      title: 'Đã ghi nhận thanh toán',
+                      message: 'Thu ngân đang đối chiếu tiền vào tài khoản. Cảm ơn bạn!'
+                    });
+                  }}
+                />
+                <Button variant="quiet" label="Đóng" onPress={() => setIsVietQRModalOpen(false)} />
+              </View>
             </ScrollView>
           </SafeAreaView>
         </View>
@@ -1478,11 +1645,49 @@ const styles = StyleSheet.create({
   closeButton: { alignItems: 'center', borderRadius: radii.md, height: 44, justifyContent: 'center', width: 44 },
   qrBody: { gap: spacing.lg, padding: spacing.lg },
   qrCodePanel: { alignItems: 'center', gap: spacing.sm, padding: spacing.lg },
+  realQrImage: { height: 230, width: 230, borderRadius: radii.md },
   qrPlaceholder: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, height: 132, justifyContent: 'center', width: 132 },
   qrIllustrationHint: { fontFamily: typography.families.body, fontSize: typography.sizes.xs, textAlign: 'center' },
   qrBankName: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
   qrAccount: { fontFamily: typography.families.body, fontSize: typography.sizes.sm },
   paymentDetails: { gap: spacing.md },
+  copyableRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.sm,
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xs
+  },
+  copyButton: {
+    alignItems: 'center',
+    borderRadius: radii.sm,
+    borderWidth: 1,
+    flexDirection: 'row',
+    gap: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 6
+  },
+  copyButtonText: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.xs
+  },
+  qrFieldText: {
+    fontFamily: typography.families.bodyBold,
+    fontSize: typography.sizes.md,
+    marginTop: 2
+  },
+  transferContentText: {
+    borderRadius: radii.xs,
+    fontFamily: typography.families.bodyBold,
+    fontSize: typography.sizes.md,
+    letterSpacing: 0.5,
+    marginTop: 2,
+    padding: spacing.xs
+  },
+  qrModalActions: {
+    gap: spacing.sm,
+    marginTop: spacing.xs
+  },
   paymentLabel: { fontFamily: typography.families.body, fontSize: typography.sizes.xs },
   qrAmount: {
     fontFamily: typography.families.operationalBold,
