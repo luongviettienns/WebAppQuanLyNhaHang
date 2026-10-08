@@ -28,6 +28,7 @@ export async function truncateAllTables() {
   // Xoa du lieu theo thu tu khoa ngoai
   await prismaTest.$executeRawUnsafe(`SET FOREIGN_KEY_CHECKS = 0;`);
   const tables = [
+    'KitchenWasteRequest',
     'OrderItemCancellation',
     'CashVoucher',
     'CashbookSetting',

@@ -53,6 +53,7 @@ describe('Kitchen Waste & Low Stock Alerts API (Phase 10 - Slice 10.1)', () => {
       const res = await request(app)
         .post('/api/inventory/kitchen-waste')
         .set('Authorization', `Bearer ${cashierToken}`)
+        .set('Idempotency-Key', 'legacy-kitchen-waste-1')
         .send({ type: 'INGREDIENT', ingredientId: 1, quantity: 1, reason: 'Cháy khét' });
 
       expect(res.status).toBe(403);
@@ -71,6 +72,7 @@ describe('Kitchen Waste & Low Stock Alerts API (Phase 10 - Slice 10.1)', () => {
       const res = await request(app)
         .post('/api/inventory/kitchen-waste')
         .set('Authorization', `Bearer ${kitchenToken}`)
+        .set('Idempotency-Key', 'legacy-kitchen-waste-2')
         .send({
           type: 'INGREDIENT',
           ingredientId: ingredient.id,
@@ -122,6 +124,7 @@ describe('Kitchen Waste & Low Stock Alerts API (Phase 10 - Slice 10.1)', () => {
       const res = await request(app)
         .post('/api/inventory/kitchen-waste')
         .set('Authorization', `Bearer ${kitchenToken}`)
+        .set('Idempotency-Key', 'legacy-kitchen-waste-3')
         .send({
           type: 'MENU_ITEM',
           menuItemId: menuItem.id,

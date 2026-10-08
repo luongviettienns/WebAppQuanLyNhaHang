@@ -234,9 +234,13 @@ Thời gian nấu định mức (`targetPrepTime`) được phân định theo d
 * **Cờ `isSoldOutToday` (86'd) [CODE]**: Bếp bật nút gạt khi hết nguyên liệu đột xuất trong ca. Món bị ẩn trên menu khách và POS nhưng tự động **Reset mở lại vào đầu ngày mới**.
 * **Cờ `isActive` (Menu Management) [CODE]**: Quản lý tắt trong trang Admin khi nhà hàng ngừng kinh doanh món đó vĩnh viễn hoặc theo mùa vụ.
 
-### 3.4. Báo Hao hụt Bếp 1 chạm (Kitchen Waste Logging 🗑️)
-* Đầu bếp bấm "BÁO HỦY BẾP": Chọn món hoặc nguyên liệu bị cháy khét, rơi vãi $\rightarrow$ Chọn số lượng và lý do.
-* Hệ thống quy đổi theo định lượng BOM, trừ kho loại `KITCHEN_WASTE`, ghi nhận chi phí vào Giá vốn hàng bán (`kitchenWasteCost`) trong Báo cáo tài chính ngày.
+### 3.4. Báo Hao hụt Bếp theo Lượng Thực tế [CODE]
+- Kitchen/Admin mở "Báo hao hụt", chọn **Theo món (toàn bộ BOM)** hoặc **Theo nguyên liệu**. Danh sách nguyên liệu gồm toàn bộ nguyên liệu đang hoạt động, có tìm kiếm tên/SKU; không phụ thuộc danh sách cảnh báo kho.
+- Nhập lượng hỏng theo đúng đơn vị kho (gram, ml, kg...), hỗ trợ số thập phân bằng dấu phẩy hoặc dấu chấm. Chưa có quy đổi đơn vị tự động.
+- Trước xác nhận, hiển thị từng nguyên liệu sẽ trừ và tồn dự kiến theo dữ liệu vừa tải. Theo món trừ toàn bộ công thức; nếu chỉ mất một nguyên liệu, chọn Theo nguyên liệu. Món chưa có BOM không được ghi theo món.
+- Xác nhận trừ kho ngay, ghi `KITCHEN_WASTE` và audit trong cùng transaction; vẫn cho phép tồn âm theo đặc tả kho. Không tự hủy đơn, hoàn tiền hoặc báo hết món.
+- Header `Idempotency-Key` bắt buộc. Cùng nhân viên + mã + nội dung chỉ trừ kho một lần kể cả gửi đồng thời. Cùng mã khác nội dung trả 409. Phiếu đang chưa rõ kết quả được giữ trên thiết bị để thử lại cùng mã khi mất mạng/tải lại trang.
+- Contract đọc: `GET /api/inventory/kitchen-waste/options` chỉ KITCHEN/ADMIN, trả nguyên liệu và BOM phục vụ xem trước; không cấp quyền sửa kho hoặc trả dữ liệu giá vốn.
 
 ---
 

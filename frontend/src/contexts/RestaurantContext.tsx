@@ -117,8 +117,9 @@ interface RestaurantContextType {
     deliveryAddress?: string;
     deliveryFee?: number;
     notes?: string;
+    expectedTableSessionId?: string | null;
   }) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
-  createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string, voucherCode?: string, reservationAccessToken?: string) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
+  createDineInOrder: (tableId: number, notes?: string, qrCodeToken?: string, voucherCode?: string, reservationAccessToken?: string, expectedTableSessionId?: string | null) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   payOrder: (orderId: number, paymentMethod: PaymentMethod, financialAccountId?: number | null) => Promise<{ success: boolean; order?: OrderDto; error?: string }>;
   updateTableStatus: (tableId: number, status: 'AVAILABLE' | 'DIRTY' | 'NEED_CLEANING') => Promise<{ success: boolean; table?: DiningTableDto; error?: string }>;
   transferTable: (fromTableId: number, toTableId: number) => Promise<{ success: boolean; data?: { fromTable: DiningTableDto; toTable: DiningTableDto }; error?: string }>;
@@ -880,7 +881,8 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     deliveryPartnerId,
     deliveryAddress,
     deliveryFee,
-    notes
+    notes,
+    expectedTableSessionId
   }: {
     orderType: OrderType;
     tableId?: number | null;
@@ -892,6 +894,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     deliveryAddress?: string;
     deliveryFee?: number;
     notes?: string;
+    expectedTableSessionId?: string | null;
   }): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
     if (cart.length === 0) {
       return { success: false, error: 'Giỏ hàng đang trống' };
@@ -908,6 +911,7 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
       ...(customerId ? { customerId } : {}),
       ...(orderType === 'DINE_IN' && qrCodeToken ? { qrCodeToken } : {}),
       ...(orderType === 'DINE_IN' && reservationAccessToken ? { reservationAccessToken } : {}),
+      ...(orderType === 'DINE_IN' && expectedTableSessionId !== undefined ? { expectedTableSessionId } : {}),
       ...(voucherCode ? { voucherCode } : {}),
       ...(orderType === 'DELIVERY' ? { deliveryPartnerId, deliveryAddress, deliveryFee } : {}),
       orderType,
@@ -956,9 +960,10 @@ export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children
     notes?: string,
     qrCodeToken?: string,
     voucherCode?: string,
-    reservationAccessToken?: string
+    reservationAccessToken?: string,
+    expectedTableSessionId?: string | null
   ): Promise<{ success: boolean; order?: OrderDto; error?: string }> => {
-    return createOrder({ orderType: 'DINE_IN', tableId, notes, qrCodeToken, voucherCode, reservationAccessToken });
+    return createOrder({ orderType: 'DINE_IN', tableId, notes, qrCodeToken, voucherCode, reservationAccessToken, expectedTableSessionId });
   };
 
   const payOrder = async (

@@ -9,6 +9,7 @@ declare module 'react-test-renderer' {
 
   export interface ReactTestRenderer {
     root: ReactTestInstance;
+    unmount(): void;
   }
 
   export function act(callback: () => void | Promise<void>): Promise<void>;

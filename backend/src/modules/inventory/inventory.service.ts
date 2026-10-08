@@ -1,4 +1,5 @@
 import { PrismaClient, Prisma } from '@prisma/client';
+import { createHash } from 'crypto';
 import { prisma as defaultPrisma } from '../../config/prisma';
 import { ApiError } from '../../lib/api-error';
 import { emitToRoom } from '../../lib/socket';
@@ -712,160 +713,231 @@ export class InventoryService {
   static async recordKitchenWaste(
     dto: KitchenWasteDto,
     actor: { id: number; name?: string | null },
+    requestKey: string,
     db: PrismaClient = defaultPrisma
   ) {
-    return await db.$transaction(async (tx) => {
-      let totalCostAmount = 0;
-      const deductedIngredients: Array<{ ingredientId: number; name: string; quantityDeducted: number; costAmount: number }> = [];
+    const requestDigest = createHash('sha256').update(JSON.stringify({
+      type: dto.type,
+      targetId: dto.type === 'INGREDIENT' ? dto.ingredientId : dto.menuItemId,
+      quantity: dto.quantity,
+      reason: dto.reason.trim(),
+      note: dto.note?.trim() || null
+    })).digest('hex');
+    const where = { actorId_requestKey: { actorId: actor.id, requestKey } };
+    type WasteResult = { totalCostAmount: number; deductedIngredients: Array<{ ingredientId: number; name: string; quantityDeducted: number; costAmount: number }> };
+    const readReplay = (saved: { requestDigest: string; result: Prisma.JsonValue }): WasteResult => {
+      if (saved.requestDigest !== requestDigest) throw ApiError.conflict('Mã yêu cầu đã được dùng cho nội dung hao hụt khác');
+      return saved.result as unknown as WasteResult;
+    };
+    const saved = await db.kitchenWasteRequest.findUnique({ where });
+    if (saved) return readReplay(saved);
 
-      if (dto.type === 'INGREDIENT') {
-        const ingredient = await tx.ingredient.findUnique({
-          where: { id: dto.ingredientId }
-        });
+    const alerts: Array<{ id: number; sku: string; name: string; unit: string; currentStock: number; minThreshold: number; isDepleted: boolean }> = [];
+    let replayed = false;
+    try {
+      const result = await db.$transaction(async (tx) => {
+        // Serialize this actor's submissions so simultaneous retries can read the
+        // committed response without performing any duplicate stock/audit work.
+        await tx.$queryRaw`SELECT id FROM User WHERE id = ${actor.id} FOR UPDATE`;
+        const replay = await tx.kitchenWasteRequest.findUnique({ where });
+        if (replay) { replayed = true; return readReplay(replay); }
+        await tx.kitchenWasteRequest.create({ data: { actorId: actor.id, requestKey, requestDigest, result: {} } });
+        let totalCostAmount = 0;
+        const deductedIngredients: Array<{ ingredientId: number; name: string; quantityDeducted: number; costAmount: number }> = [];
 
-        if (!ingredient) {
-          throw ApiError.notFound(`Nguyên liệu ID ${dto.ingredientId} không tồn tại`);
-        }
-
-        const costAmount = Math.round(dto.quantity * ingredient.costPerUnit);
-        totalCostAmount += costAmount;
-
-        const updatedIng = await tx.ingredient.update({
-          where: { id: ingredient.id },
-          data: {
-            currentStock: { decrement: dto.quantity }
-          }
-        });
-
-        if (updatedIng.minThreshold > 0 && updatedIng.currentStock <= updatedIng.minThreshold) {
-          emitToRoom('restaurant:kds', 'inventory:lowStockAlert', {
-            id: updatedIng.id,
-            sku: updatedIng.sku,
-            name: updatedIng.name,
-            unit: updatedIng.unit,
-            currentStock: updatedIng.currentStock,
-            minThreshold: updatedIng.minThreshold,
-            isDepleted: updatedIng.currentStock <= 0
+        if (dto.type === 'INGREDIENT') {
+          const ingredient = await tx.ingredient.findUnique({
+            where: { id: dto.ingredientId }
           });
-        }
 
-        await tx.inventoryTransaction.create({
-          data: {
-            ingredientId: ingredient.id,
-            type: 'KITCHEN_WASTE',
-            quantity: -dto.quantity,
-            costAmount,
-            createdByUserId: actor.id,
-            note: `${dto.reason}${dto.note ? ` - ${dto.note}` : ''}`
+          if (!ingredient || !ingredient.isActive) {
+            throw ApiError.notFound(`Nguyên liệu ID ${dto.ingredientId} không tồn tại`);
           }
-        });
 
-        deductedIngredients.push({
-          ingredientId: ingredient.id,
-          name: ingredient.name,
-          quantityDeducted: dto.quantity,
-          costAmount
-        });
-
-        await AuditService.log({
-          action: 'KITCHEN_WASTE_RECORDED',
-          targetType: 'Ingredient',
-          targetId: ingredient.id,
-          actorId: actor.id,
-          actorName: actor.name,
-          metadata: {
-            wasteType: 'INGREDIENT',
-            ingredientName: ingredient.name,
-            quantity: dto.quantity,
-            unit: ingredient.unit,
-            costAmount,
-            reason: dto.reason
-          }
-        });
-      } else {
-        // MENU_ITEM
-        const menuItem = await tx.menuItem.findUnique({
-          where: { id: dto.menuItemId },
-          include: {
-            menuItemIngredients: {
-              include: { ingredient: true }
-            }
-          }
-        });
-
-        if (!menuItem) {
-          throw ApiError.notFound(`Món ăn ID ${dto.menuItemId} không tồn tại`);
-        }
-
-        if (menuItem.menuItemIngredients.length === 0) {
-          throw ApiError.badRequest(`Món "${menuItem.name}" chưa được cấu hình định lượng BOM nguyên liệu`);
-        }
-
-        for (const bom of menuItem.menuItemIngredients) {
-          const qtyNeeded = bom.quantityRequired * dto.quantity;
-          const costAmount = Math.round(qtyNeeded * bom.ingredient.costPerUnit);
+          const costAmount = Math.round(dto.quantity * ingredient.costPerUnit);
           totalCostAmount += costAmount;
 
-          const updatedBomIng = await tx.ingredient.update({
-            where: { id: bom.ingredientId },
+          const updatedIng = await tx.ingredient.update({
+            where: { id: ingredient.id },
             data: {
-              currentStock: { decrement: qtyNeeded }
+              currentStock: { decrement: dto.quantity }
             }
           });
 
-          if (updatedBomIng.minThreshold > 0 && updatedBomIng.currentStock <= updatedBomIng.minThreshold) {
-            emitToRoom('restaurant:kds', 'inventory:lowStockAlert', {
-              id: updatedBomIng.id,
-              sku: updatedBomIng.sku,
-              name: updatedBomIng.name,
-              unit: updatedBomIng.unit,
-              currentStock: updatedBomIng.currentStock,
-              minThreshold: updatedBomIng.minThreshold,
-              isDepleted: updatedBomIng.currentStock <= 0
+          if (updatedIng.minThreshold > 0 && updatedIng.currentStock <= updatedIng.minThreshold) {
+            alerts.push({
+              id: updatedIng.id,
+              sku: updatedIng.sku,
+              name: updatedIng.name,
+              unit: updatedIng.unit,
+              currentStock: updatedIng.currentStock,
+              minThreshold: updatedIng.minThreshold,
+              isDepleted: updatedIng.currentStock <= 0
             });
           }
 
           await tx.inventoryTransaction.create({
             data: {
-              ingredientId: bom.ingredientId,
+              ingredientId: ingredient.id,
               type: 'KITCHEN_WASTE',
-              quantity: -qtyNeeded,
+              quantity: -dto.quantity,
               costAmount,
               createdByUserId: actor.id,
-              note: `Hao hụt bếp [${menuItem.name} x${dto.quantity}]: ${dto.reason}${dto.note ? ` - ${dto.note}` : ''}`
+              note: `${dto.reason}${dto.note ? ` - ${dto.note}` : ''}`
             }
           });
 
           deductedIngredients.push({
-            ingredientId: bom.ingredientId,
-            name: bom.ingredient.name,
-            quantityDeducted: qtyNeeded,
+            ingredientId: ingredient.id,
+            name: ingredient.name,
+            quantityDeducted: dto.quantity,
             costAmount
+          });
+
+          await AuditService.logInTransaction(tx, {
+            action: 'KITCHEN_WASTE_RECORDED',
+            targetType: 'Ingredient',
+            targetId: ingredient.id,
+            actorId: actor.id,
+            actorName: actor.name,
+            metadata: {
+              wasteType: 'INGREDIENT',
+              ingredientName: ingredient.name,
+              quantity: dto.quantity,
+              unit: ingredient.unit,
+              costAmount,
+              reason: dto.reason
+            }
+          });
+        } else {
+          // MENU_ITEM
+          const menuItem = await tx.menuItem.findUnique({
+            where: { id: dto.menuItemId },
+            include: {
+              menuItemIngredients: {
+                include: { ingredient: true }
+              }
+            }
+          });
+
+          if (!menuItem) {
+            throw ApiError.notFound(`Món ăn ID ${dto.menuItemId} không tồn tại`);
+          }
+
+          if (menuItem.menuItemIngredients.length === 0) {
+            throw ApiError.badRequest(`Món "${menuItem.name}" chưa được cấu hình định lượng BOM nguyên liệu`);
+          }
+
+          if (menuItem.menuItemIngredients.some(bom => !bom.ingredient.isActive)) {
+            throw ApiError.badRequest('Công thức món chứa nguyên liệu đã ngừng hoạt động');
+          }
+
+          for (const bom of menuItem.menuItemIngredients) {
+            const qtyNeeded = bom.quantityRequired * dto.quantity;
+            const costAmount = Math.round(qtyNeeded * bom.ingredient.costPerUnit);
+            totalCostAmount += costAmount;
+
+            const updatedBomIng = await tx.ingredient.update({
+              where: { id: bom.ingredientId },
+              data: {
+                currentStock: { decrement: qtyNeeded }
+              }
+            });
+
+            if (updatedBomIng.minThreshold > 0 && updatedBomIng.currentStock <= updatedBomIng.minThreshold) {
+              alerts.push({
+                id: updatedBomIng.id,
+                sku: updatedBomIng.sku,
+                name: updatedBomIng.name,
+                unit: updatedBomIng.unit,
+                currentStock: updatedBomIng.currentStock,
+                minThreshold: updatedBomIng.minThreshold,
+                isDepleted: updatedBomIng.currentStock <= 0
+              });
+            }
+
+            await tx.inventoryTransaction.create({
+              data: {
+                ingredientId: bom.ingredientId,
+                type: 'KITCHEN_WASTE',
+                quantity: -qtyNeeded,
+                costAmount,
+                createdByUserId: actor.id,
+                note: `Hao hụt bếp [${menuItem.name} x${dto.quantity}]: ${dto.reason}${dto.note ? ` - ${dto.note}` : ''}`
+              }
+            });
+
+            deductedIngredients.push({
+              ingredientId: bom.ingredientId,
+              name: bom.ingredient.name,
+              quantityDeducted: qtyNeeded,
+              costAmount
+            });
+          }
+
+          await AuditService.logInTransaction(tx, {
+            action: 'KITCHEN_WASTE_RECORDED',
+            targetType: 'MenuItem',
+            targetId: menuItem.id,
+            actorId: actor.id,
+            actorName: actor.name,
+            metadata: {
+              wasteType: 'MENU_ITEM',
+              menuItemName: menuItem.name,
+              portions: dto.quantity,
+              totalCostAmount,
+              reason: dto.reason,
+              ingredientsCount: deductedIngredients.length
+            }
           });
         }
 
-        await AuditService.log({
-          action: 'KITCHEN_WASTE_RECORDED',
-          targetType: 'MenuItem',
-          targetId: menuItem.id,
-          actorId: actor.id,
-          actorName: actor.name,
-          metadata: {
-            wasteType: 'MENU_ITEM',
-            menuItemName: menuItem.name,
-            portions: dto.quantity,
-            totalCostAmount,
-            reason: dto.reason,
-            ingredientsCount: deductedIngredients.length
-          }
-        });
-      }
+        const result = {
+          totalCostAmount,
+          deductedIngredients
+        };
+        await tx.kitchenWasteRequest.update({ where, data: { result } });
+        return result;
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 
-      return {
-        totalCostAmount,
-        deductedIngredients
-      };
+      if (!replayed) {
+        for (const alert of alerts) emitToRoom('restaurant:kds', 'inventory:lowStockAlert', alert);
+        emitInventoryChanged({ sourceType: 'INGREDIENT', sourceIds: result.deductedIngredients.map(item => item.ingredientId), reason: 'KITCHEN_WASTE', updatedAt: new Date().toISOString() });
+      }
+      return result;
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        const replay = await db.kitchenWasteRequest.findUnique({ where });
+        if (replay) return readReplay(replay);
+      }
+      throw error;
+    }
+  }
+
+  static async getKitchenWasteOptions(db: PrismaClient = defaultPrisma) {
+    const ingredients = await db.ingredient.findMany({
+      where: { isActive: true }, orderBy: { name: 'asc' },
+      select: { id: true, sku: true, name: true, unit: true, currentStock: true }
     });
+    const menuItems = await db.menuItem.findMany({
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true, menuItemIngredients: {
+        orderBy: { id: 'asc' },
+        select: { ingredientId: true, quantityRequired: true, ingredient: {
+          select: { name: true, unit: true, currentStock: true, isActive: true }
+        } }
+      } }
+    });
+    return {
+      ingredients,
+      recipes: menuItems.filter(item => item.menuItemIngredients.every(bom => bom.ingredient.isActive)).map(item => ({
+        menuItemId: item.id, menuItemName: item.name,
+        ingredients: item.menuItemIngredients.map(bom => ({
+          ingredientId: bom.ingredientId, quantityRequired: bom.quantityRequired,
+          name: bom.ingredient.name, unit: bom.ingredient.unit, currentStock: bom.ingredient.currentStock
+        }))
+      }))
+    };
   }
 
   /**

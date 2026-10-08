@@ -14,6 +14,7 @@ export const inventoryRouter = Router();
 inventoryRouter.get('/excel/template', InventoryController.downloadTemplate);
 
 // Cac route danh cho Bep va Quan ly (KITCHEN & ADMIN)
+inventoryRouter.get('/kitchen-waste/options', authenticate, authorize('KITCHEN', 'ADMIN'), InventoryController.getKitchenWasteOptions);
 inventoryRouter.post('/kitchen-waste', authenticate, authorize('KITCHEN', 'ADMIN'), InventoryController.recordKitchenWaste);
 inventoryRouter.get('/low-stock-alerts', authenticate, authorize('KITCHEN', 'ADMIN'), InventoryController.getLowStockAlerts);
 

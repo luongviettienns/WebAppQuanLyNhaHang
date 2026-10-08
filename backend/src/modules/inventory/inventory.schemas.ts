@@ -75,9 +75,9 @@ export const kitchenWasteSchema = z.object({
   }),
   menuItemId: z.number().int().positive().optional(),
   ingredientId: z.number().int().positive().optional(),
-  quantity: z.number().positive('Số lượng hao hụt phải lớn hơn 0'),
-  reason: z.string().min(2, 'Lý do hao hụt phải có ít nhất 2 ký tự').trim(),
-  note: z.string().optional()
+  quantity: z.number().finite().positive('Số lượng hao hụt phải lớn hơn 0'),
+  reason: z.string().trim().min(2, 'Lý do hao hụt phải có ít nhất 2 ký tự').max(500),
+  note: z.string().trim().max(1000).optional()
 }).refine(
   (data) => (data.type === 'MENU_ITEM' ? !!data.menuItemId : !!data.ingredientId),
   {
@@ -87,6 +87,8 @@ export const kitchenWasteSchema = z.object({
 );
 
 export type KitchenWasteDto = z.infer<typeof kitchenWasteSchema>;
+
+export const kitchenWasteRequestKeySchema = z.string().trim().min(1, 'Thiếu mã yêu cầu hao hụt').max(128);
 
 export type InventoryCatalogFilter = {
   search?: string;

@@ -15,6 +15,7 @@ import { AuditService } from '../audit/audit.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { VouchersService } from '../vouchers/vouchers.service';
 import { emitInventoryChanged } from '../inventory/inventory.events';
+import { assertOrderVisit, closeTableVisit, ensureTableVisit, unfinishedVisitWhere } from '../tables/table-session';
 import { PriceListService } from '../price-lists/price-list.service';
 import { createHash } from 'crypto';
 import { ReservationsService } from '../reservations/reservations.service';
@@ -391,6 +392,15 @@ export class OrdersService {
           }
         }
 
+        let tableSessionId: string | null = null;
+        if (input.orderType === 'DINE_IN' && resolvedTableId) {
+          const table = await tx.diningTable.findUniqueOrThrow({ where: { id: resolvedTableId }, select: { currentSessionId: true } });
+          if (input.expectedTableSessionId !== undefined && input.expectedTableSessionId !== table.currentSessionId) {
+            throw ApiError.conflict('Lượt phục vụ của bàn đã thay đổi. Vui lòng tải lại trước khi gửi món.');
+          }
+          tableSessionId = await ensureTableVisit(tx, resolvedTableId);
+        }
+
         const menuItemIdsForPricing = input.items.map(item => item.menuItemId);
         const generalPriceList = await PriceListService.getGeneralPriceList(tx);
         const generalPrices = await PriceListService.resolveEffectivePrices(
@@ -449,6 +459,7 @@ export class OrdersService {
             orderType: input.orderType,
             status: 'PENDING',
             tableId: resolvedTableId,
+            tableSessionId,
             customerId,
             reservationId: reservationContext?.id ?? null,
             deliveryPartnerId: isDelivery ? input.deliveryPartnerId : null,
@@ -593,9 +604,15 @@ export class OrdersService {
   }
 
   static async declareReservationOrderPayment(orderId: number, input: ReservationOrderPaymentDeclarationInput) {
+    const orderTable = await prisma.order.findUnique({ where: { id: orderId }, select: { tableId: true } });
     const result = await prisma.$transaction(async tx => {
+      if (orderTable?.tableId) await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${orderTable.tableId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
       const current = await tx.order.findUnique({ where: { id: orderId }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
+      if (current) {
+        if (current.tableId !== orderTable?.tableId) throw ApiError.conflict('Bàn đã thay đổi, vui lòng thử lại');
+        await assertOrderVisit(tx, current);
+      }
       if (!current || !current.tableId) throw ApiError.notFound('Không tìm thấy order QR tại bàn');
 
       let reservation: any = null;
@@ -661,10 +678,16 @@ export class OrdersService {
   }
 
   static async confirmReservationOrderPayment(orderId: number, input: ConfirmOrderPaymentInput, actorId: number, actorName: string, actorRole: 'ADMIN' | 'CASHIER' = 'CASHIER') {
+    const orderTable = await prisma.order.findUnique({ where: { id: orderId }, select: { tableId: true } });
     try {
       const result = await prisma.$transaction(async tx => {
-        await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
+        if (orderTable?.tableId) await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${orderTable.tableId} FOR UPDATE`;
+      await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
         const current = await tx.order.findUnique({ where: { id: orderId }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
+      if (current) {
+        if (current.tableId !== orderTable?.tableId) throw ApiError.conflict('Bàn đã thay đổi, vui lòng thử lại');
+        await assertOrderVisit(tx, current);
+      }
         if (!current || !current.tableId) throw ApiError.notFound('Không tìm thấy order QR tại bàn');
 
         let reservation: any = null;
@@ -735,9 +758,15 @@ export class OrdersService {
   }
 
   static async rejectReservationOrderPayment(orderId: number, input: RejectOrderPaymentInput, actorId: number, actorName: string) {
+    const orderTable = await prisma.order.findUnique({ where: { id: orderId }, select: { tableId: true } });
     const order = await prisma.$transaction(async tx => {
+      if (orderTable?.tableId) await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${orderTable.tableId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
       const current = await tx.order.findUnique({ where: { id: orderId } });
+      if (current) {
+        if (current.tableId !== orderTable?.tableId) throw ApiError.conflict('Bàn đã thay đổi, vui lòng thử lại');
+        await assertOrderVisit(tx, current);
+      }
       if (!current || (!current.reservationId && (current.createdByUserId !== null || current.orderType !== 'DINE_IN'))) {
         throw ApiError.notFound('Không tìm thấy order QR tại bàn');
       }
@@ -759,9 +788,15 @@ export class OrdersService {
     return order;
   }
   static async authorizeReservationOrderPayLater(orderId: number, input: AuthorizeReservationOrderPayLaterInput, actorId: number, actorName: string) {
+    const orderTable = await prisma.order.findUnique({ where: { id: orderId }, select: { tableId: true } });
     const result = await prisma.$transaction(async tx => {
+      if (orderTable?.tableId) await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${orderTable.tableId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
       const current = await tx.order.findUnique({ where: { id: orderId }, include: { items: true, table: { select: { id: true, tableNumber: true } } } });
+      if (current) {
+        if (current.tableId !== orderTable?.tableId) throw ApiError.conflict('Bàn đã thay đổi, vui lòng thử lại');
+        await assertOrderVisit(tx, current);
+      }
       if (!current || !current.reservationId || !current.tableId) throw ApiError.notFound('Không tìm thấy order đặt bàn');
       if (current.status !== 'PENDING' || current.paymentStatus === 'PAID' || current.payLaterAuthorized) throw ApiError.conflict('Order hiện không thể được cấp quyền trả sau');
       await tx.$queryRaw`SELECT id FROM Reservation WHERE id = ${current.reservationId} FOR UPDATE`;
@@ -836,6 +871,8 @@ export class OrdersService {
         throw ApiError.conflict(`Đơn hàng ID ${orderId} đã được thanh toán từ trước`);
       }
 
+      await assertOrderVisit(tx, lockedOrder);
+
       if (lockedOrder.createdByUserId === null && lockedOrder.orderType === 'DINE_IN' && !lockedOrder.payLaterAuthorized) {
         throw ApiError.conflict('Order QR của khách phải được xác nhận prepayment hoặc cấp quyền trả sau trước khi thu tiền');
       }
@@ -902,11 +939,7 @@ export class OrdersService {
       if (order.tableId) {
         const remainingUnfinishedOrder = await tx.order.findFirst({
           where: {
-            tableId: order.tableId,
-            OR: [
-              { paymentStatus: 'UNPAID', status: { not: 'CANCELLED' } },
-              { status: { in: ['PENDING', 'PREPARING', 'READY'] } }
-            ],
+            ...unfinishedVisitWhere(order.tableId, order.tableSessionId),
             id: { not: order.id }
           },
           orderBy: { createdAt: 'desc' },
@@ -1026,7 +1059,10 @@ export class OrdersService {
    * PENDING -> PREPARING -> READY -> COMPLETED
    */
   static async updateOrderStatus(orderId: number, nextStatus: 'PREPARING' | 'READY' | 'COMPLETED', userId?: number) {
+    const orderTable = await prisma.order.findUnique({ where: { id: orderId }, select: { tableId: true } });
+    let completedTableState: { tableId: number; tableNumber: number | undefined; status: 'NEED_CLEANING'; currentOrderId: null; currentSessionId: string | null } | null = null;
     const updatedOrder = await prisma.$transaction(async tx => {
+      if (orderTable?.tableId) await tx.$queryRaw`SELECT id FROM DiningTable WHERE id = ${orderTable.tableId} FOR UPDATE`;
       await tx.$queryRaw`SELECT id FROM \`Order\` WHERE id = ${orderId} FOR UPDATE`;
       const order = await tx.order.findUnique({
         where: { id: orderId },
@@ -1039,6 +1075,9 @@ export class OrdersService {
       if (!order) {
         throw ApiError.notFound(`Đơn hàng ID ${orderId} không tồn tại`);
       }
+
+      if (order.tableId !== orderTable?.tableId) throw ApiError.conflict('Bàn đã thay đổi, vui lòng thử lại');
+      await assertOrderVisit(tx, order);
 
       if (order.createdByUserId === null && order.orderType === 'DINE_IN' && !order.payLaterAuthorized && order.paymentStatus !== 'PAID') {
         throw ApiError.conflict('Order QR chỉ được chuyển xuống bếp sau khi thu ngân xác nhận đã nhận tiền');
@@ -1085,7 +1124,7 @@ export class OrdersService {
       }
 
       await claimInitialOrderReceiver(tx, orderId, userId);
-      return tx.order.update({
+      const updated = await tx.order.update({
         where: { id: orderId },
         data,
         include: {
@@ -1093,6 +1132,14 @@ export class OrdersService {
           table: { select: { id: true, tableNumber: true } }
         }
       });
+      if (nextStatus === 'COMPLETED' && updated.tableId && updated.paymentStatus === 'PAID') {
+        const remaining = await tx.order.findFirst({ where: { ...unfinishedVisitWhere(updated.tableId, updated.tableSessionId), id: { not: updated.id } }, select: { id: true } });
+        if (!remaining) {
+          await tx.diningTable.update({ where: { id: updated.tableId }, data: { status: 'NEED_CLEANING', currentOrderId: null } });
+          completedTableState = { tableId: updated.tableId, tableNumber: updated.table?.tableNumber, status: 'NEED_CLEANING', currentOrderId: null, currentSessionId: updated.tableSessionId };
+        }
+      }
+      return updated;
     });
 
     const orderDto = formatOrderDto(updatedOrder);
@@ -1113,35 +1160,7 @@ export class OrdersService {
     emitToRoom('restaurant:kds', 'order:statusChanged', socketPayload);
     emitToAll('order:statusChanged', socketPayload);
 
-    if (nextStatus === 'COMPLETED' && updatedOrder.tableId) {
-      const remainingUnfinished = await prisma.order.findFirst({
-        where: {
-          tableId: updatedOrder.tableId,
-          OR: [
-            { paymentStatus: 'UNPAID', status: { not: 'CANCELLED' } },
-            { status: { in: ['PENDING', 'PREPARING', 'READY'] } }
-          ],
-          id: { not: updatedOrder.id }
-        },
-        select: { id: true }
-      });
-
-      if (!remainingUnfinished && updatedOrder.paymentStatus === 'PAID') {
-        await prisma.diningTable.update({
-          where: { id: updatedOrder.tableId },
-          data: {
-            status: 'NEED_CLEANING',
-            currentOrderId: null
-          }
-        });
-        emitToAll('table:statusChanged', {
-          tableId: updatedOrder.tableId,
-          tableNumber: updatedOrder.table?.tableNumber,
-          status: 'NEED_CLEANING',
-          currentOrderId: null
-        });
-      }
-    }
+    if (completedTableState) emitToAll('table:statusChanged', completedTableState);
 
     return orderDto;
   }
@@ -1195,6 +1214,7 @@ export class OrdersService {
         throw ApiError.orderStateInvalid('Không thể hủy đơn hàng đã thanh toán');
       }
 
+      await assertOrderVisit(tx, lockedOrder);
       const restoredStock = await restoreMenuStockForOrder(tx, lockedOrder.items);
       const now = new Date();
       const updatedOrder = await tx.order.update({
@@ -1217,9 +1237,7 @@ export class OrdersService {
       if (lockedOrder.tableId) {
         const remainingOrder = await tx.order.findFirst({
           where: {
-            tableId: lockedOrder.tableId,
-            paymentStatus: 'UNPAID',
-            status: { not: 'CANCELLED' },
+            ...unfinishedVisitWhere(lockedOrder.tableId, lockedOrder.tableSessionId),
             id: { not: orderId }
           },
           select: { id: true }
@@ -1227,6 +1245,7 @@ export class OrdersService {
 
         const status = remainingOrder ? 'OCCUPIED' : 'AVAILABLE';
         const currentOrderId = remainingOrder?.id ?? null;
+        if (!remainingOrder) await closeTableVisit(tx, lockedOrder.tableId, lockedOrder.tableSessionId);
 
         await tx.diningTable.update({
           where: { id: lockedOrder.tableId },
@@ -1356,7 +1375,8 @@ export class OrdersService {
             return null;
           }
 
-          const restoredStock = await restoreMenuStockForOrder(tx, lockedOrder.items);
+          await assertOrderVisit(tx, lockedOrder);
+      const restoredStock = await restoreMenuStockForOrder(tx, lockedOrder.items);
           const updatedOrder = await tx.order.update({
             where: { id: lockedOrder.id },
             data: {
@@ -1377,9 +1397,7 @@ export class OrdersService {
           if (lockedOrder.tableId) {
             const remainingOrder = await tx.order.findFirst({
               where: {
-                tableId: lockedOrder.tableId,
-                paymentStatus: 'UNPAID',
-                status: { not: 'CANCELLED' },
+                ...unfinishedVisitWhere(lockedOrder.tableId, lockedOrder.tableSessionId),
                 id: { not: lockedOrder.id }
               },
               select: { id: true }
@@ -1387,6 +1405,7 @@ export class OrdersService {
 
             const status = remainingOrder ? 'OCCUPIED' : 'AVAILABLE';
             const currentOrderId = remainingOrder?.id ?? null;
+            if (!remainingOrder) await closeTableVisit(tx, lockedOrder.tableId, lockedOrder.tableSessionId);
 
             await tx.diningTable.update({
               where: { id: lockedOrder.tableId },
@@ -1498,6 +1517,7 @@ function formatOrderDto(order: any) {
     status: order.status,
     receivedByEmployeeId: order.receivedByEmployeeId ?? null,
     tableId: order.tableId,
+    tableSessionId: order.tableSessionId ?? null,
     tableNumber: order.table?.tableNumber ?? null,
     deliveryPartnerId: order.deliveryPartnerId ?? null,
     deliveryPartner: order.deliveryPartner ? { id: order.deliveryPartner.id, code: order.deliveryPartner.code, name: order.deliveryPartner.name } : null,

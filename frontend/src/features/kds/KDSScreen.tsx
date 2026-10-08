@@ -7,7 +7,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
   useWindowDimensions
 } from 'react-native';
@@ -26,11 +25,10 @@ import {
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import { MenuItemDto, OrderDto } from '../../api/contracts';
-import { useAuth } from '../../contexts/AuthContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
-import { recordKitchenWasteApi } from '../../api/inventory';
+import { KitchenWasteModal } from './KitchenWasteModal';
 import { radii, spacing, typography } from '../../theme';
 import {
   AppIcon,
@@ -330,7 +328,6 @@ export const KDSScreen: React.FC = () => {
     fetchLowStockAlerts
   } = useRestaurant();
 
-  const { token } = useAuth();
   const [activeMobileStatus, setActiveMobileStatus] = useState<KdsStatus>('PENDING');
   const [updatingOrderId, setUpdatingOrderId] = useState<number | null>(null);
   const [now, setNow] = useState(Date.now());
@@ -341,14 +338,6 @@ export const KDSScreen: React.FC = () => {
   const [isLowStockModalOpen, setIsLowStockModalOpen] = useState(false);
 
   const [isWasteModalOpen, setIsWasteModalOpen] = useState(false);
-  const [wasteType, setWasteType] = useState<'MENU_ITEM' | 'INGREDIENT'>('MENU_ITEM');
-  const [wasteMenuItemId, setWasteMenuItemId] = useState<number | null>(null);
-  const [wasteIngredientId, setWasteIngredientId] = useState<number | null>(null);
-  const [wasteQuantity, setWasteQuantity] = useState(1);
-  const [wasteReason, setWasteReason] = useState('Cháy khét trong lúc chiên');
-  const [wasteNote, setWasteNote] = useState('');
-  const [isSubmittingWaste, setIsSubmittingWaste] = useState(false);
-  const [wasteError, setWasteError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchLowStockAlerts();
@@ -467,46 +456,6 @@ export const KDSScreen: React.FC = () => {
     setIsSoldOutModalOpen(true);
   };
 
-  const handleSubmitWaste = async () => {
-    if (wasteType === 'MENU_ITEM' && !wasteMenuItemId) {
-      setWasteError('Vui lòng chọn món ăn bị hỏng');
-      return;
-    }
-    if (wasteType === 'INGREDIENT' && !wasteIngredientId) {
-      setWasteError('Vui lòng chọn nguyên liệu bị hỏng');
-      return;
-    }
-    if (wasteQuantity <= 0) {
-      setWasteError('Số lượng phải lớn hơn 0');
-      return;
-    }
-    setIsSubmittingWaste(true);
-    setWasteError(null);
-    try {
-      await recordKitchenWasteApi(token, {
-        type: wasteType,
-        menuItemId: wasteType === 'MENU_ITEM' ? wasteMenuItemId! : undefined,
-        ingredientId: wasteType === 'INGREDIENT' ? wasteIngredientId! : undefined,
-        quantity: wasteQuantity,
-        reason: wasteReason,
-        note: wasteNote || undefined
-      });
-      showToast({
-        type: 'success',
-        title: 'Đã ghi nhận hao hụt! 🗑️',
-        message: `Đã lưu phiếu hao hụt ${wasteQuantity} ${wasteType === 'MENU_ITEM' ? 'phần món' : 'đơn vị nguyên liệu'}.`
-      });
-      setIsWasteModalOpen(false);
-      setWasteQuantity(1);
-      setWasteNote('');
-      fetchLowStockAlerts();
-    } catch (err: any) {
-      setWasteError(err.message || 'Ghi nhận hao hụt thất bại');
-    } finally {
-      setIsSubmittingWaste(false);
-    }
-  };
-
   const connectionTone: StatusTone = kdsError ? 'danger' : isLoadingKDS ? 'warning' : 'success';
   const connectionState = kdsError ? 'Đồng bộ thất bại' : isLoadingKDS ? 'Đang đồng bộ' : 'Đã đồng bộ';
 
@@ -541,7 +490,6 @@ export const KDSScreen: React.FC = () => {
               onPress={() => {
                 fetchMenu();
                 fetchLowStockAlerts();
-                setWasteError(null);
                 setIsWasteModalOpen(true);
               }}
             />
@@ -763,162 +711,10 @@ export const KDSScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Modal Báo Hao Hụt Bếp (Kitchen Waste) */}
-      <Modal visible={isWasteModalOpen} transparent animationType="fade" onRequestClose={() => setIsWasteModalOpen(false)}>
-        <View style={[styles.modalBackdrop, { backgroundColor: theme.overlay }]}>
-          <Surface level="raised" style={[styles.soldOutModal, { backgroundColor: theme.surfaceBase, maxWidth: 540, borderRadius: radii.md, padding: spacing.lg }]}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-                <AppIcon icon={Trash2} color={theme.danger} size={22} />
-                <Text style={[styles.modalTitle, { color: theme.textPrimary }]}>Ghi Nhận Hao Hụt Bếp 🗑️</Text>
-              </View>
-              <Pressable accessibilityRole="button" accessibilityLabel="Đóng" onPress={() => setIsWasteModalOpen(false)} style={styles.modalClose}>
-                <AppIcon icon={X} color={theme.textSecondary} size={22} />
-              </Pressable>
-            </View>
-
-            {/* Chuyển loại hao hụt */}
-            <View style={{ flexDirection: 'row', gap: spacing.xs, marginBottom: spacing.md }}>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => { setWasteType('MENU_ITEM'); setWasteError(null); }}
-                style={[styles.wasteTypeTab, { backgroundColor: wasteType === 'MENU_ITEM' ? theme.interactiveSecondary : theme.surfaceSunken, borderColor: wasteType === 'MENU_ITEM' ? theme.primary : theme.borderSubtle }]}
-              >
-                <Text style={{ fontFamily: typography.families.bodySemibold, color: wasteType === 'MENU_ITEM' ? theme.primary : theme.textPrimary, fontSize: typography.sizes.xs }}>
-                  Hao hụt theo Món ăn (BOM)
-                </Text>
-              </Pressable>
-              <Pressable
-                accessibilityRole="button"
-                onPress={() => { setWasteType('INGREDIENT'); setWasteError(null); }}
-                style={[styles.wasteTypeTab, { backgroundColor: wasteType === 'INGREDIENT' ? theme.interactiveSecondary : theme.surfaceSunken, borderColor: wasteType === 'INGREDIENT' ? theme.primary : theme.borderSubtle }]}
-              >
-                <Text style={{ fontFamily: typography.families.bodySemibold, color: wasteType === 'INGREDIENT' ? theme.primary : theme.textPrimary, fontSize: typography.sizes.xs }}>
-                  Hao hụt theo Nguyên liệu
-                </Text>
-              </Pressable>
-            </View>
-
-            <ScrollView style={{ maxHeight: 280 }}>
-              {wasteType === 'MENU_ITEM' ? (
-                <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
-                  <Text style={{ fontFamily: typography.families.bodySemibold, color: theme.textPrimary, fontSize: typography.sizes.xs }}>Chọn món ăn bị hỏng:</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs, paddingVertical: spacing.xs }}>
-                    {categories.flatMap((c) => c.menuItems || []).map((m) => {
-                      const selected = wasteMenuItemId === m.id;
-                      return (
-                        <Pressable
-                          key={m.id}
-                          accessibilityRole="button"
-                          onPress={() => setWasteMenuItemId(m.id)}
-                          style={[styles.wasteItemCard, { borderColor: selected ? theme.primary : theme.borderSubtle, backgroundColor: selected ? theme.interactiveSecondary : theme.surfaceSunken }]}
-                        >
-                          <Text style={{ fontFamily: typography.families.bodySemibold, color: selected ? theme.primary : theme.textPrimary, fontSize: typography.sizes.xs }} numberOfLines={1}>
-                            {m.name}
-                          </Text>
-                        </Pressable>
-                      );
-                    })}
-                  </ScrollView>
-                </View>
-              ) : (
-                <View style={{ gap: spacing.xs, marginBottom: spacing.md }}>
-                  <Text style={{ fontFamily: typography.families.bodySemibold, color: theme.textPrimary, fontSize: typography.sizes.xs }}>Chọn nguyên liệu bị đổ vỡ/hỏng:</Text>
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: spacing.xs, paddingVertical: spacing.xs }}>
-                    {lowStockAlerts.length > 0 ? (
-                      lowStockAlerts.map((ing) => {
-                        const selected = wasteIngredientId === ing.id;
-                        return (
-                          <Pressable
-                            key={ing.id}
-                            accessibilityRole="button"
-                            onPress={() => setWasteIngredientId(ing.id)}
-                            style={[styles.wasteItemCard, { borderColor: selected ? theme.primary : theme.borderSubtle, backgroundColor: selected ? theme.interactiveSecondary : theme.surfaceSunken }]}
-                          >
-                            <Text style={{ fontFamily: typography.families.bodySemibold, color: selected ? theme.primary : theme.textPrimary, fontSize: typography.sizes.xs }} numberOfLines={1}>
-                              {ing.name}
-                            </Text>
-                          </Pressable>
-                        );
-                      })
-                    ) : (
-                      <Text style={{ fontFamily: typography.families.body, color: theme.textSecondary, fontSize: typography.sizes.xs }}>
-                        Không có nguyên liệu cảnh báo. Mở tab Kho hàng để xem toàn bộ.
-                      </Text>
-                    )}
-                  </ScrollView>
-                </View>
-              )}
-
-              {/* Số lượng */}
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: spacing.sm }}>
-                <Text style={{ fontFamily: typography.families.bodySemibold, color: theme.textPrimary, fontSize: typography.sizes.xs }}>Số lượng hỏng:</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.sm }}>
-                  <Pressable accessibilityRole="button" accessibilityLabel="Giảm số lượng" onPress={() => setWasteQuantity((q) => Math.max(1, q - 1))} style={[styles.qtyBtn, { borderColor: theme.borderSubtle }]}>
-                    <Text style={{ fontSize: 16, color: theme.textPrimary }}>-</Text>
-                  </Pressable>
-                  <Text style={{ fontFamily: typography.families.operationalBold, color: theme.textPrimary, fontSize: typography.sizes.md, minWidth: 28, textAlign: 'center' }}>
-                    {wasteQuantity}
-                  </Text>
-                  <Pressable accessibilityRole="button" accessibilityLabel="Tăng số lượng" onPress={() => setWasteQuantity((q) => q + 1)} style={[styles.qtyBtn, { borderColor: theme.borderSubtle }]}>
-                    <Text style={{ fontSize: 16, color: theme.textPrimary }}>+</Text>
-                  </Pressable>
-                </View>
-              </View>
-
-              {/* Lý do nhanh */}
-              <View style={{ gap: spacing.xs, marginVertical: spacing.xs }}>
-                <Text style={{ fontFamily: typography.families.bodySemibold, color: theme.textPrimary, fontSize: typography.sizes.xs }}>Lý do hao hụt:</Text>
-                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs }}>
-                  {['Cháy khét trong lúc chiên', 'Rơi vỡ khay', 'Hết hạn bảo quản', 'Khách đổi món khác'].map((r) => {
-                    const sel = wasteReason === r;
-                    return (
-                      <Pressable
-                        key={r}
-                        accessibilityRole="button"
-                        onPress={() => setWasteReason(r)}
-                        style={[styles.reasonPill, { borderColor: sel ? theme.primary : theme.borderSubtle, backgroundColor: sel ? theme.interactiveSecondary : theme.surfaceSunken }]}
-                      >
-                        <Text style={{ fontSize: typography.sizes.xs, color: sel ? theme.primary : theme.textPrimary }}>{r}</Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </View>
-
-              {/* Ghi chú thêm */}
-              <View style={{ gap: spacing.xs, marginTop: spacing.sm }}>
-                <Text style={{ fontFamily: typography.families.bodySemibold, color: theme.textPrimary, fontSize: typography.sizes.xs }}>Ghi chú thêm (tùy chọn):</Text>
-                <TextInput
-                  style={[styles.wasteInput, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle, color: theme.textPrimary }]}
-                  placeholder="Ghi chú chi tiết cho quản lý..."
-                  placeholderTextColor={theme.textSecondary}
-                  value={wasteNote}
-                  onChangeText={setWasteNote}
-                />
-              </View>
-            </ScrollView>
-
-            {wasteError && <View style={{ marginTop: spacing.xs }}><InlineAlert message={wasteError} /></View>}
-
-            <View style={{ flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg }}>
-              <View style={{ flex: 1 }}>
-                <Button variant="quiet" label="Hủy bỏ" disabled={isSubmittingWaste} onPress={() => setIsWasteModalOpen(false)} />
-              </View>
-              <View style={{ flex: 2 }}>
-                <Button
-                  testID="btn-confirm-submit-waste"
-                  variant="danger"
-                  label="Xác nhận hao hụt"
-                  icon={Trash2}
-                  loading={isSubmittingWaste}
-                  onPress={() => void handleSubmitWaste()}
-                />
-              </View>
-            </View>
-          </Surface>
-        </View>
-      </Modal>
+      {isWasteModalOpen && <KitchenWasteModal
+        onClose={() => setIsWasteModalOpen(false)}
+        onRecorded={() => { fetchLowStockAlerts(); }}
+      />}
     </SafeAreaView>
   );
 };
@@ -1011,41 +807,4 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: spacing.sm
   },
-  wasteTypeTab: {
-    alignItems: 'center',
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    flex: 1,
-    justifyContent: 'center',
-    paddingVertical: spacing.sm
-  },
-  wasteItemCard: {
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    maxWidth: 160,
-    minWidth: 110,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.sm
-  },
-  qtyBtn: {
-    alignItems: 'center',
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    height: 32,
-    justifyContent: 'center',
-    width: 32
-  },
-  reasonPill: {
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4
-  },
-  wasteInput: {
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    fontFamily: typography.families.body,
-    fontSize: typography.sizes.xs,
-    padding: spacing.sm
-  }
 });

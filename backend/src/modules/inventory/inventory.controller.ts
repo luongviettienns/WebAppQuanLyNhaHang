@@ -7,7 +7,8 @@ import {
   updateRecipeSchema,
   excelPreviewSchema,
   excelCommitSchema,
-  kitchenWasteSchema
+  kitchenWasteSchema,
+  kitchenWasteRequestKeySchema
 } from './inventory.schemas';
 import { ApiError } from '../../lib/api-error';
 import { inventoryCatalogQuerySchema } from './inventory.schemas';
@@ -218,9 +219,18 @@ export class InventoryController {
   static async recordKitchenWaste(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const validated = kitchenWasteSchema.parse(req.body);
+      const requestKey = kitchenWasteRequestKeySchema.parse(req.header('Idempotency-Key'));
       const actor = req.user ? { id: req.user.id, name: req.user.name } : { id: 0, name: 'System' };
-      const data = await InventoryService.recordKitchenWaste(validated, actor);
+      const data = await InventoryService.recordKitchenWaste(validated, actor, requestKey);
       res.status(201).json({ data });
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  static async getKitchenWasteOptions(_req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      res.json({ data: await InventoryService.getKitchenWasteOptions() });
     } catch (error) {
       next(error);
     }

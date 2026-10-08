@@ -389,10 +389,23 @@ const options: swaggerJSDoc.Options = {
           }
         }
       },
+      '/api/inventory/kitchen-waste/options': {
+        get: {
+          tags: ['Inventory & BOM'],
+          summary: 'Nguyên liệu đang hoạt động và BOM để bếp xem trước hao hụt',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            200: { description: 'Danh sách nguyên liệu và công thức, không trả dữ liệu giá vốn' },
+            401: { description: 'Chưa đăng nhập' },
+            403: { description: 'Chỉ KITCHEN hoặc ADMIN' }
+          }
+        }
+      },
       '/api/inventory/kitchen-waste': {
         post: {
           tags: ['Inventory & BOM'],
           summary: 'Ghi nhận hao hụt chế biến tại bếp (Quyền KITCHEN, ADMIN)',
+          parameters: [{ name: 'Idempotency-Key', in: 'header', required: true, schema: { type: 'string', minLength: 1, maxLength: 128 }, description: 'Giữ nguyên mã khi gửi lại cùng phiếu; dùng mã mới cho phiếu mới' }],
           description: 'Cho phép đầu bếp báo hỏng theo món ăn (tự động tra cứu BOM và trừ các nguyên liệu tương ứng) hoặc theo nguyên liệu trực tiếp. Hạch toán chi phí vào COGS giá vốn.',
           security: [{ bearerAuth: [] }],
           requestBody: {
@@ -417,7 +430,8 @@ const options: swaggerJSDoc.Options = {
           responses: {
             201: { description: 'Ghi nhận hao hụt thành công' },
             400: { description: 'Dữ liệu không hợp lệ hoặc món chưa có BOM' },
-            403: { description: 'Chỉ Bếp hoặc Admin mới có quyền thực hiện' }
+            403: { description: 'Chỉ Bếp hoặc Admin mới có quyền thực hiện' },
+            409: { description: 'Mã yêu cầu đã được dùng cho nội dung khác' }
           }
         }
       },

@@ -988,6 +988,7 @@ model Reservation {
   accessToken                     String            @unique @db.VarChar(96)
   customerId                      Int
   tableId                         Int?
+  tableSessionId                  String? @db.Char(36)
   policyId                        Int?
   scheduledAt                     DateTime
   partySize                       Int
@@ -1172,6 +1173,7 @@ model DiningTable {
   note           String?     @db.VarChar(500)
   isActive       Boolean     @default(true)
   currentOrderId Int?
+  currentSessionId String? @unique @db.Char(36)
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -1201,6 +1203,7 @@ model Order {
   orderType          OrderType      @default(DINE_IN)
   status             OrderStatus    @default(PENDING)
   tableId            Int?
+  tableSessionId     String? @db.Char(36)
   customerId         Int?
   reservationId      Int?
   deliveryPartnerId  Int?
@@ -1263,6 +1266,7 @@ model Order {
   @@index([voucherId])
   @@index([deliveryPartnerId, status])
   @@index([customerId, createdAt])
+  @@index([tableId, tableSessionId, status])
   @@index([reservationId])
   @@index([status, completedAt])
   @@index([receivedByEmployeeId, completedAt])
@@ -1705,6 +1709,17 @@ model MenuItemIngredient {
   @@unique([menuItemId, ingredientId])
   @@index([menuItemId])
   @@index([ingredientId])
+}
+
+model KitchenWasteRequest {
+  id            Int      @id @default(autoincrement())
+  actorId       Int
+  requestKey    String   @db.VarChar(128)
+  requestDigest String   @db.Char(64)
+  result        Json
+  createdAt     DateTime @default(now())
+
+  @@unique([actorId, requestKey])
 }
 
 model InventoryTransaction {

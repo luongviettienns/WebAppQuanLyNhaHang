@@ -339,6 +339,7 @@ export interface PriceListImportCommitDto {
 // ==========================================
 export interface DiningTableDto {
   id: number;
+  currentSessionId?: string | null;
   tableNumber: number;
   displayName?: string | null;
   areaId?: number | null;
@@ -375,6 +376,7 @@ export interface OrderItemCreateDto {
 
 export interface OrderCreateDto {
   orderType: OrderType;
+  expectedTableSessionId?: string | null;
   tableId?: number;
   qrCodeToken?: string;
   buzzerNumber?: number;
@@ -402,6 +404,7 @@ export interface OrderItemDto {
 
 export interface OrderDto {
   id: number;
+  tableSessionId?: string | null;
   code: string;
   receivedByEmployeeId: number | null;
   priceListId?: number | null;
@@ -690,6 +693,7 @@ export interface SocketTableStatusChangedPayload {
   tableNumber: number;
   status: TableStatus;
   currentOrderId?: number | null;
+  currentSessionId?: string | null;
 }
 
 export interface SocketPriceListItemChangedPayload {
@@ -1263,6 +1267,19 @@ export interface KitchenWasteCreateDto {
   quantity: number;
   reason: string;
   note?: string;
+}
+
+export interface KitchenWasteOptionsDto {
+  ingredients: Array<{ id: number; sku: string; name: string; unit: string; currentStock: number }>;
+  recipes: Array<{
+    menuItemId: number; menuItemName: string;
+    ingredients: Array<{ ingredientId: number; name: string; unit: string; quantityRequired: number; currentStock: number }>;
+  }>;
+}
+
+export interface KitchenWasteResultDto {
+  totalCostAmount: number;
+  deductedIngredients: Array<{ ingredientId: number; name: string; quantityDeducted: number; costAmount: number }>;
 }
 
 export interface LowStockAlertDto {

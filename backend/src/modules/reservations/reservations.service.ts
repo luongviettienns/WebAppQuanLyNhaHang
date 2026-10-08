@@ -5,6 +5,7 @@ import { ApiError } from '../../lib/api-error';
 import { emitToAll } from '../../lib/socket';
 import { AuditService } from '../audit/audit.service';
 import { getVietQrInstructions } from '../../lib/vietqr';
+import { ensureTableVisit } from '../tables/table-session';
 import { CashbookPostingService, normalizeCashbookPersistenceError, resolveCashbookAccountForPayment } from '../cashbook/cashbook-posting.service';
 import { cashbookChangedEvent } from '../cashbook/cashbook.events';
 import {
@@ -45,6 +46,8 @@ export class ReservationsService {
     if (!reservation || reservation.status !== 'CHECKED_IN' || reservation.tableId !== tableId || !['PAID', 'APPLIED_TO_BILL'].includes(reservation.depositStatus)) {
       throw ApiError.notFound('Mã đặt bàn không hợp lệ hoặc chưa được check-in');
     }
+    const table = await tx.diningTable.findUnique({ where: { id: tableId }, select: { currentSessionId: true } });
+    if (!table || reservation.tableSessionId !== table.currentSessionId) throw ApiError.notFound('Lượt đặt bàn không còn thuộc phiên phục vụ hiện tại');
     return reservation;
   }
 
@@ -363,14 +366,15 @@ export class ReservationsService {
       if (current.status !== 'CONFIRMED' || current.depositStatus !== 'PAID') throw ApiError.conflict('Chỉ check-in đặt bàn đã xác nhận và đã thanh toán cọc');
       const table = await tx.diningTable.findUnique({ where: { id: input.tableId } });
       if (!table || !table.isActive) throw ApiError.badRequest('Bàn không tồn tại hoặc đã ngừng hoạt động');
-      if (table.status !== 'AVAILABLE') throw ApiError.conflict('Bàn hiện không khả dụng');
+      if (table.status !== 'AVAILABLE' || table.currentSessionId !== null) throw ApiError.conflict('Bàn hiện không khả dụng');
       if (table.capacity < current.partySize) throw ApiError.badRequest('Sức chứa của bàn không đủ số khách');
       const occupiedReservation = await tx.reservation.findFirst({ where: { tableId: table.id, status: 'CHECKED_IN' } });
       if (occupiedReservation) throw ApiError.conflict('Bàn đang được sử dụng bởi lượt đặt chỗ khác');
 
       const checkedInAt = new Date();
+      const tableSessionId = await ensureTableVisit(tx, table.id);
       const updated = await tx.reservation.update({ where: { id: reservationId }, data: {
-        status: 'CHECKED_IN', tableId: table.id, checkedInAt, checkedInByUserId: actorId
+        status: 'CHECKED_IN', tableId: table.id, tableSessionId, checkedInAt, checkedInByUserId: actorId
       } });
       await tx.diningTable.update({ where: { id: table.id }, data: { status: 'OCCUPIED' } });
       await AuditService.logInTransaction(tx, {

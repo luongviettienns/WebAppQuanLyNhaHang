@@ -4,6 +4,8 @@ import {
   MenuItemRecipeDto,
   ExcelPreviewResultDto,
   KitchenWasteCreateDto,
+  KitchenWasteOptionsDto,
+  KitchenWasteResultDto,
   LowStockAlertDto
 } from './contracts';
 
@@ -204,22 +206,32 @@ export async function updateRecipeApi(
 
 export async function recordKitchenWasteApi(
   token: string | null,
-  data: KitchenWasteCreateDto
-): Promise<{ totalCostAmount: number; deductedIngredients: any[] }> {
+  data: KitchenWasteCreateDto,
+  requestKey: string
+): Promise<KitchenWasteResultDto> {
   const base = getApiBaseUrl();
   const res = await fetch(`${base}/api/inventory/kitchen-waste`, {
     method: 'POST',
-    headers: getAuthHeaders(token),
+    headers: { ...getAuthHeaders(token), 'Idempotency-Key': requestKey },
     body: JSON.stringify(data)
   });
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Lỗi ghi nhận hao hụt bếp (${res.status})`);
+    throw Object.assign(new Error(err.error?.message || `Lỗi ghi nhận hao hụt bếp (${res.status})`), { status: res.status });
   }
 
   const json = await res.json();
   return json.data;
+}
+
+export async function fetchKitchenWasteOptionsApi(token: string | null): Promise<KitchenWasteOptionsDto> {
+  const res = await fetch(`${getApiBaseUrl()}/api/inventory/kitchen-waste/options`, { headers: getAuthHeaders(token) });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error?.message || 'Không thể tải nguyên liệu và định lượng');
+  }
+  return (await res.json()).data;
 }
 
 export async function fetchLowStockAlertsApi(
