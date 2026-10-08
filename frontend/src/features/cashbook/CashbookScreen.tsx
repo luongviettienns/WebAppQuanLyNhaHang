@@ -1,11 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
-import { Download, Plus, RefreshCw, Settings2, X } from 'lucide-react-native';
+import { ArrowDownLeft, ArrowUpRight, Check, ChevronDown, ChevronUp, Download, Plus, RefreshCw, Settings2, X } from 'lucide-react-native';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRestaurant } from '../../contexts/RestaurantContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { radii, spacing, typography } from '../../theme';
-import { Button, EmptyState, Field, InlineAlert, ScreenHeader, Surface } from '../../ui';
+import { AppIcon, Button, EmptyState, Field, InlineAlert, ScreenHeader, Surface } from '../../ui';
 import {
   activateCashbookApi, cancelCashVoucherApi, createCashbookAccountApi, createCashFlowCategoryApi, createCashVoucherApi, downloadCashbookExportApi,
   fetchCashbookApi, fetchCashbookCounterpartiesApi, fetchCashbookSettingsApi, type CashbookDirection, type CashbookFilter,
@@ -205,13 +205,95 @@ export const CashbookScreen: React.FC = () => {
   );
 };
 
-const Choice: React.FC<{ label: string; value: string; options: string[]; onSelect: (value: string) => void }> = ({ label, value, options, onSelect }) => {
+const Choice: React.FC<{
+  label: string;
+  value: string;
+  options: string[];
+  onSelect: (value: string) => void;
+  style?: any;
+}> = ({ label, value, options, onSelect, style }) => {
   const { theme } = useTheme();
   const [open, setOpen] = useState(false);
-  return <View style={styles.choice}><Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>{label}</Text><Pressable accessibilityRole="button" onPress={() => setOpen(value => !value)} style={[styles.choiceButton, { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }]}><Text style={{ color: theme.textPrimary }}>{value === 'RECEIPT' ? 'Phiếu thu' : value === 'PAYMENT' ? 'Phiếu chi' : value}</Text></Pressable>{open && <View style={[styles.options, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderSubtle }]}>{options.map(option => <Text key={option} onPress={() => { onSelect(option); setOpen(false); }} style={[styles.option, { color: theme.textPrimary }]}>{option === 'RECEIPT' ? 'Phiếu thu' : option === 'PAYMENT' ? 'Phiếu chi' : option}</Text>)}</View>}</View>;
+  const displayLabel = (item: string) => {
+    if (item === 'RECEIPT') return 'Phiếu thu';
+    if (item === 'PAYMENT') return 'Phiếu chi';
+    return item;
+  };
+
+  return (
+    <View style={[styles.choice, style]}>
+      <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>{label}</Text>
+      <Pressable
+        accessibilityRole="button"
+        onPress={() => setOpen(current => !current)}
+        style={[
+          styles.choiceButton,
+          {
+            backgroundColor: theme.surfaceBase,
+            borderColor: open ? theme.primary : theme.borderSubtle
+          }
+        ]}
+      >
+        <Text style={{ color: theme.textPrimary, flex: 1 }} numberOfLines={1}>
+          {displayLabel(value)}
+        </Text>
+        <AppIcon icon={open ? ChevronUp : ChevronDown} color={theme.textSecondary} size={16} />
+      </Pressable>
+      {open && (
+        <View style={[styles.optionsInline, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderSubtle }]}>
+          <ScrollView style={styles.optionsScroll} nestedScrollEnabled showsVerticalScrollIndicator={true}>
+            {options.map(option => {
+              const isSelected = option === value;
+              return (
+                <Pressable
+                  key={option}
+                  onPress={() => {
+                    onSelect(option);
+                    setOpen(false);
+                  }}
+                  style={({ pressed }) => [
+                    styles.optionItem,
+                    {
+                      backgroundColor: isSelected
+                        ? theme.interactiveSecondary
+                        : pressed
+                        ? theme.interactiveQuiet
+                        : 'transparent'
+                    }
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.optionText,
+                      {
+                        color: isSelected ? theme.primary : theme.textPrimary,
+                        fontFamily: isSelected ? typography.families.bodySemibold : typography.families.body
+                      }
+                    ]}
+                  >
+                    {displayLabel(option)}
+                  </Text>
+                  {isSelected && <AppIcon icon={Check} color={theme.primary} size={16} />}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </View>
+      )}
+    </View>
+  );
 };
 
-const VoucherComposer: React.FC<{ visible: boolean; saving: boolean; accounts: CashbookSettingsDto['accounts']; categoriesFor: (direction: CashbookDirection) => CashbookSettingsDto['categories']; isAdmin: boolean; token: string | null; onClose: () => void; onSubmit: (input: ManualCashVoucherInput) => void }> = ({ visible, saving, accounts, categoriesFor, isAdmin, token, onClose, onSubmit }) => {
+const VoucherComposer: React.FC<{
+  visible: boolean;
+  saving: boolean;
+  accounts: CashbookSettingsDto['accounts'];
+  categoriesFor: (direction: CashbookDirection) => CashbookSettingsDto['categories'];
+  isAdmin: boolean;
+  token: string | null;
+  onClose: () => void;
+  onSubmit: (input: ManualCashVoucherInput) => void;
+}> = ({ visible, saving, accounts, categoriesFor, isAdmin, token, onClose, onSubmit }) => {
   const { theme } = useTheme();
   const [direction, setDirection] = useState<CashbookDirection>('RECEIPT');
   const [amount, setAmount] = useState('');
@@ -226,36 +308,307 @@ const VoucherComposer: React.FC<{ visible: boolean; saving: boolean; accounts: C
   const [occurredAt, setOccurredAt] = useState(dateInput());
   const [occurrenceTimeEdited, setOccurrenceTimeEdited] = useState(false);
   const [reason, setReason] = useState('');
+
   const categories = categoriesFor(direction);
   const paymentAccountType = paymentMethod === 'CASH' ? 'CASH' : paymentMethod === 'E_WALLET' ? 'E_WALLET' : 'BANK';
   const compatibleAccounts = accounts.filter(account => account.type === paymentAccountType);
-  useEffect(() => { if (!visible) return; setAmount(''); setCounterpartyName(''); setCounterpartyType(null); setCounterpartyId(null); setCounterpartyMatches([]); setNote(''); setCategoryId(null); setOccurredAt(dateInput()); setOccurrenceTimeEdited(false); setReason(''); setAccountId(accounts.find(item => item.isDefault)?.id ?? accounts[0]?.id ?? null); }, [visible, accounts]);
+
+  useEffect(() => {
+    if (!visible) return;
+    setAmount('');
+    setCounterpartyName('');
+    setCounterpartyType(null);
+    setCounterpartyId(null);
+    setCounterpartyMatches([]);
+    setNote('');
+    setCategoryId(null);
+    setOccurredAt(dateInput());
+    setOccurrenceTimeEdited(false);
+    setReason('');
+    setAccountId(accounts.find(item => item.isDefault)?.id ?? accounts[0]?.id ?? null);
+  }, [visible, accounts]);
+
   useEffect(() => {
     if (!visible || compatibleAccounts.some(account => account.id === accountId)) return;
     setAccountId(compatibleAccounts.find(account => account.isDefault)?.id ?? compatibleAccounts[0]?.id ?? null);
   }, [accountId, compatibleAccounts, visible]);
+
   useEffect(() => {
-    if (!visible || counterpartyName.trim().length < 2 || counterpartyId !== null) { setCounterpartyMatches([]); return; }
+    if (!visible || counterpartyName.trim().length < 2 || counterpartyId !== null) {
+      setCounterpartyMatches([]);
+      return;
+    }
     let active = true;
-    const timer = setTimeout(() => { void fetchCashbookCounterpartiesApi(token, counterpartyName, 1, 20).then(result => { if (active) setCounterpartyMatches(result.items); }).catch(() => { if (active) setCounterpartyMatches([]); }); }, 180);
+    const timer = setTimeout(() => {
+      void fetchCashbookCounterpartiesApi(token, counterpartyName, 1, 20)
+        .then(result => { if (active) setCounterpartyMatches(result.items); })
+        .catch(() => { if (active) setCounterpartyMatches([]); });
+    }, 180);
     return () => { active = false; clearTimeout(timer); };
   }, [counterpartyId, counterpartyName, token, visible]);
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-    <View style={styles.overlay}><ScrollView contentContainerStyle={styles.modalScroll}><Surface style={styles.dialog}>
-      <View style={styles.dialogHeading}><Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Lập phiếu thu / chi</Text><Pressable onPress={onClose}><X color={theme.textPrimary} /></Pressable></View>
-      <Choice label="Loại phiếu" value={direction} options={['RECEIPT', 'PAYMENT']} onSelect={value => { setDirection(value as CashbookDirection); setCategoryId(null); }} />
-      <Field label="Số tiền (VND)" value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="Nhập số tiền thực thu / chi" />
-      <Choice label="Tài khoản quỹ" value={compatibleAccounts.find(item => item.id === accountId)?.name ?? 'Chọn tài khoản phù hợp'} options={compatibleAccounts.map(item => item.name)} onSelect={value => setAccountId(compatibleAccounts.find(item => item.name === value)?.id ?? null)} />
-      <Choice label="Danh mục" value={categories.find(item => item.id === categoryId)?.name ?? 'Chọn danh mục'} options={categories.map(item => item.name)} onSelect={value => setCategoryId(categories.find(item => item.name === value)?.id ?? null)} />
-      <Choice label="Phương thức" value={paymentMethod ? paymentMethodLabels[paymentMethod] : 'Chưa chọn'} options={Object.values(paymentMethodLabels)} onSelect={value => setPaymentMethod((Object.keys(paymentMethodLabels) as Array<keyof typeof paymentMethodLabels>).find(method => paymentMethodLabels[method] === value))} />
-      <Field label="Người nộp / nhận" value={counterpartyName} onChangeText={value => { setCounterpartyName(value); setCounterpartyId(null); setCounterpartyType(null); }} placeholder="Tìm tên, số điện thoại hoặc nhập mới" />
-      {!!counterpartyMatches.length && <View style={[styles.counterpartyMatches, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderSubtle }]}>{counterpartyMatches.map(match => <Pressable key={`${match.type}-${match.id}`} onPress={() => { setCounterpartyName(match.name); setCounterpartyId(match.id); setCounterpartyType(match.type); setCounterpartyMatches([]); }} style={[styles.counterpartyOption, { borderBottomColor: theme.borderSubtle }]}><Text style={{ color: theme.textPrimary, fontFamily: typography.families.bodySemibold }}>{match.name}</Text><Text style={[styles.subtle, { color: theme.textSecondary }]}>{match.phone || match.type}</Text></Pressable>)}</View>}
-      <Field label="Nội dung" value={note} onChangeText={setNote} placeholder="Diễn giải nghiệp vụ" />
-      {isAdmin && <><Field label="Thời điểm phát sinh" webType="datetime-local" value={occurredAt} onChangeText={value => { setOccurredAt(value); setOccurrenceTimeEdited(true); }} placeholder="YYYY-MM-DDTHH:mm" /><Field label="Lý do ghi nhận" value={reason} onChangeText={setReason} placeholder="Bắt buộc khi ghi lùi thời điểm" /></>}
-      <Text style={[styles.subtle, { color: theme.textSecondary }]}>Phiếu chỉ được ghi nhận sau khi máy chủ xác nhận; thử lại cùng nội dung sẽ không tạo trùng.</Text>
-      <View style={styles.actions}><Button label="Đóng" variant="quiet" onPress={onClose} /><Button label="Ghi sổ" loading={saving} disabled={!Number(amount) || !accountId || !categoryId || (isAdmin && (!occurredAt || Number.isNaN(new Date(occurredAt).getTime()) || (occurrenceTimeEdited && new Date(occurredAt).getTime() < Date.now() && reason.trim().length < 3)))} onPress={() => onSubmit({ direction, amount: Number(amount), accountId: accountId!, categoryId: categoryId!, paymentMethod, counterpartyType, counterpartyId, counterpartyName: counterpartyName.trim() || null, note: note.trim() || null, ...(isAdmin && occurrenceTimeEdited ? { occurredAt: new Date(occurredAt).toISOString(), reason: reason.trim() || undefined } : {}) })} /></View>
-    </Surface></ScrollView></View>
-  </Modal>;
+
+  const numAmount = Number(amount) || 0;
+
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={styles.overlay}>
+        <ScrollView contentContainerStyle={styles.modalScroll} keyboardShouldPersistTaps="handled">
+          <Surface style={styles.dialog}>
+            <View style={styles.dialogHeading}>
+              <View>
+                <Text style={[styles.sectionTitle, { color: theme.textPrimary }]}>Lập phiếu thu / chi</Text>
+                <Text style={[styles.subtle, { color: theme.textSecondary }]}>Ghi nhận dòng tiền thực tế vào quỹ của nhà hàng</Text>
+              </View>
+              <Pressable
+                onPress={onClose}
+                accessibilityRole="button"
+                accessibilityLabel="Đóng"
+                style={({ pressed }) => [styles.closeIconBtn, { backgroundColor: pressed ? theme.surfaceSunken : 'transparent' }]}
+              >
+                <AppIcon icon={X} color={theme.textPrimary} size={20} />
+              </Pressable>
+            </View>
+
+            {/* Loại chứng từ: 2 nút chuyển đổi trực quan (không che khuất) */}
+            <View style={styles.formGroup}>
+              <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Loại chứng từ</Text>
+              <View style={styles.directionToggleRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Lập phiếu thu tiền vào"
+                  onPress={() => { setDirection('RECEIPT'); setCategoryId(null); }}
+                  style={[
+                    styles.directionButton,
+                    direction === 'RECEIPT'
+                      ? { backgroundColor: '#EBFDF2', borderColor: '#12B76A' }
+                      : { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }
+                  ]}
+                >
+                  <AppIcon icon={ArrowDownLeft} color={direction === 'RECEIPT' ? '#12B76A' : theme.textSecondary} size={18} />
+                  <Text style={[
+                    styles.directionButtonText,
+                    { color: direction === 'RECEIPT' ? '#027A48' : theme.textSecondary, fontFamily: direction === 'RECEIPT' ? typography.families.bodySemibold : typography.families.body }
+                  ]}>
+                    Phiếu thu (Tiền vào)
+                  </Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Lập phiếu chi tiền ra"
+                  onPress={() => { setDirection('PAYMENT'); setCategoryId(null); }}
+                  style={[
+                    styles.directionButton,
+                    direction === 'PAYMENT'
+                      ? { backgroundColor: '#FEF3F2', borderColor: '#F04438' }
+                      : { backgroundColor: theme.surfaceBase, borderColor: theme.borderSubtle }
+                  ]}
+                >
+                  <AppIcon icon={ArrowUpRight} color={direction === 'PAYMENT' ? '#F04438' : theme.textSecondary} size={18} />
+                  <Text style={[
+                    styles.directionButtonText,
+                    { color: direction === 'PAYMENT' ? '#B42318' : theme.textSecondary, fontFamily: direction === 'PAYMENT' ? typography.families.bodySemibold : typography.families.body }
+                  ]}>
+                    Phiếu chi (Tiền ra)
+                  </Text>
+                </Pressable>
+              </View>
+            </View>
+
+            {/* Số tiền */}
+            <View style={styles.formGroup}>
+              <Field
+                label="Số tiền (VND) *"
+                value={amount}
+                onChangeText={setAmount}
+                keyboardType="numeric"
+                placeholder="Nhập số tiền thực thu / chi"
+              />
+              {numAmount > 0 && (
+                <View style={[styles.amountBadge, { backgroundColor: direction === 'RECEIPT' ? '#EBFDF2' : '#FEF3F2' }]}>
+                  <Text style={[styles.amountPreview, { color: direction === 'RECEIPT' ? '#027A48' : '#B42318' }]}>
+                    {direction === 'RECEIPT' ? '+ ' : '− '}{formatVnd(numAmount)}
+                  </Text>
+                </View>
+              )}
+            </View>
+
+            {/* Phương thức thanh toán: Choice Chips */}
+            <View style={styles.formGroup}>
+              <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Phương thức thanh toán</Text>
+              <View style={styles.methodChips}>
+                {(Object.keys(paymentMethodLabels) as Array<keyof typeof paymentMethodLabels>).map(method => {
+                  const active = paymentMethod === method;
+                  return (
+                    <Pressable
+                      key={method}
+                      onPress={() => setPaymentMethod(method)}
+                      style={[
+                        styles.methodChip,
+                        {
+                          backgroundColor: active ? theme.interactiveSecondary : theme.surfaceBase,
+                          borderColor: active ? theme.primary : theme.borderSubtle
+                        }
+                      ]}
+                    >
+                      <Text style={[
+                        styles.methodChipText,
+                        {
+                          color: active ? theme.primary : theme.textSecondary,
+                          fontFamily: active ? typography.families.bodySemibold : typography.families.body
+                        }
+                      ]}>
+                        {paymentMethodLabels[method]}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Tài khoản quỹ */}
+            <Choice
+              label="Tài khoản quỹ *"
+              value={compatibleAccounts.find(item => item.id === accountId)?.name ?? 'Chọn tài khoản phù hợp'}
+              options={compatibleAccounts.map(item => item.name)}
+              onSelect={value => setAccountId(compatibleAccounts.find(item => item.name === value)?.id ?? null)}
+              style={styles.formGroup}
+            />
+
+            {/* Danh mục */}
+            <Choice
+              label={`Danh mục ${direction === 'RECEIPT' ? 'thu' : 'chi'} *`}
+              value={categories.find(item => item.id === categoryId)?.name ?? 'Chọn danh mục'}
+              options={categories.map(item => item.name)}
+              onSelect={value => setCategoryId(categories.find(item => item.name === value)?.id ?? null)}
+              style={styles.formGroup}
+            />
+
+            {/* Người nộp / nhận */}
+            <View style={styles.formGroup}>
+              <Field
+                label="Người nộp / nhận"
+                value={counterpartyName}
+                onChangeText={value => {
+                  setCounterpartyName(value);
+                  setCounterpartyId(null);
+                  setCounterpartyType(null);
+                }}
+                placeholder="Tìm tên, SĐT hoặc nhập mới (Khách hàng, NCC, Nhân viên)"
+              />
+              {!!counterpartyMatches.length && (
+                <View style={[styles.counterpartyMatches, { backgroundColor: theme.surfaceRaised, borderColor: theme.borderSubtle }]}>
+                  <ScrollView style={{ maxHeight: 150 }} nestedScrollEnabled>
+                    {counterpartyMatches.map(match => (
+                      <Pressable
+                        key={`${match.type}-${match.id}`}
+                        onPress={() => {
+                          setCounterpartyName(match.name);
+                          setCounterpartyId(match.id);
+                          setCounterpartyType(match.type);
+                          setCounterpartyMatches([]);
+                        }}
+                        style={({ pressed }) => [
+                          styles.counterpartyOption,
+                          {
+                            backgroundColor: pressed ? theme.interactiveQuiet : 'transparent',
+                            borderBottomColor: theme.borderSubtle
+                          }
+                        ]}
+                      >
+                        <Text style={{ color: theme.textPrimary, fontFamily: typography.families.bodySemibold }}>
+                          {match.name}
+                        </Text>
+                        <Text style={[styles.subtle, { color: theme.textSecondary }]}>
+                          {match.phone ? `${match.phone} · ` : ''}
+                          {match.type === 'CUSTOMER' ? 'Khách hàng' : match.type === 'SUPPLIER' ? 'Nhà cung cấp' : match.type === 'EMPLOYEE' ? 'Nhân viên' : match.type}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
+            </View>
+
+            {/* Nội dung diễn giải */}
+            <View style={styles.formGroup}>
+              <Field
+                label="Nội dung diễn giải"
+                value={note}
+                onChangeText={setNote}
+                placeholder="Diễn giải chi tiết nghiệp vụ phát sinh"
+              />
+            </View>
+
+            {/* Dành cho Quản trị viên: Ghi nhận lùi thời điểm */}
+            {isAdmin && (
+              <View style={[styles.adminTimePanel, { backgroundColor: theme.surfaceSunken, borderColor: theme.borderSubtle }]}>
+                <Text style={[styles.fieldLabel, { color: theme.textPrimary }]}>Ghi nhận thời điểm (Quản trị viên)</Text>
+                <Field
+                  label="Thời điểm phát sinh thực tế"
+                  webType="datetime-local"
+                  value={occurredAt}
+                  onChangeText={value => {
+                    setOccurredAt(value);
+                    setOccurrenceTimeEdited(true);
+                  }}
+                  placeholder="YYYY-MM-DDTHH:mm"
+                />
+                <Field
+                  label="Lý do ghi nhận"
+                  value={reason}
+                  onChangeText={setReason}
+                  placeholder="Bắt buộc nêu lý do khi ghi lùi thời điểm"
+                />
+              </View>
+            )}
+
+            <Text style={[styles.subtle, { color: theme.textSecondary }]}>
+              Phiếu chỉ được ghi nhận sau khi máy chủ xác nhận; thao tác lại cùng nội dung sẽ tự động chống trùng lặp an toàn.
+            </Text>
+
+            <View style={styles.modalActions}>
+              <Button label="Hủy bỏ" variant="quiet" onPress={onClose} />
+              <Button
+                label="Ghi sổ phiếu"
+                loading={saving}
+                disabled={
+                  !numAmount ||
+                  !accountId ||
+                  !categoryId ||
+                  (isAdmin &&
+                    (!occurredAt ||
+                      Number.isNaN(new Date(occurredAt).getTime()) ||
+                      (occurrenceTimeEdited &&
+                        new Date(occurredAt).getTime() < Date.now() &&
+                        reason.trim().length < 3)))
+                }
+                onPress={() =>
+                  onSubmit({
+                    direction,
+                    amount: numAmount,
+                    accountId: accountId!,
+                    categoryId: categoryId!,
+                    paymentMethod,
+                    counterpartyType,
+                    counterpartyId,
+                    counterpartyName: counterpartyName.trim() || null,
+                    note: note.trim() || null,
+                    ...(isAdmin && occurrenceTimeEdited
+                      ? {
+                          occurredAt: new Date(occurredAt).toISOString(),
+                          reason: reason.trim() || undefined,
+                        }
+                      : {}),
+                  })
+                }
+              />
+            </View>
+          </Surface>
+        </ScrollView>
+      </View>
+    </Modal>
+  );
 };
 
 const CashbookSettings: React.FC<{ visible: boolean; settings: CashbookSettingsDto | null; saving: boolean; onClose: () => void; onActivate: (accounts: Array<{ accountId: number; openingBalance: number; openingAt: string }>) => void; onCreateAccount: (input: FinancialAccountCreateInput) => void; onCreateCategory: (input: CashFlowCategoryCreateInput) => void }> = ({ visible, settings, saving, onClose, onActivate, onCreateAccount, onCreateCategory }) => {
@@ -316,10 +669,61 @@ const DetailLine: React.FC<{ label: string; value: string }> = ({ label, value }
 };
 
 const styles = StyleSheet.create({
-  page: { flex: 1 }, content: { gap: spacing.lg, padding: spacing.lg, paddingBottom: spacing.xxl }, actions: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  notice: { gap: spacing.sm, padding: spacing.lg }, noticeTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md }, subtle: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
-  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }, summaryGridCompact: { gap: spacing.sm }, summaryCard: { flexBasis: 210, flexGrow: 1, gap: spacing.xs, minWidth: 145, padding: spacing.md }, balanceCard: { borderLeftColor: '#B42318', borderLeftWidth: 4 }, cardLabel: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm }, cardAmount: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl },
-  filterPanel: { gap: spacing.md, padding: spacing.md }, filterRow: { alignItems: 'flex-end', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md }, filterColumn: { alignItems: 'stretch', flexDirection: 'column' }, choice: { flex: 1, gap: spacing.xs, minWidth: 140, position: 'relative' }, fieldLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm }, choiceButton: { borderRadius: radii.md, borderWidth: 1, justifyContent: 'center', minHeight: 44, paddingHorizontal: spacing.md }, options: { borderRadius: radii.md, borderWidth: 1, elevation: 5, position: 'absolute', top: 66, width: '100%', zIndex: 30 }, option: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  tableSurface: { overflow: 'hidden' }, tableHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', padding: spacing.md }, sectionTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg }, row: { alignItems: 'center', borderTopWidth: 1, flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', padding: spacing.md }, rowMain: { flex: 1, gap: 3, minWidth: 0 }, rowTitleLine: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm }, code: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md }, status: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs }, relationship: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs }, amount: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.md }, pagination: { alignItems: 'center', borderTopColor: '#D8D4CE', borderTopWidth: 1, flexDirection: 'row', justifyContent: 'center', gap: spacing.md, padding: spacing.md }, loading: { padding: spacing.xl },
-  overlay: { alignItems: 'center', backgroundColor: 'rgba(19, 18, 17, 0.48)', flex: 1, justifyContent: 'center', padding: spacing.md }, modalScroll: { flexGrow: 1, justifyContent: 'center', width: '100%' }, dialog: { alignSelf: 'center', gap: spacing.md, maxWidth: 620, padding: spacing.lg, width: '100%' }, dialogHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' }, detailAmount: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xxl }, detailLine: { borderBottomColor: '#D8D4CE', borderBottomWidth: StyleSheet.hairlineWidth, gap: 2, paddingVertical: spacing.sm }, detailValue: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md }, accountCreatePanel: { borderRadius: radii.md, borderWidth: 1, gap: spacing.md, padding: spacing.md }, defaultToggle: { paddingVertical: spacing.xs }, counterpartyMatches: { borderRadius: radii.md, borderWidth: 1, overflow: 'hidden' }, counterpartyOption: { borderBottomWidth: StyleSheet.hairlineWidth, gap: 2, padding: spacing.sm }
+  page: { flex: 1 },
+  content: { gap: spacing.lg, padding: spacing.lg, paddingBottom: spacing.xxl },
+  actions: { alignItems: 'center', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
+  notice: { gap: spacing.sm, padding: spacing.lg },
+  noticeTitle: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  subtle: { fontFamily: typography.families.body, fontSize: typography.sizes.sm, lineHeight: typography.lineHeights.sm },
+  summaryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  summaryGridCompact: { gap: spacing.sm },
+  summaryCard: { flexBasis: 210, flexGrow: 1, gap: spacing.xs, minWidth: 145, padding: spacing.md },
+  balanceCard: { borderLeftColor: '#B42318', borderLeftWidth: 4 },
+  cardLabel: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.sm },
+  cardAmount: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xl },
+  filterPanel: { gap: spacing.md, padding: spacing.md },
+  filterRow: { alignItems: 'flex-start', flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
+  filterColumn: { alignItems: 'stretch', flexDirection: 'column' },
+  choice: { flex: 1, gap: spacing.xs, minWidth: 140, position: 'relative' },
+  fieldLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  choiceButton: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', minHeight: 44, paddingHorizontal: spacing.md },
+  optionsInline: { borderRadius: radii.md, borderWidth: 1, marginTop: spacing.xs, overflow: 'hidden' },
+  optionsScroll: { maxHeight: 180 },
+  optionItem: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', minHeight: 40, paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
+  optionText: { fontSize: typography.sizes.sm },
+  tableSurface: { overflow: 'hidden' },
+  tableHeading: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', padding: spacing.md },
+  sectionTitle: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.lg },
+  row: { alignItems: 'center', borderTopWidth: 1, flexDirection: 'row', gap: spacing.md, justifyContent: 'space-between', padding: spacing.md },
+  rowMain: { flex: 1, gap: 3, minWidth: 0 },
+  rowTitleLine: { alignItems: 'center', flexDirection: 'row', gap: spacing.sm },
+  code: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  status: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs },
+  relationship: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
+  amount: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.md },
+  pagination: { alignItems: 'center', borderTopColor: '#D8D4CE', borderTopWidth: 1, flexDirection: 'row', justifyContent: 'center', gap: spacing.md, padding: spacing.md },
+  loading: { padding: spacing.xl },
+  overlay: { alignItems: 'center', backgroundColor: 'rgba(19, 18, 17, 0.48)', flex: 1, justifyContent: 'center', padding: spacing.md },
+  modalScroll: { flexGrow: 1, justifyContent: 'flex-start', paddingVertical: spacing.xl, width: '100%', alignItems: 'center' },
+  dialog: { alignSelf: 'center', borderRadius: radii.lg, gap: spacing.md, maxWidth: 600, padding: spacing.lg, width: '100%' },
+  dialogHeading: { alignItems: 'flex-start', flexDirection: 'row', justifyContent: 'space-between' },
+  closeIconBtn: { alignItems: 'center', borderRadius: radii.md, height: 36, justifyContent: 'center', width: 36 },
+  detailAmount: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.xxl },
+  detailLine: { borderBottomColor: '#D8D4CE', borderBottomWidth: StyleSheet.hairlineWidth, gap: 2, paddingVertical: spacing.sm },
+  detailValue: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.md },
+  accountCreatePanel: { borderRadius: radii.md, borderWidth: 1, gap: spacing.md, padding: spacing.md },
+  defaultToggle: { paddingVertical: spacing.xs },
+  counterpartyMatches: { borderRadius: radii.md, borderWidth: 1, marginTop: spacing.xs, overflow: 'hidden' },
+  counterpartyOption: { borderBottomWidth: StyleSheet.hairlineWidth, gap: 2, padding: spacing.sm },
+  formGroup: { gap: spacing.xs, width: '100%' },
+  directionToggleRow: { flexDirection: 'row', gap: spacing.sm },
+  directionButton: { alignItems: 'center', borderRadius: radii.md, borderWidth: 1.5, flex: 1, flexDirection: 'row', gap: spacing.sm, justifyContent: 'center', minHeight: 48, paddingHorizontal: spacing.md },
+  directionButtonText: { fontSize: typography.sizes.sm },
+  amountBadge: { alignSelf: 'flex-start', borderRadius: radii.sm, marginTop: spacing.xs, paddingHorizontal: spacing.sm, paddingVertical: 4 },
+  amountPreview: { fontFamily: typography.families.operationalBold, fontSize: typography.sizes.md },
+  methodChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+  methodChip: { alignItems: 'center', borderRadius: radii.pill, borderWidth: 1, justifyContent: 'center', minHeight: 36, paddingHorizontal: spacing.md },
+  methodChipText: { fontSize: typography.sizes.xs },
+  adminTimePanel: { borderRadius: radii.md, borderWidth: 1, gap: spacing.sm, padding: spacing.md },
+  modalActions: { alignItems: 'center', flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm, marginTop: spacing.xs },
 });

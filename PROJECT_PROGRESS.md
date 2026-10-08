@@ -690,6 +690,21 @@
       - `npm run typecheck`: **0 lỗi biên dịch** trên toàn bộ monorepo (`backend` + `frontend`).
       - Toàn bộ test suite liên quan navigation và sổ quỹ (`RootNavigator.test.tsx`, `CashbookScreen.test.tsx`): 17/17 tests PASS 100%.
 
-### Nhật ký 2026-10-08 — Hoàn thiện Báo hao hụt, VietQR Khách Hàng, Cô Lập Phiên Phục Vụ Bàn & Tối Ưu Sổ Quỹ Admin
+56. **Nâng Cấp Giao Diện Modal Lập Phiếu Thu / Chi Sổ Quỹ & Khắc Phục Triệt Để Lỗi Form Vỡ, Dropdown Đè Lên Nhau**:
+    - *Bối cảnh & Phân tích Nguyên nhân gốc rễ (Root Cause Analysis - RCA)*:
+      - *Hiện tượng*: Người dùng phản ánh modal lập phiếu thu/chi bị lỗi form, vỡ layout, các trường đè lên nhau và menu dropdown che khuất phần tử phía dưới.
+      - *Nguyên nhân*: Component `Choice` cũ dùng kiểu dropdown thả nổi tuyệt đối (`position: 'absolute', top: 66, zIndex: 30`) trong cột form dọc, khi mở menu sẽ nổi đè lên trên input của trường tiếp theo. Ngoài ra, việc dùng chung style `flex: 1` của filter row vào modal dọc gây co ép chiều cao không đều giữa các trường, và container `justifyContent: 'center'` làm tràn khuất phần đầu form trên màn hình laptop nhỏ.
+    - *Giải pháp Kiến trúc & Trải nghiệm UI/UX*:
+      - **Segmented Toggle Loại Chứng Từ (1 chạm trực quan)**: Thay thế dropdown 2 lựa chọn bằng cặp nút chuyển đổi xúc giác lớn: **Phiếu thu (Tiền vào)** tông xanh lá (`#12B76A` / `#EBFDF2`) và **Phiếu chi (Tiền ra)** tông đỏ cam (`#F04438` / `#FEF3F2`). Không còn dropdown, không thể đè che, nhận diện cực nhanh.
+      - **Choice Chips Phương Thức Thanh Toán (1 chạm)**: 4 nút pill tiện lợi: *Tiền mặt*, *Chuyển khoản*, *Thẻ tín dụng*, *Ví điện tử*. Chọn tới đâu tự động lọc tài khoản quỹ tương thích tới đó.
+      - **Inline Expandable Select (Dropdown mở rộng tự nhiên)**: Tái cấu trúc `Choice` mở rộng nội tuyến (`position: 'relative'`) ngay dưới nút bấm và đẩy nội dung phía dưới xuống tự nhiên, giới hạn `maxHeight: 180` kèm `ScrollView`, có icon mũi tên `ChevronDown`/`ChevronUp` và dấu tích `Check` xác nhận item đang chọn. Tuyệt đối không che khuất bất kỳ phần tử nào.
+      - **Live Preview Số Tiền Động**: Hiển thị badge định dạng tiền tệ thời gian thực (VD: `+ 150,000 ₫` hoặc `− 150,000 ₫`) khi người dùng gõ số, chống gõ nhầm chữ số 0.
+      - **Sửa Lỗi Cuộn Modal**: Cấu hình `modalScroll` sang `justifyContent: 'flex-start'`, hỗ trợ cuộn mượt mà từ đầu đến cuối form mà không bị cắt góc trên đỉnh.
+    - *Kiểm thử & Nghiệm thu Chất lượng*:
+      - `npm run typecheck:frontend`: **0 lỗi biên dịch**.
+      - Toàn bộ test suite Sổ quỹ (`CashbookScreen.test.tsx`, `CashbookAccountChoice.test.ts`, `cashbookViewModel.test.ts`, `manualVoucherIdempotency.test.ts`, `cashbookPrint.test.ts`): 15/15 tests PASS 100%.
+      - `npm run build:frontend`: Build web bundle thành công 100%.
 
-Hoàn tất chọn toàn bộ nguyên liệu hoạt động, nhập lượng thập phân có đơn vị, preview BOM/tồn và idempotency lưu DB/thiết bị. Tách `KitchenWasteModal` khỏi KDS để kiểm thử trực tiếp luồng người dùng. Xác nhận 23 test liên quan đạt, typecheck/lint/build web đạt. Nâng cấp modal thanh toán khách hàng gọi món tại bàn sang mã VietQR thật 100% kết nối tài khoản NCB (.env) kèm tiện ích sao chép nhanh 1 chạm. Khắc phục triệt để lỗi cộng dồn đơn của khách trước bằng kiến trúc phân tách phiên phục vụ bàn (`currentSessionId` / `tableSessionId`) từ CSDL, API đến giao diện khách hàng. Khắc phục lỗi hiển thị sổ quỹ trên giao diện Admin: đưa tab "Sổ quỹ" lên vị trí ưu tiên số 2 (ngay cạnh Báo cáo), khóa cố định chiều rộng sidebar 208px tránh co giãn flex và hỗ trợ cuộn ScrollView mượt mà. Full quality check PASS 100%.
+### Nhật ký 2026-10-08 — Hoàn thiện Báo hao hụt, VietQR Khách Hàng, Cô Lập Phiên Phục Vụ Bàn, Tối Ưu Sổ Quỹ Admin & Form Thu Chi
+
+Hoàn tất chọn toàn bộ nguyên liệu hoạt động, nhập lượng thập phân có đơn vị, preview BOM/tồn và idempotency lưu DB/thiết bị. Tách `KitchenWasteModal` khỏi KDS để kiểm thử trực tiếp luồng người dùng. Xác nhận 23 test liên quan đạt, typecheck/lint/build web đạt. Nâng cấp modal thanh toán khách hàng gọi món tại bàn sang mã VietQR thật 100% kết nối tài khoản NCB (.env) kèm tiện ích sao chép nhanh 1 chạm. Khắc phục triệt để lỗi cộng dồn đơn của khách trước bằng kiến trúc phân tách phiên phục vụ bàn (`currentSessionId` / `tableSessionId`) từ CSDL, API đến giao diện khách hàng. Khắc phục lỗi hiển thị sổ quỹ trên giao diện Admin: đưa tab "Sổ quỹ" lên vị trí ưu tiên số 2 (ngay cạnh Báo cáo), khóa cố định chiều rộng sidebar 208px tránh co giãn flex và hỗ trợ cuộn ScrollView mượt mà. Nâng cấp hoàn chỉnh modal Lập phiếu thu / chi: loại bỏ dropdown che khuất, chuyển sang Segmented Toggle & Choice Chips 1 chạm, dropdown inline đẩy dòng tự nhiên và live format VND. Full quality check PASS 100%.
