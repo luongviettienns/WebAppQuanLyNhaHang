@@ -12,7 +12,7 @@ import {
   Text,
   View
 } from 'react-native';
-import { Bell, Check, ChefHat, ChevronLeft, ChevronRight, CreditCard, Plus, QrCode, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
+import { Bell, Check, ChefHat, ChevronLeft, ChevronRight, CreditCard, Plus, QrCode, ReceiptText, RefreshCw, ShoppingBag, UtensilsCrossed, X } from 'lucide-react-native';
 import { DiningTableDto, MenuItemDto, OrderDto, OrderStatus, VoucherValidationResultDto } from '../../api/contracts';
 import { getApiBaseUrl } from '../../api/config';
 import { useRestaurant } from '../../contexts/RestaurantContext';
@@ -104,47 +104,64 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
   );
 
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadGuestTable = useCallback(async () => {
+    setGuestTableError(null);
+    try {
+      if (qrCodeToken) {
+        const response = await fetch(`${getApiBaseUrl()}/api/tables/qr/${encodeURIComponent(qrCodeToken)}`);
+        const json = await response.json();
+        if (!response.ok) {
+          throw new Error(json.error?.message || 'Mã QR bàn không hợp lệ');
+        }
+        setGuestTable(json.data.table);
+        setResolvedQrToken(qrCodeToken);
+        return json.data.table;
+      } else if (tableNumber) {
+        // Tu dong nhan dien va lay token hop le theo so ban tu server
+        const response = await fetch(`${getApiBaseUrl()}/api/tables/by-number/${tableNumber}`);
+        const json = await response.json();
+        if (!response.ok) {
+          throw new Error(json.error?.message || `Không thể tải thông tin Bàn ${tableNumber}`);
+        }
+        setGuestTable(json.data.table);
+        if (json.data.qrCodeToken) {
+          setResolvedQrToken(json.data.qrCodeToken);
+        }
+        return json.data.table;
+      }
+    } catch (err: any) {
+      setGuestTableError(err.message || 'Không thể tải thông tin bàn');
+    }
+  }, [qrCodeToken, tableNumber]);
 
   useEffect(() => {
-    let cancelled = false;
-    const loadGuestTable = async () => {
-      setGuestTableError(null);
-      try {
-        if (qrCodeToken) {
-          const response = await fetch(`${getApiBaseUrl()}/api/tables/qr/${encodeURIComponent(qrCodeToken)}`);
-          const json = await response.json();
-          if (!response.ok) {
-            throw new Error(json.error?.message || 'Mã QR bàn không hợp lệ');
-          }
-          if (!cancelled) {
-            setGuestTable(json.data.table);
-            setResolvedQrToken(qrCodeToken);
-          }
-        } else if (tableNumber) {
-          // Tu dong nhan dien va lay token hop le theo so ban tu server
-          const response = await fetch(`${getApiBaseUrl()}/api/tables/by-number/${tableNumber}`);
-          const json = await response.json();
-          if (!response.ok) {
-            throw new Error(json.error?.message || `Không thể tải thông tin Bàn ${tableNumber}`);
-          }
-          if (!cancelled) {
-            setGuestTable(json.data.table);
-            if (json.data.qrCodeToken) {
-              setResolvedQrToken(json.data.qrCodeToken);
-            }
-          }
-        }
-      } catch (err: any) {
-        if (!cancelled) {
-          setGuestTableError(err.message || 'Không thể tải thông tin bàn');
-        }
-      }
-    };
     void loadGuestTable();
-    return () => {
-      cancelled = true;
-    };
-  }, [qrCodeToken, tableNumber]);
+  }, [loadGuestTable]);
+
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      await Promise.allSettled([
+        loadGuestTable(),
+        fetchTables()
+      ]);
+      showToast({
+        type: 'success',
+        title: 'Đã làm mới dữ liệu 🔄',
+        message: 'Thông tin bàn và tiến độ đơn hàng đã được cập nhật mới nhất.'
+      });
+    } catch {
+      showToast({
+        type: 'error',
+        title: 'Làm mới không thành công',
+        message: 'Vui lòng kiểm tra lại kết nối mạng.'
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [loadGuestTable, fetchTables, showToast]);
 
   const effectiveQrToken = qrCodeToken || resolvedQrToken;
   const table = guestTable || tables.find((t) => t.tableNumber === tableNumber) || (tables.length > 0 ? tables[0] : null);
@@ -430,8 +447,9 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
         <View style={styles.tableIdentity}>
           {liveOrder && isBrowsingMenu ? (
             <Pressable
+              testID="customer-back-to-session-orders"
               accessibilityRole="button"
-              accessibilityLabel="Quay lại xem tiến độ đơn"
+              accessibilityLabel="Quay lại xem đơn và tiến độ món"
               onPress={() => setIsBrowsingMenu(false)}
               style={({ pressed }) => [
                 styles.headerBackButton,
@@ -445,28 +463,76 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
           )}
           <View style={styles.tableIdentityCopy}>
             <Text style={[styles.headerHint, { color: theme.textSecondary }]}>
-              {liveOrder && isBrowsingMenu ? `Đơn ${liveOrder.code}` : 'Đặt món tại bàn'}
+              {liveOrder && isBrowsingMenu ? `Đơn ${liveOrder.code}` : (allTableOrders.length > 0 ? `Phiên ăn (${allTableOrders.length} đợt)` : 'Đặt món tại bàn')}
             </Text>
             <Text style={[styles.tableIdentityNumber, { color: theme.textPrimary }]}>Bàn {formatTableNumber(displayTableNumber)}</Text>
           </View>
         </View>
 
-        {liveOrder && (
+        <View style={styles.headerRightActions}>
+          {/* Nút Làm mới (Refresh) */}
           <Pressable
+            testID="customer-refresh-btn"
             accessibilityRole="button"
-            accessibilityLabel={'Thanh toán ' + formatVND(totalTableAmount)}
-            onPress={() => setIsVietQRModalOpen(true)}
+            accessibilityLabel="Làm mới thông tin bàn và đơn hàng"
+            onPress={() => void handleRefresh()}
+            disabled={isRefreshing}
             style={({ pressed }) => [
-              styles.headerPayment,
-              { backgroundColor: pressed ? theme.interactiveSecondaryPressed : theme.interactiveSecondary }
+              styles.headerRefreshButton,
+              {
+                backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceRaised,
+                borderColor: theme.borderSubtle,
+                opacity: isRefreshing ? 0.6 : 1
+              }
             ]}
           >
-            <AppIcon icon={CreditCard} color={theme.primary} size={18} />
-            <Text style={[styles.headerPaymentText, { color: theme.primary }]}>
-              {allTableOrders.length > 1 ? `Thanh toán (${formatVND(totalTableAmount)})` : 'Thanh toán'}
-            </Text>
+            {isRefreshing ? (
+              <ActivityIndicator size="small" color={theme.primary} />
+            ) : (
+              <AppIcon icon={RefreshCw} color={theme.textPrimary} size={18} />
+            )}
           </Pressable>
-        )}
+
+          {/* Nút Xem đơn bàn khi đang ở Thực đơn */}
+          {liveOrder && isBrowsingMenu && (
+            <Pressable
+              testID="customer-view-session-btn"
+              accessibilityRole="button"
+              accessibilityLabel={`Xem đơn của bàn (${allTableOrders.length} đợt)`}
+              onPress={() => setIsBrowsingMenu(false)}
+              style={({ pressed }) => [
+                styles.headerSessionButton,
+                {
+                  backgroundColor: pressed ? theme.surfaceSunken : theme.surfaceRaised,
+                  borderColor: theme.primary
+                }
+              ]}
+            >
+              <AppIcon icon={ReceiptText} color={theme.primary} size={16} />
+              <Text style={[styles.headerSessionText, { color: theme.primary }]}>
+                {allTableOrders.length > 1 ? `Đơn bàn (${allTableOrders.length})` : 'Xem đơn'}
+              </Text>
+            </Pressable>
+          )}
+
+          {/* Nút Thanh toán */}
+          {liveOrder && (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={'Thanh toán ' + formatVND(totalTableAmount)}
+              onPress={() => setIsVietQRModalOpen(true)}
+              style={({ pressed }) => [
+                styles.headerPayment,
+                { backgroundColor: pressed ? theme.interactiveSecondaryPressed : theme.interactiveSecondary }
+              ]}
+            >
+              <AppIcon icon={CreditCard} color={theme.primary} size={18} />
+              <Text style={[styles.headerPaymentText, { color: theme.primary }]}>
+                {allTableOrders.length > 1 ? `Thanh toán (${formatVND(totalTableAmount)})` : 'Thanh toán'}
+              </Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {liveOrder && !isBrowsingMenu ? (
@@ -907,6 +973,34 @@ export const TableOrderScreen: React.FC<Props> = ({ tableNumber = 4, qrCodeToken
             </View>
           </View>
 
+          {allTableOrders.length > 0 && (
+            <Pressable
+              testID="customer-view-session-bar"
+              accessibilityRole="button"
+              accessibilityLabel={`Bàn đã có ${allTableOrders.length} đợt gọi món, tổng cộng ${formatVND(totalTableAmount)}. Chạm để xem chi tiết và tiến độ bếp.`}
+              onPress={() => setIsBrowsingMenu(false)}
+              style={[
+                styles.sessionOrdersBar,
+                { backgroundColor: theme.interactiveSecondary, borderColor: theme.primary }
+              ]}
+            >
+              <View style={styles.sessionOrdersBarLeft}>
+                <View style={[styles.sessionOrdersBadge, { backgroundColor: theme.primary }]}>
+                  <AppIcon icon={ReceiptText} color={theme.textInverse} size={16} />
+                </View>
+                <View style={styles.sessionOrdersTextGroup}>
+                  <Text style={[styles.sessionOrdersBarTitle, { color: theme.primary }]}>
+                    Bàn đã gọi {allTableOrders.length} đợt món · {formatVND(totalTableAmount)}
+                  </Text>
+                  <Text style={[styles.sessionOrdersBarSub, { color: theme.textSecondary }]}>
+                    Chạm để xem chi tiết các món & tiến độ bếp đang nấu
+                  </Text>
+                </View>
+              </View>
+              <AppIcon icon={ChevronRight} color={theme.primary} size={18} />
+            </Pressable>
+          )}
+
           <MenuCategoryPills
             categories={categories}
             selectedCategoryId={selectedCategoryId}
@@ -1167,6 +1261,70 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md
   },
   headerPaymentText: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
+  headerRightActions: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: spacing.xs
+  },
+  headerRefreshButton: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1,
+    height: 40,
+    justifyContent: 'center',
+    minWidth: 40,
+    paddingHorizontal: spacing.xs
+  },
+  headerSessionButton: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: spacing.xs,
+    height: 40,
+    justifyContent: 'center',
+    paddingHorizontal: spacing.sm
+  },
+  headerSessionText: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.xs
+  },
+  sessionOrdersBar: {
+    alignItems: 'center',
+    borderRadius: radii.md,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    marginHorizontal: spacing.lg,
+    marginTop: spacing.md,
+    padding: spacing.md
+  },
+  sessionOrdersBarLeft: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: spacing.sm
+  },
+  sessionOrdersBadge: {
+    alignItems: 'center',
+    borderRadius: radii.pill,
+    height: 32,
+    justifyContent: 'center',
+    width: 32
+  },
+  sessionOrdersTextGroup: {
+    flex: 1,
+    gap: 2
+  },
+  sessionOrdersBarTitle: {
+    fontFamily: typography.families.bodySemibold,
+    fontSize: typography.sizes.sm
+  },
+  sessionOrdersBarSub: {
+    fontFamily: typography.families.body,
+    fontSize: typography.sizes.xs
+  },
   menuArea: { flex: 1 },
   menuHeading: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg },
   screenTitle: {

@@ -10,10 +10,17 @@ function managementDto(table: any) {
   return { ...table, displayName: table.displayName || `Bàn ${table.tableNumber}`, seatCount: table.capacity, area: table.area ?? null };
 }
 
-function deriveTableState<T extends { status: string; orders: Array<{ id: number }> }>(table: T) {
-  const currentOrder = table.orders[0];
+function deriveTableState<T extends { status: string; orders: Array<{ id: number; status?: string; paymentStatus?: string }> }>(table: T) {
+  const activeOrder = table.orders.find(o =>
+    o.status !== 'CANCELLED' && (
+      o.status !== 'COMPLETED' ||
+      o.paymentStatus === 'UNPAID' ||
+      o.paymentStatus === 'WAITING_CONFIRMATION'
+    )
+  ) ?? table.orders[0];
+
   let status = table.status;
-  if (currentOrder) {
+  if (table.orders.length > 0) {
     status = 'OCCUPIED';
   } else if (table.status === 'OCCUPIED') {
     status = 'AVAILABLE';
@@ -24,11 +31,41 @@ function deriveTableState<T extends { status: string; orders: Array<{ id: number
   return {
     ...table,
     status,
-    currentOrderId: currentOrder?.id ?? null
+    currentOrderId: activeOrder?.id ?? null
   };
 }
 
 export class TablesService {
+  private static getTableOrdersInclude() {
+    const activeSessionThreshold = new Date(Date.now() - 12 * 60 * 60 * 1000);
+    return {
+      orders: {
+        where: {
+          status: { not: 'CANCELLED' as const },
+          createdAt: { gte: activeSessionThreshold }
+        },
+        orderBy: { createdAt: 'desc' as const },
+        include: {
+          items: true
+        }
+      }
+    };
+  }
+
+  private static filterSessionOrders<T extends { status: string; orders: Array<{ id: number; status: string; paymentStatus: string }> }>(table: T): T {
+    const activeOrders = table.orders.filter(order =>
+      order.paymentStatus === 'UNPAID' ||
+      order.paymentStatus === 'WAITING_CONFIRMATION' ||
+      ['PENDING', 'PREPARING', 'READY'].includes(order.status)
+    );
+
+    if (table.status !== 'OCCUPIED' && activeOrders.length === 0) {
+      return { ...table, orders: [] };
+    }
+
+    return table;
+  }
+
   static async manage(query: TableManageQuery) {
     const where: Prisma.DiningTableWhereInput = {
       ...(query.areaId ? { areaId: query.areaId } : {}),
@@ -90,45 +127,27 @@ export class TablesService {
     const tables = await prisma.diningTable.findMany({
       where: { isActive: true },
       orderBy: { tableNumber: 'asc' },
-      include: {
-        orders: {
-          where: {
-            paymentStatus: 'UNPAID',
-            status: { not: 'CANCELLED' }
-          },
-          orderBy: { createdAt: 'desc' },
-          include: {
-            items: true
-          }
-        }
-      }
+      include: this.getTableOrdersInclude()
     });
 
-    return { tables: tables.map(deriveTableState) };
+    return {
+      tables: tables
+        .map(t => this.filterSessionOrders(t as any))
+        .map(deriveTableState)
+    };
   }
 
   static async getTableById(id: number) {
     const table = await prisma.diningTable.findUnique({
       where: { id },
-      include: {
-        orders: {
-          where: {
-            paymentStatus: 'UNPAID',
-            status: { not: 'CANCELLED' }
-          },
-          orderBy: { createdAt: 'desc' },
-          include: {
-            items: true
-          }
-        }
-      }
+      include: this.getTableOrdersInclude()
     });
 
     if (!table) {
       throw ApiError.notFound(`Bàn ăn ID ${id} không tồn tại`);
     }
 
-    return { table: deriveTableState(table) };
+    return { table: deriveTableState(this.filterSessionOrders(table as any)) };
   }
 
   static async getTableByQrToken(qrCodeToken: string) {
@@ -150,25 +169,14 @@ export class TablesService {
           ...(tableNumberToMatch !== null ? [{ tableNumber: tableNumberToMatch }] : [])
         ]
       },
-      include: {
-        orders: {
-          where: {
-            paymentStatus: 'UNPAID',
-            status: { not: 'CANCELLED' }
-          },
-          orderBy: { createdAt: 'desc' },
-          include: {
-            items: true
-          }
-        }
-      }
+      include: this.getTableOrdersInclude()
     });
 
     if (!table) {
       throw ApiError.notFound('Mã QR bàn không hợp lệ hoặc đã hết hạn');
     }
 
-    const safeTable = deriveTableState(table) as Record<string, unknown>;
+    const safeTable = deriveTableState(this.filterSessionOrders(table as any)) as Record<string, unknown>;
     delete safeTable.qrCodeToken;
     return { table: safeTable };
   }
@@ -176,25 +184,14 @@ export class TablesService {
   static async getTableByTableNumber(tableNumber: number) {
     const table = await prisma.diningTable.findUnique({
       where: { tableNumber, isActive: true },
-      include: {
-        orders: {
-          where: {
-            paymentStatus: 'UNPAID',
-            status: { not: 'CANCELLED' }
-          },
-          orderBy: { createdAt: 'desc' },
-          include: {
-            items: true
-          }
-        }
-      }
+      include: this.getTableOrdersInclude()
     });
 
     if (!table) {
       throw ApiError.notFound(`Bàn số ${tableNumber} không tồn tại`);
     }
 
-    const { qrCodeToken, ...safeTable } = deriveTableState(table);
+    const { qrCodeToken, ...safeTable } = deriveTableState(this.filterSessionOrders(table as any));
     return { table: safeTable, qrCodeToken };
   }
 

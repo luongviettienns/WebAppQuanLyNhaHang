@@ -58,6 +58,30 @@ describe('table management API', () => {
     expect(response.status).toBe(404);
   });
 
+  it('preserves paid and preparing session orders when customer accesses table QR context', async () => {
+    const table = await prismaTest.diningTable.create({
+      data: { tableNumber: 95, displayName: 'Bàn 95', qrCodeToken: `qr-session-${Date.now()}`, status: 'OCCUPIED' }
+    });
+    const order = await prismaTest.order.create({
+      data: {
+        code: `CRISPY-SESSION-${Date.now()}`,
+        orderType: 'DINE_IN',
+        tableId: table.id,
+        status: 'PREPARING',
+        paymentStatus: 'PAID',
+        totalAmount: 100000,
+        vatAmount: 8000,
+        finalAmount: 100000
+      }
+    });
+
+    const response = await request(app).get(`/api/tables/qr/${table.qrCodeToken}`);
+    expect(response.status).toBe(200);
+    expect(response.body.data.table.orders).toHaveLength(1);
+    expect(response.body.data.table.orders[0].id).toBe(order.id);
+    expect(response.body.data.table.status).toBe('OCCUPIED');
+  });
+
   it('previews and commits table imports atomically and exports a usable XLSX', async () => {
     await request(app).post('/api/tables/areas').set('Authorization', `Bearer ${adminToken}`).send({ name: 'Phòng VIP' });
     const book = XLSX.utils.book_new();

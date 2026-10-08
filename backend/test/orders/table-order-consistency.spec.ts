@@ -63,7 +63,7 @@ describe('multiple unpaid orders on one table', () => {
     const { tables } = await TablesService.getAllTables();
 
     expect(tables[0]).toMatchObject({ status: 'OCCUPIED', currentOrderId: 2 });
-    expect(tables[0].orders.map((order) => order.id)).toEqual([2, 1]);
+    expect(tables[0].orders.map((order: { id: number }) => order.id)).toEqual([2, 1]);
   });
 
   it('returns every unpaid order from the table detail endpoint', async () => {
@@ -80,7 +80,7 @@ describe('multiple unpaid orders on one table', () => {
 
     const { table } = await TablesService.getTableById(1);
 
-    expect(table.orders.map((order) => order.id)).toEqual([2, 1]);
+    expect(table.orders.map((order: { id: number }) => order.id)).toEqual([2, 1]);
   });
 
   it('does not report an occupied table when it has no unpaid orders', async () => {

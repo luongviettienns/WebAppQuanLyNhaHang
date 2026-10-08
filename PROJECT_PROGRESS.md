@@ -126,6 +126,26 @@
 
 ## 🧠 4. QUY TẮC KIẾN TRÚC & BÀI HỌC KINH NGHIỆM CỐT LÕI
 
+### Nút Làm mới & Xem đơn hàng theo phiên của bàn cho Khách hàng (2026-10-08)
+
+- **RCA:** Backend trước đây lọc cứng `paymentStatus: 'UNPAID'` khi truy vấn `orders` của bàn ăn trong `TablesService` (`getTableByQrToken`, `getTableByTableNumber`, `getAllTables`, `getTableById`). Khi khách hàng thanh toán chuyển khoản VietQR (`WAITING_CONFIRMATION` hoặc `PAID`), toàn bộ đơn hàng của bàn bị lọc sạch, backend trả về `orders: []` và ép bàn về trạng thái `AVAILABLE`. Khi khách hàng tải lại trang hoặc refresh thì mất toàn bộ đơn hàng và tiến độ nấu của bếp. Đồng thời, giao diện khách hàng thiếu nút Làm mới (Refresh) để chủ động đồng bộ trạng thái thanh toán và thiếu lối điều hướng rõ ràng giữa màn hình xem tiến độ đơn bàn $\leftrightarrow$ xem thực đơn gọi thêm món.
+- **Giải pháp:**
+  - **Backend:** Xây dựng `getTableOrdersInclude()` và `filterSessionOrders()`. Truy vấn toàn bộ các đơn hàng thuộc phiên ăn hiện tại trong vòng 12h chưa bị hủy (`status != 'CANCELLED'`), bao gồm cả các đơn `WAITING_CONFIRMATION`, `PAID`, `PREPARING`, `READY`, `COMPLETED` của phiên. Cập nhật `deriveTableState` duy trì trạng thái `OCCUPIED` cho bàn khi có đơn trong ca ăn. Phiên ăn chỉ được coi là hoàn tất khi nhân viên/thu ngân dọn dẹp bàn về `AVAILABLE` hoặc `DIRTY`.
+  - **Frontend:** Bổ sung nút **Làm mới (Refresh 🔄)** có icon `RefreshCw`, trạng thái loading và toast thông báo trên thanh Header của `TableOrderScreen`. Khi khách hàng đang duyệt thực đơn gọi thêm món, bổ sung nút **"Đơn bàn (X đợt)"** trên Header và thanh thông báo nhanh `sessionOrdersBar` ở đầu thực đơn cho phép khách hàng chạm vào để chuyển ngay sang xem chi tiết các đợt gọi món, tiến độ bếp và hóa đơn cả bàn.
+- **Regression:** Đã quan sát test đỏ trước khi sửa (`expected [] to have a length of 1 but got 0`). Test xanh đã xác nhận qua `backend/test/tables/table-management.api.spec.ts` và `frontend/src/features/customer/TableOrderScreen.test.tsx`.
+- **Horizontal scan:** Rà soát toàn bộ các điểm truy vấn `orders` của bàn ở POS, Sơ đồ bàn Thu ngân, và API chi tiết bàn. Đảm bảo trạng thái đơn và tiền bàn hiển thị đồng bộ giữa Khách hàng và Thu ngân.
+- **Kiểm chứng:** Test backend 6/6 pass; test frontend 103 test files (366 tests) pass 100%; `npm run typecheck` đạt 0 lỗi cả 2 workspace; `npm run doctor` 18/18 checks pass.
+
+### Báo hao hụt Kitchen: lượng thực tế và gửi lại an toàn (2026-10-08)
+
+- **RCA:** màn Kitchen lấy danh sách `lowStockAlerts` làm danh mục chọn nguyên liệu nên nguyên liệu chưa chạm ngưỡng không thể báo hỏng; nút +/- chỉ nhập số nguyên, không hiển thị rõ đơn vị. Endpoint ghi hao hụt không có mã idempotency nên gửi lại do mất phản hồi trừ kho và ghi audit thêm lần nữa.
+- **Giải pháp:** tách API options chỉ đọc cho KITCHEN/ADMIN, không trả dữ liệu giá vốn. Nhập trực tiếp số dương hữu hạn bằng dấu phẩy/chấm thập phân, đơn vị theo kho, preview toàn bộ BOM và tồn dự kiến. Thêm `KitchenWasteRequest` (actor + key + hash + result), khóa theo người thao tác; kho, ledger, audit và kết quả cùng transaction, phát sự kiện sau commit. UI lưu phiếu đang chờ theo server/nhân viên trên thiết bị và replay cùng mã sau tải lại trang; dữ liệu danh mục thay đổi không được chặn replay kết quả cũ.
+- **Regression:** đã quan sát test đỏ trước sửa. Test xanh kiểm tra chọn nguyên liệu ngoài cảnh báo, 0,05 kg, preview hai dòng BOM, món thiếu BOM, lượng sai, mất phản hồi/remount, replay cùng mã, mã cũ khác nội dung, gửi đồng thời, rollback khi nguyên liệu không tồn tại, replay món và scope người thao tác/tồn âm.
+- **Horizontal scan:** đối soát caller `recordKitchenWasteApi`, routes kho/BOM, màn xuất hủy/kiểm kê Admin và các luồng idempotency trả hàng/chấm công. Mở API đọc riêng cho Kitchen, giữ các API quản trị kho dưới ADMIN; cập nhật các caller/test POST với header mới, Swagger, DTO và đặc tả mục 3.4.
+- **Phòng ngừa:** không dùng danh sách cảnh báo thay danh mục nghiệp vụ; số lượng luôn đi kèm đơn vị; preview là ước tính, không tự quy đổi g/kg hoặc ml/l. Chống trùng phải được lưu ở DB và giữ mã ở client trước gửi. Không chạy nhiều tiến trình DB integration dùng chung `crispy_bite_test` đồng thời; so sánh baseline phải chạy sau suite hiện tại.
+- **Kiểm chứng:** 15 test backend hao hụt và 8 test frontend đạt; `npm run typecheck`, ESLint file sửa và `npm run build:frontend` đạt. Kiểm tra trình duyệt desktop/mobile và mô phỏng mất mạng → tải lại trang → retry cùng mã, không ghi vào kho dev. Migration additive đã deploy riêng cho `crispy_bite_test` và `crispy_bite_dev`, không reset/seed DB dev.
+- **Ngoài phạm vi:** bộ test kho chạy tuần tự đạt 150/152; hai test `inventory.api.spec.ts` kỳ vọng /pay 200 nhưng fixture DINE_IN không có `createdByUserId` bị guard đơn QR trả 409. Chạy lại test với InventoryService nguyên bản từ Git HEAD vẫn tái hiện cả hai lỗi. Chưa sửa logic thanh toán hoặc fixture này trong task hao hụt.
+
 ### 🔒 Nhóm 1: Bảo Mật, Phân Quyền & Xác Thực (Security & RBAC)
 1. **Bảo mật mã QR bàn ăn (Table QR Token Authorization)**: Khách vãng lai (`DINE_IN`) bắt buộc phải có `qrCodeToken` khớp với CSDL để chống đơn ảo từ xa. Cung cấp route công khai có giới hạn `/api/tables/by-number/:tableNumber` để hỗ trợ link cũ và phòng ngừa sự cố.
 2. **Tách biệt tuyệt đối giữa Khách hàng, Vận hành và Quản trị (Strict Separation of Duties)**: Thực khách tại bàn tự phục vụ qua QR (`TableOrderScreen`). Nhân sự vận hành gồm: Thu ngân (`CASHIER`) phụ trách Bán hàng POS & Sơ đồ bàn; Đầu bếp (`KITCHEN`) phụ trách Màn hình vé KDS. Quản lý (`ADMIN`) tập trung 100% vào điều hành: Trung tâm quản trị (Thực đơn, Báo cáo doanh thu & KPI) và Giám sát bàn ăn (Duyệt Hủy đơn kiểm toán Void Order). Tuyệt đối không để Quản lý vừa tạo đơn bán hàng vừa duyệt hủy đơn nhằm triệt tiêu rủi ro gian lận nội bộ.
@@ -594,3 +614,7 @@
       - `npm run typecheck`: **0 lỗi biên dịch** trên toàn bộ workspaces (`backend` + `frontend`).
       - `npm run lint`: **0 lỗi** trên frontend.
 
+
+### Nhật ký 2026-10-08 — Hoàn thiện báo hao hụt Kitchen
+
+Hoàn tất chọn toàn bộ nguyên liệu hoạt động, nhập lượng thập phân có đơn vị, preview BOM/tồn và idempotency lưu DB/thiết bị. Tách `KitchenWasteModal` khỏi KDS để kiểm thử trực tiếp luồng người dùng. Xác nhận 23 test liên quan đạt, typecheck/lint/build web đạt; ghi nhận hai lỗi baseline thanh toán ngoài phạm vi tại bài học ở trên. Backend local đã khởi động lại sau cập nhật Prisma và migration.
