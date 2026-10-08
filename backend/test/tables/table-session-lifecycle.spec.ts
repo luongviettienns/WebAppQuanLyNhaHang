@@ -30,7 +30,7 @@ describe('Table visit lifecycle', () => {
     const table = await prismaTest.diningTable.findUniqueOrThrow({ where: { id: tableId } });
     const results = await Promise.all([TablesService.getTableById(tableId), TablesService.getTableByTableNumber(71), TablesService.getTableByQrToken(table.qrCodeToken)]);
     for (const result of results) expect((result.table as any).orders.map((order: { id: number }) => order.id)).toEqual([next.id]);
-    expect((await TablesService.getAllTables()).tables[0].orders.map((order: { id: number }) => order.id)).toEqual([next.id]);
+    expect(((await TablesService.getAllTables()).tables[0] as any).orders.map((order: { id: number }) => order.id)).toEqual([next.id]);
   });
 
   it('retains a paid/served batch of the current visit and an active batch older than 12 hours', async () => {
@@ -70,7 +70,7 @@ describe('Table visit lifecycle', () => {
     const target = await prismaTest.diningTable.create({ data: { tableNumber: 72, qrCodeToken: randomUUID() } });
     await TablesService.transferTable(tableId, target.id, { id: staffId });
     expect((await TablesService.getTableById(tableId)).table.orders).toHaveLength(0);
-    const moved = (await TablesService.getTableById(target.id)).table;
+    const moved = (await TablesService.getTableById(target.id)).table as any;
     expect(moved.currentSessionId).toBe(first.tableSessionId);
     expect((moved.orders as Array<{ id: number }>).map(order => order.id).sort()).toEqual([first.id, second.id].sort());
     expect((await prismaTest.order.findUniqueOrThrow({ where: { id: history.id } })).tableId).toBe(tableId);
