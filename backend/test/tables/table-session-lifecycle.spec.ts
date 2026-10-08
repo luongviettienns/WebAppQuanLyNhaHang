@@ -24,7 +24,7 @@ describe('Table visit lifecycle', () => {
     expect(first.tableSessionId).toBeTruthy(); expect(second.tableSessionId).toBe(first.tableSessionId);
     await prismaTest.order.updateMany({ where: { tableId }, data: { status: 'COMPLETED', paymentStatus: 'PAID' } });
     await TablesService.updateTableStatus(tableId, 'AVAILABLE');
-    expect((await prismaTest.diningTable.findUniqueOrThrow({ where: { id: tableId } })).currentSessionId).toBeNull();
+    expect(((await prismaTest.diningTable.findUniqueOrThrow({ where: { id: tableId } })) as any).currentSessionId).toBeNull();
     const next = (await create()).order;
     expect(next.tableSessionId).not.toBe(first.tableSessionId);
     const table = await prismaTest.diningTable.findUniqueOrThrow({ where: { id: tableId } });
@@ -54,7 +54,7 @@ describe('Table visit lifecycle', () => {
     await TablesService.updateTableStatus(tableId, 'AVAILABLE');
     const next = (await create(1, null)).order;
     await expect(create(1, old.tableSessionId)).rejects.toMatchObject({ statusCode: 409 });
-    expect(await prismaTest.order.count({ where: { tableSessionId: next.tableSessionId } })).toBe(1);
+    expect(await prismaTest.order.count({ where: { tableSessionId: next.tableSessionId } as any })).toBe(1);
   });
 
   it('assigns the same visit to concurrent first orders', async () => {
@@ -66,7 +66,7 @@ describe('Table visit lifecycle', () => {
   it('moves the whole current visit including paid batches while preserving old table history', async () => {
     const first = (await create()).order, second = (await create(2)).order;
     await prismaTest.order.update({ where: { id: first.id }, data: { paymentStatus: 'PAID', status: 'COMPLETED' } });
-    const history = await prismaTest.order.create({ data: { code: 'OLD-HISTORY', tableId, tableSessionId: randomUUID(), status: 'COMPLETED', paymentStatus: 'PAID', totalAmount: 50000, vatAmount: 3704, finalAmount: 50000 } });
+    const history = await prismaTest.order.create({ data: { code: 'OLD-HISTORY', tableId, tableSessionId: randomUUID(), status: 'COMPLETED', paymentStatus: 'PAID', totalAmount: 50000, vatAmount: 3704, finalAmount: 50000 } as any });
     const target = await prismaTest.diningTable.create({ data: { tableNumber: 72, qrCodeToken: randomUUID() } });
     await TablesService.transferTable(tableId, target.id, { id: staffId });
     expect((await TablesService.getTableById(tableId)).table.orders).toHaveLength(0);
@@ -80,11 +80,11 @@ describe('Table visit lifecycle', () => {
     const customer = await prismaTest.customer.create({ data: { code: 'VISIT-CUSTOMER', name: 'Khách thử', phone: '0900000000' } });
     const booking = await prismaTest.reservation.create({ data: { code: 'VISIT-BOOKING', accessToken: randomUUID() + randomUUID(), customerId: customer.id, scheduledAt: new Date(), partySize: 2, contactName: 'Khách thử', contactPhone: '0900000000', status: 'CONFIRMED', depositStatus: 'PAID' } });
     await ReservationsService.checkIn(booking.id, { tableId }, staffId, 'Thu ngân');
-    const checked = await prismaTest.reservation.findUniqueOrThrow({ where: { id: booking.id } });
+    const checked = await prismaTest.reservation.findUniqueOrThrow({ where: { id: booking.id } }) as any;
     expect(checked.tableSessionId).toBeTruthy();
     expect((await TablesService.getTableById(tableId)).table.status).toBe('OCCUPIED');
     const order = (await create()).order;
-    expect(order.tableSessionId).toBe(checked.tableSessionId);
+    expect((order as any).tableSessionId).toBe(checked.tableSessionId);
     await prismaTest.order.update({ where: { id: order.id }, data: { status: 'COMPLETED', paymentStatus: 'PAID' } });
     await TablesService.updateTableStatus(tableId, 'AVAILABLE');
     expect((await prismaTest.reservation.findUniqueOrThrow({ where: { id: booking.id } })).status).toBe('COMPLETED');
