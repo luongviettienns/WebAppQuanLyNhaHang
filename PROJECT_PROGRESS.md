@@ -15,8 +15,8 @@
 
 ### 🧪 Bằng chứng kiểm chứng chất lượng (Verification Metrics)
 - **Backend Test Suite (Vitest)**: 136/136 test files passed (**998/998 tests pass 100%** — bao gồm 4 endpoints báo cáo mới: Khách hàng, NCC, Nhân viên, Kênh bán hàng; P&L lãi lỗ; X-N-T kho; Báo cáo cuối ngày 4 Adapters; Sổ quỹ; Hoa hồng; HRM; Bán hàng; Kho BOM; FSM Bếp; Đặt bàn; Vouchers; RBAC).
-- **Frontend Test Suite (Vitest)**: 98/98 test files passed (**349/349 tests pass 100%** — bao gồm CustomerReportScreen, SupplierReportScreen, EmployeeReportScreen, ChannelReportScreen, ReportsWorkspaceScreen mở khóa trọn vẹn 8 tabs, DateRangeBar, P&L, X-N-T kho, EndOfDayReportScreen, useEndOfDayReport, BrandMark logo sync, Sổ quỹ, Hoa hồng, HRM, POS, KDS).
-- **Tổng Unit / Integration Tests**: **1,347/1,347 tests passed 100%** (998 backend + 349 frontend).
+- **Frontend Test Suite (Vitest)**: 100/100 test files passed (**356/356 tests pass 100%** — bao gồm OrderDateFilter, CustomerReportScreen, SupplierReportScreen, EmployeeReportScreen, ChannelReportScreen, ReportsWorkspaceScreen mở khóa trọn vẹn 8 tabs, DateRangeBar, P&L, X-N-T kho, EndOfDayReportScreen, useEndOfDayReport, BrandMark logo sync, Sổ quỹ, Hoa hồng, HRM, POS, KDS).
+- **Tổng Unit / Integration Tests**: **1,354/1,354 tests passed 100%** (998 backend + 356 frontend).
 - **Monorepo Typecheck (TypeScript)**: `npm run typecheck` $\rightarrow$ **0 lỗi biên dịch** trên toàn bộ workspaces (`backend` + `frontend`).
 - **Monorepo Lint (ESLint)**: `npm run lint` $\rightarrow$ **0 lỗi** trên toàn bộ workspaces.
 - **Expo Doctor Check**: `npm run doctor` $\rightarrow$ **18/18 checks** đạt tiêu chuẩn Expo SDK 54.
@@ -577,8 +577,20 @@
         1. `orders.spec.ts`: Cũ kỳ vọng bàn `OCCUPIED` ngay khi khách gửi đơn. Đã cập nhật kiểm thử đúng luồng mới: tạo đơn bàn giữ `AVAILABLE`, sau khi khách khai báo thanh toán (`POST /api/orders/:id/payment-declaration`) và thu ngân đối soát (`POST /api/orders/:id/payment/confirm`) thì bàn cập nhật `OCCUPIED`.
         2. `order-receiver.spec.ts`: Đơn khách tạo cần có cờ `payLaterAuthorized: true` hoặc xác nhận thanh toán trước khi chuyển sang `PREPARING` để kiểm thử logic ghi nhận nhân viên tiếp nhận đầu tiên (`receivedByEmployeeId`).
         3. `table-order-consistency.spec.ts`: Bổ sung mock `prisma.$transaction` khi gọi `updateOrderStatus` để trả về bản ghi cập nhật nhất quán thay vì `undefined`.
-    - *Nghiệm thu Chất lượng Toàn diện*:
-      - `npm run typecheck`: PASS 100% (0 lỗi biên dịch).
-      - `npm run test:backend -- test/orders`: PASS 100% (17/17 test files, 133/133 tests).
-      - `npm run test:frontend`: PASS 100% (98/98 test files, 349/349 tests).
+52. **Nâng Cấp Bộ Lọc Hóa Đơn & Phiếu Trả Hàng Sang Dạng Lịch Chọn Ngày (Date Picker) & Quick Presets**:
+    - *Bối cảnh & Yêu cầu*:
+      - Người dùng đề xuất chuyển bộ lọc từ ngày -> đến ngày trên màn hình Hóa đơn từ dạng gõ chữ tự do (`TextInput`) sang dạng lịch chọn ngày trực quan (Date Picker).
+      - Đánh giá nghiệp vụ: Cực kỳ hợp lý, chuẩn hóa trải nghiệm F&B POS/quản lý, loại bỏ 100% lỗi sai định dạng ngày tháng khi gõ tay và tăng tốc độ tra cứu cho Thu ngân/Kế toán.
+    - *Triển khai Kiến trúc & UI/UX*:
+      - Tạo component dùng chung `OrderDateFilter.tsx` ([`OrderDateFilter.tsx`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/frontend/src/features/orders/OrderDateFilter.tsx)) và logic xử lý ngày giờ Việt Nam UTC+7 trong `orderDateFilterViewModel.ts` ([`orderDateFilterViewModel.ts`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/frontend/src/features/orders/orderDateFilterViewModel.ts)).
+      - **Dạng lịch chọn ngày**: Tích hợp `{ type: 'date' }` chuẩn HTML5 trên nền tảng Web, cho phép click vào ô để mở popup lịch tháng trực quan của trình duyệt.
+      - **Nút chọn nhanh (Quick Presets)**: Bổ sung 4 nút bấm tiện lợi: **Hôm nay**, **Hôm qua**, **7 ngày**, **Tháng này**. Tự động highlight trạng thái preset đang được chọn.
+      - **Nút xóa nhanh (Tất cả)**: Cho phép reset bộ lọc ngày về toàn thời gian chỉ với 1 thao tác.
+      - Tích hợp đồng bộ trên cả 2 màn hình: **Hóa đơn** ([`OrdersScreen.tsx`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/frontend/src/features/orders/OrdersScreen.tsx)) và **Phiếu trả hàng** ([`SalesReturnListScreen.tsx`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/frontend/src/features/orders/SalesReturnListScreen.tsx)).
+    - *Kiểm thử (TDD) & Nghiệm thu Chất lượng*:
+      - Viết bộ test viewmodel `orderDateFilterViewModel.test.ts` (4/4 tests PASS): kiểm tra định dạng múi giờ VN, tính toán mốc ngày presets, phát hiện preset active, kiểm tra tính hợp lệ chuỗi ngày YYYY-MM-DD.
+      - Viết bộ test component `OrderDateFilter.test.tsx` (3/3 tests PASS): kiểm tra render preset, bắt sự kiện click chọn preset, nhập/chọn ngày tùy chỉnh, và xóa lọc.
+      - Tổng kiểm thử frontend: **100/100 test files passed (356/356 tests PASS 100%)**.
+      - `npm run typecheck`: **0 lỗi biên dịch** trên toàn bộ workspaces (`backend` + `frontend`).
+      - `npm run lint`: **0 lỗi** trên frontend.
 

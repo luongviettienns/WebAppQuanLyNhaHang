@@ -9,6 +9,7 @@ import { downloadOrderInvoiceExportApi, fetchOrderInvoiceDetailApi, fetchOrderIn
 import { radii, spacing, typography } from '../../theme';
 import { AppIcon, Button, EmptyState, InlineAlert, ScreenHeader, StatusBadge, Surface } from '../../ui';
 import { formatInvoiceDate, formatInvoiceMoney, getInvoiceCustomerLabel, getOrderStatusPresentation } from './invoiceViewModel';
+import { OrderDateFilter } from './OrderDateFilter';
 import { SalesReturnListScreen } from './SalesReturnListScreen';
 import { DeliveryPartnersScreen } from './DeliveryPartnersScreen';
 
@@ -74,8 +75,16 @@ export const OrdersScreen: React.FC = () => {
     <View style={[styles.layout, compact && styles.layoutCompact]}>
       <Surface level="base" style={[styles.filters, compact && styles.filtersCompact, { borderColor: theme.borderSubtle }]}>
         <Text style={[styles.panelTitle, { color: theme.textPrimary }]}>Bộ lọc hóa đơn</Text>
-        <Text style={[styles.filterLabel, { color: theme.textSecondary }]}>Thời gian</Text>
-        <View style={styles.dateRow}><TextInput accessibilityLabel="Từ ngày hóa đơn" value={from} onChangeText={value => { setFrom(value); setFilterPatch({ from: value || undefined }); }} placeholder="Từ ngày" placeholderTextColor={theme.textSecondary} style={[styles.dateInput, { color: theme.textPrimary, borderColor: theme.borderSubtle }]} /><TextInput accessibilityLabel="Đến ngày hóa đơn" value={to} onChangeText={value => { setTo(value); setFilterPatch({ to: value || undefined }); }} placeholder="Đến ngày" placeholderTextColor={theme.textSecondary} style={[styles.dateInput, { color: theme.textPrimary, borderColor: theme.borderSubtle }]} /></View>
+        <OrderDateFilter
+          from={from}
+          to={to}
+          onChange={(newFrom, newTo) => {
+            setFrom(newFrom);
+            setTo(newTo);
+            setFilterPatch({ from: newFrom || undefined, to: newTo || undefined });
+          }}
+          testIDPrefix="invoice-date"
+        />
         <Text style={[styles.filterLabel, { color: theme.textSecondary }]}>Trạng thái đơn</Text>
         {orderStatuses.map(option => <CheckChoice key={option.value} {...option} selected={filter.statuses?.includes(option.value) || false} onToggle={value => toggle('statuses', value)} />)}
         <Text style={[styles.filterLabel, { color: theme.textSecondary }]}>Thanh toán</Text>
