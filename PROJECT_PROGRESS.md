@@ -678,6 +678,18 @@
       - Frontend test suites liên quan: 15/15 tests PASS.
 
 
-### Nhật ký 2026-10-08 — Hoàn thiện Báo hao hụt, VietQR Khách Hàng & Cô Lập Phiên Phục Vụ Bàn
+55. **Tối Ưu Tab "Sổ Quỹ" Giao Diện Quản Trị (Admin) & Khắc Phục Tràn Giao Diện Sidebar (Scrollable Navigation)**:
+    - *Bối cảnh & Phân tích Nguyên nhân gốc rễ (Root Cause Analysis - RCA)*:
+      - *Hiện tượng*: Người dùng phản ánh trên giao diện Thu ngân (Cashier) đã thấy tab "Sổ quỹ", nhưng trên giao diện Quản trị (Admin) thì không thấy xuất hiện.
+      - *Nguyên nhân*: Trong [`RoleTabs.tsx`](file:///c:/Users/ASUS/Desktop/WebAppQuanLyNhaHang/frontend/src/navigation/RoleTabs.tsx), vai trò `CASHIER` chỉ có 5 tabs nên tab `cashbook` (thứ 5) hiển thị vừa vặn trong màn hình. Ngược lại, vai trò `ADMIN` có tới 12 tabs và `cashbook` bị xếp ở vị trí cuối cùng (#12). Đồng thời, thanh điều hướng sidebar Desktop (`styles.rail`) là một `<View>` tĩnh không thể cuộn. Trên màn hình máy tính thông thường hoặc cửa sổ trình duyệt (chiều cao viewport $\le 750$px), tab thứ 12 bị lọt xuống dưới mép đáy màn hình và bị khuất hoàn toàn.
+    - *Giải pháp Kiến trúc & Trải nghiệm UI/UX*:
+      - **Ưu tiên vị trí Tab Quản trị**: Đưa tab `cashbook` ("Sổ quỹ") lên **vị trí số 2** (ngay sau tab "Báo cáo") trong thanh điều hướng của Quản trị viên, cùng nhóm quản trị tài chính - kinh doanh, đồng thời cập nhật icon `WalletCards` trực quan, nổi bật.
+      - **Hỗ trợ Cuộn Dọc Sidebar Desktop**: Bọc `styles.rail` bằng `<ScrollView showsVerticalScrollIndicator={false}>` kèm `contentContainerStyle={styles.railContent}`. Đảm bảo toàn bộ 12 tabs của Quản trị viên luôn hiển thị đầy đủ, cuộn mượt mà trên mọi độ phân giải và chiều cao màn hình.
+      - **Hỗ trợ Cuộn Ngang Tablet & Mobile**: Bọc `tabletNav` và `bottomNav` bằng `<ScrollView horizontal showsHorizontalScrollIndicator={false}>` giúp cuộn ngang các mục điều hướng tiện lợi, không bị co ép chữ hay tràn khung.
+    - *Kiểm thử & Nghiệm thu Chất lượng*:
+      - `npm run typecheck`: **0 lỗi biên dịch** trên toàn bộ monorepo (`backend` + `frontend`).
+      - Toàn bộ test suite liên quan navigation và sổ quỹ (`RootNavigator.test.tsx`, `CashbookScreen.test.tsx`): 17/17 tests PASS 100%.
 
-Hoàn tất chọn toàn bộ nguyên liệu hoạt động, nhập lượng thập phân có đơn vị, preview BOM/tồn và idempotency lưu DB/thiết bị. Tách `KitchenWasteModal` khỏi KDS để kiểm thử trực tiếp luồng người dùng. Xác nhận 23 test liên quan đạt, typecheck/lint/build web đạt. Nâng cấp modal thanh toán khách hàng gọi món tại bàn sang mã VietQR thật 100% kết nối tài khoản NCB (.env) kèm tiện ích sao chép nhanh 1 chạm. Khắc phục triệt để lỗi cộng dồn đơn của khách trước bằng kiến trúc phân tách phiên phục vụ bàn (`currentSessionId` / `tableSessionId`) từ CSDL, API đến giao diện khách hàng. Full quality check PASS 100%.
+### Nhật ký 2026-10-08 — Hoàn thiện Báo hao hụt, VietQR Khách Hàng, Cô Lập Phiên Phục Vụ Bàn & Tối Ưu Sổ Quỹ Admin
+
+Hoàn tất chọn toàn bộ nguyên liệu hoạt động, nhập lượng thập phân có đơn vị, preview BOM/tồn và idempotency lưu DB/thiết bị. Tách `KitchenWasteModal` khỏi KDS để kiểm thử trực tiếp luồng người dùng. Xác nhận 23 test liên quan đạt, typecheck/lint/build web đạt. Nâng cấp modal thanh toán khách hàng gọi món tại bàn sang mã VietQR thật 100% kết nối tài khoản NCB (.env) kèm tiện ích sao chép nhanh 1 chạm. Khắc phục triệt để lỗi cộng dồn đơn của khách trước bằng kiến trúc phân tách phiên phục vụ bàn (`currentSessionId` / `tableSessionId`) từ CSDL, API đến giao diện khách hàng. Khắc phục lỗi hiển thị sổ quỹ trên giao diện Admin: đưa tab "Sổ quỹ" lên vị trí ưu tiên số 2 (ngay cạnh Báo cáo) và bọc ScrollView cho thanh điều hướng desktop/tablet/mobile. Full quality check PASS 100%.

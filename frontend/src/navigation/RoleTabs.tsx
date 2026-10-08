@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Pressable, SafeAreaView, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import {
   BarChart3,
   ChefHat,
@@ -13,7 +13,8 @@ import {
   Utensils,
   Warehouse,
   Tags,
-  UserRound
+  UserRound,
+  WalletCards
 } from 'lucide-react-native';
 import type { LucideIcon } from 'lucide-react-native';
 import type { Role } from '../api/contracts';
@@ -49,26 +50,26 @@ const tabsByRole = {
   CASHIER: [
     { key: 'pos', label: 'Bán hàng', icon: ShoppingCart, component: POSScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
-    { key: 'reservations', label: 'Đặt bàn', icon: ClipboardList, component: ReservationManagementScreen },
     { key: 'orders', label: 'Đơn hàng', icon: ClipboardList, component: OrdersScreen },
-    { key: 'cashbook', label: 'Sổ quỹ', icon: ClipboardList, component: CashbookScreen }
+    { key: 'cashbook', label: 'Sổ quỹ', icon: WalletCards, component: CashbookScreen },
+    { key: 'reservations', label: 'Đặt bàn', icon: ClipboardList, component: ReservationManagementScreen }
   ],
   KITCHEN: [
     { key: 'kds', label: 'Bếp', icon: ChefHat, component: KDSScreen }
   ],
   ADMIN: [
     { key: 'reports', label: 'Báo cáo', icon: BarChart3, component: ReportsWorkspaceScreen },
+    { key: 'cashbook', label: 'Sổ quỹ', icon: WalletCards, component: CashbookScreen },
+    { key: 'orders', label: 'Đơn hàng', icon: ClipboardList, component: OrdersScreen },
     { key: 'menu', label: 'Thực đơn', icon: Utensils, component: MenuManagementScreen },
     { key: 'pricing', label: 'Bảng giá', icon: Tags, component: PriceListScreen },
     { key: 'inventory', label: 'Kho hàng', icon: Warehouse, component: InventoryScreen },
-    { key: 'orders', label: 'Đơn hàng', icon: ClipboardList, component: OrdersScreen },
     { key: 'vouchers', label: 'Ưu đãi', icon: Tag, component: VoucherManagementScreen },
     { key: 'customers', label: 'Khách hàng', icon: UserRound, component: CustomerManagementScreen },
     { key: 'employees', label: 'Nhân viên', icon: UserRound, component: EmployeeWorkspaceScreen },
     { key: 'reservations', label: 'Đặt bàn', icon: ClipboardList, component: ReservationManagementScreen },
     { key: 'tables', label: 'Bàn', icon: LayoutGrid, component: TableScreen },
-    { key: 'audit', label: 'Nhật ký', icon: ClipboardList, component: AuditLogScreen },
-    { key: 'cashbook', label: 'Sổ quỹ', icon: ClipboardList, component: CashbookScreen }
+    { key: 'audit', label: 'Nhật ký', icon: ClipboardList, component: AuditLogScreen }
   ]
 } satisfies Record<string, TabItem[]>;
 
@@ -170,17 +171,26 @@ export const RoleTabs: React.FC = () => {
       </View>
 
       {!isDesktop && !isMobile && tabs.length > 1 && (
-        <View style={[styles.tabletNav, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={[styles.tabletNav, { backgroundColor: theme.surfaceBase, borderBottomColor: theme.borderSubtle }]}
+          contentContainerStyle={styles.horizontalNavContent}
+        >
           <NavigationItems tabs={tabs} activeTab={selected.key} onSelect={setActiveTab} />
-        </View>
+        </ScrollView>
       )}
 
       <View style={styles.workspace}>
         {isDesktop && tabs.length > 1 && (
-          <View style={[styles.rail, { backgroundColor: theme.surfaceBase, borderRightColor: theme.borderSubtle }]}>
+          <ScrollView
+            style={[styles.rail, { backgroundColor: theme.surfaceBase, borderRightColor: theme.borderSubtle }]}
+            contentContainerStyle={styles.railContent}
+            showsVerticalScrollIndicator={false}
+          >
             <Text style={[styles.railHeading, { color: theme.textSecondary }]}>Khu vực làm việc</Text>
             <NavigationItems tabs={tabs} activeTab={selected.key} onSelect={setActiveTab} vertical />
-          </View>
+          </ScrollView>
         )}
         <View style={styles.screenContainer}>
           <ActiveComponent />
@@ -188,9 +198,14 @@ export const RoleTabs: React.FC = () => {
       </View>
 
       {isMobile && tabs.length > 1 && (
-        <View style={[styles.bottomNav, { backgroundColor: theme.surfaceBase, borderTopColor: theme.borderSubtle }]}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={[styles.bottomNav, { backgroundColor: theme.surfaceBase, borderTopColor: theme.borderSubtle }]}
+          contentContainerStyle={styles.horizontalNavContent}
+        >
           <NavigationItems tabs={tabs} activeTab={selected.key} onSelect={setActiveTab} />
-        </View>
+        </ScrollView>
       )}
     </SafeAreaView>
   );
@@ -209,13 +224,15 @@ const styles = StyleSheet.create({
   logoutLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.sm },
   workspace: { flex: 1, flexDirection: 'row' },
   screenContainer: { flex: 1, minWidth: 0 },
-  tabletNav: { borderBottomWidth: 1, paddingHorizontal: spacing.md },
-  rail: { borderRightWidth: 1, padding: spacing.md, width: 208 },
+  tabletNav: { borderBottomWidth: 1 },
+  rail: { borderRightWidth: 1, width: 220, flexShrink: 0 },
+  railContent: { padding: spacing.md, paddingBottom: spacing.xxl },
   railHeading: { fontFamily: typography.families.bodyMedium, fontSize: typography.sizes.xs, marginBottom: spacing.sm, paddingHorizontal: spacing.sm },
   verticalNav: { gap: spacing.xs },
   horizontalNav: { flexDirection: 'row', gap: spacing.xs },
+  horizontalNavContent: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
   railItem: { alignItems: 'center', borderLeftWidth: 3, borderRadius: radii.sm, flexDirection: 'row', gap: spacing.sm, minHeight: 48, paddingHorizontal: spacing.md },
-  tabItem: { alignItems: 'center', borderBottomWidth: 3, borderRadius: radii.sm, flex: 1, gap: 2, justifyContent: 'center', minHeight: 54, paddingHorizontal: spacing.xs, paddingVertical: spacing.xs },
+  tabItem: { alignItems: 'center', borderBottomWidth: 3, borderRadius: radii.sm, minWidth: 90, gap: 2, justifyContent: 'center', minHeight: 54, paddingHorizontal: spacing.sm, paddingVertical: spacing.xs },
   navLabel: { fontFamily: typography.families.bodySemibold, fontSize: typography.sizes.xs },
-  bottomNav: { borderTopWidth: 1, paddingHorizontal: spacing.xs },
+  bottomNav: { borderTopWidth: 1 },
 });
